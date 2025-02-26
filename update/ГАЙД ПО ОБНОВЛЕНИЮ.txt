@@ -1,0 +1,18 @@
+Переименуйте файлы для обновления, например в upd1 (upd1.exe)
+
+Для обновления на mac os:
+
+Правой кнопкой мыши по папке update -> Открыть папку в терминале
+
+xattr -d com.apple.quarantine ./upd1
+sudo chmod +x upd1
+./upd1
+
+Для обновления на windows: 
+
+Дабл клик по upd1.exe (либо ./upd1 через powerShell)
+
+Последняя версия всегда доступна по ссылке: https://github.com/ppleaser/OF_HELPER/archive/refs/heads/main.zip
+
+После обновления удалите файлы upd1 (upd1.exe)
+

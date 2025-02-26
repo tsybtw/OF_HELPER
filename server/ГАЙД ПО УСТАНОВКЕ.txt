@@ -1,0 +1,13 @@
+Для установки и запуска на mac os:
+
+Правой кнопкой мыши по папке server -> Открыть папку в терминале
+
+xattr -d com.apple.quarantine ./main
+
+sudo chmod +x main
+
+./main
+
+Для установки и запуска на windows: 
+
+Дабл клик по main.exe (либо ./main через powerShell)
