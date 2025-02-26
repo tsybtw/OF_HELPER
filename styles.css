@@ -1,0 +1,161 @@
+body {
+    width: 180px;
+    text-align: center;
+    background-color: #0e0e0e;
+    animation: fadeIn 0.6s ease-in-out forwards;
+    opacity: 0;
+    padding: 5px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .title {
+    color:burlywood;
+    font-size: 30px;
+    font-family: "Lacquer", system-ui;
+  }
+
+  ::-webkit-scrollbar {
+    width: 0;
+  }
+
+  .switch-number {
+    height: 40px;
+    position: absolute;
+    text-align: center;
+    color: black;
+    z-index: 9999;
+    font-size: 30px;
+    font-weight: bold;
+    font-family: "Lacquer", system-ui;
+    pointer-events: none;
+  }
+
+  @keyframes fadeIn {
+    0% {
+      opacity: 0;
+    } 
+    50% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+
+  .tag {
+    font-size: 15px;
+    color:burlywood;
+    font-family: "Lacquer", system-ui;
+  }
+  
+  h1 {
+    margin: 0px;
+    margin-bottom: 5px;
+    color: white;
+    font-family: "Lacquer", system-ui;
+  }
+
+  h2 {
+    margin: 0px;
+    margin-bottom: 5px;
+    color: white;
+    font-family: "Lacquer", system-ui;
+  }
+  
+  .switch-labels{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 10px;
+  }
+  
+  .switch-labels span {
+    margin: 0px 10px 0px 10px; 
+  }
+  
+  .switch {
+    position: relative;
+    display: inline-block;
+    width: 160px;
+    height: 34px;
+  }
+  
+  .switch input[type="checkbox"], .switchPost input[type="checkbox"] {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+  
+  .slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s; 
+    border-radius: 34px;
+  }
+  
+  .slider:before {
+    position: absolute;
+    content: "";
+    height: 26px;
+    width: 26px;
+    left: 4px;
+    bottom: 4px;
+    background-color: rgb(32, 32, 32);
+    transition: .4s; 
+    border-radius: 50%;
+  }
+  
+
+  input[type="checkbox"]:checked + .slider {
+    background-color: #f8ece2;
+  }
+  
+  input[type="checkbox"]:checked + .slider:before {
+    transform: translateX(106px); 
+    background-color: #c24817;
+  }
+
+  .switchPost {
+    position: absolute;
+    display: none;
+  }
+  
+  .sliderPost {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s; 
+    border-radius: 34px;
+  }
+  
+  .sliderPost:before {
+    position: absolute;
+    content: "";
+    height: 26px;
+    width: 26px;
+    left: 4px;
+    bottom: 4px;
+    background-color: rgb(32, 32, 32);
+    transition: .4s; 
+    border-radius: 50%;
+  }
+  
+  input[type="checkbox"]:checked + .sliderPost {
+    background-color: #f8ece2;
+  }
+  
+  input[type="checkbox"]:checked + .sliderPost:before {
+    background-color: #8b310d;
+  }
+  
