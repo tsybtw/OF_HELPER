@@ -1,0 +1,8 @@
+Cкачайте и установите Python, Node.js, Java
+
+Заполните .env файл своими данными с сайта my.telegram.org (api development tools -> create app),
+добавьте путь к папке со скриншотами после FOLDER=
+
+Для установки открыть терминал в текущей папке и ввести команду:
+
+node install.js

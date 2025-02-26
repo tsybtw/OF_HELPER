@@ -1,0 +1,835 @@
+body {
+  background-color: #000000;
+  color: white;
+  font-size: 14px;
+  font-family: 'Varela Round', sans-serif;
+}
+
+.container {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  margin-top: 110px;
+  padding-bottom: 500px;
+}
+
+img {
+  max-width: 310px;
+  z-index: -10;
+}
+
+video {
+  max-width: 310px;
+  z-index: 0;
+}
+
+.header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 110px;
+  background-color: #000000;
+  z-index: 1; 
+  display: flex;
+  flex-direction: row;
+}
+
+.copy-button {
+  font-family: 'Varela Round', sans-serif;
+  background-color: #fbdf56;
+  border: none;
+  color: rgb(0, 0, 0);
+  font-weight: bold;
+  padding: 15px 5px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 20px;
+  margin: 5px 2px 20px;
+  cursor: pointer;
+  border-radius: 10px;
+  width: 300px;
+  transition: all 1s;
+  margin-top: 0px;
+}
+
+.copy-button:hover
+{
+  background-color: rgb(255, 255, 255) !important;
+}
+
+.image-number {
+  display: flex;
+  color:#dbdbdb;
+  background: rgb(0, 0, 0);
+  width: 40px;
+  height: 40px;
+  text-align: center;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Varela Round', sans-serif;
+  font-size: 30px;
+  font-weight: bold;
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: 0 0px 5px 0px;
+}
+
+.copy-button.img {
+  margin: 5px 2px 5px;
+  background-color: 6BFF96;
+}
+
+#delete-button {
+  width: 120px;
+  position: relative;
+}
+
+#send-button {
+  position: absolute;
+  left: 155px;
+  height: 100px;
+  color: rgb(0, 0, 0);
+  font-family: 'Varela Round', sans-serif;
+  background-color: #fb8556;
+  font-size: 20px;
+  cursor: pointer;
+  border-radius: 10px;
+  text-decoration: none;
+  font-weight: bold;
+  border: solid black 3px;
+  z-index: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  padding: 0;
+  transition: all 1s;
+  padding: 10px;
+  width: 190px;
+}
+
+#send-button:hover {
+  background-color: rgb(250, 219, 207);
+  transition: all 1s;
+}
+
+@keyframes buttonClickAnimation {
+  0% { transform: scale(1); }
+  50% { transform: scale(0.8); }
+  100% { transform: scale(1); }
+}
+
+.animate {
+  animation: buttonClickAnimation 0.2s;
+}
+
+#delete-status, #send-status {
+  position: fixed;
+  bottom: 0;
+  left: 5px;
+  visibility: hidden;
+  opacity: 0;
+  transition: visibility 1s, opacity 0.5s linear;
+  color: white;
+  font-family: 'Varela Round', sans-serif;
+  font-size: 20px;
+  font-weight: bold;
+  background-color: rgba(0, 0, 0, 0.7); 
+  padding: 10px; 
+  z-index: 9999999;
+  width: 100%;
+  width: 300px
+}
+
+.infoMessage {
+  margin-top: 5px;
+  font-family: 'Varela Round', sans-serif;
+  color: rgb(255, 96, 96);
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.show {
+  visibility: visible!important;;
+  opacity: 1!important;;
+}
+
+.len-messages {
+  position: fixed;
+  left: 210px;
+  z-index: 10;
+  color:#6BFF96;
+  font-family: 'Varela Round', sans-serif;
+  font-size: 24px;
+  font-weight: bold;
+  margin-bottom: 10px;
+  background: #000000;
+  padding: 5px;
+  border-radius: 0px 0px 5px 5px;
+  text-align: center;
+  width: 100px;
+}
+
+@keyframes slide-up {
+  0% {
+      transform: translateY(100%);
+  }
+  100% {
+      transform: translateY(0);
+  }
+}
+
+.button1, .button2, .button3, #open-folder-button, #copy-files-button {
+  position: absolute;
+  margin-bottom: 10px ;
+  cursor: pointer;
+  text-decoration: none;
+  font-weight: bold;
+  padding: 5px 10px;
+  z-index: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  padding: 0;
+  transition: all 0.5s;
+}
+
+.button1 {
+  display: flex;
+  top: 1;
+  left: 1;
+  width: 75px;
+  height: 50px;
+  background-color: #488b5b;
+  z-index: 2;
+  border-radius: 5px;
+  text-align: center;
+  justify-content: center;
+  align-items: center;
+  font-size: 30px;
+  color: black;
+  font-weight: bold;
+  border: solid black;
+  border-width: 2px;
+}
+
+.button2 {
+  top: 0;
+  left: 0;
+  width: 150px;
+  height: 94px;
+  background-color: rgb(107, 143, 255);
+  color: black;
+  z-index: 1;
+  border-radius: 10px;
+  border: solid black 3px;
+}
+
+.button3 {
+  display: flex;
+  top: 2;
+  left: 121px;
+  width: 30px;
+  height: 30px;
+  z-index: 5;
+  border-radius: 10px;
+  border: solid black;
+  text-align: center;
+  justify-content: center;
+  align-items: center;
+  font-size: 30px;
+  color: black;
+  font-weight: bold;
+  border-width: 2px;
+  
+}
+
+#button-text {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  padding-right: 20px;
+  padding-bottom: 15px;
+  font-weight: bold;
+  font-size: 40px;
+}
+
+#button-del {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  padding-left: 10px;
+  padding-bottom: 4px;
+  font-weight: bold;
+  font-size: 30px;
+}
+
+#open-folder-button {
+  width: 150px;
+  font-family: 'Varela Round', sans-serif;
+  font-size: 18px;
+  background-color: rgb(107, 143, 255);
+  font-weight: bold;
+  left: 343px;
+  height: 50px;
+  border-radius: 10px;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  border: solid black 3px;
+}
+
+#copy-files-button {
+  width: 150px;
+  font-family: 'Varela Round', sans-serif;
+  font-size: 18px;
+  background-color: rgb(107, 143, 255);
+  top: 49px;
+  left: 343px;
+  font-weight: bold;
+  height: 50px;
+  border-radius: 10px;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  border: solid black 3px;
+}
+
+.button1:hover {
+  background-color: #c9f5d6;
+  color: rgb(0, 0, 0);
+}
+
+.button2:hover, #open-folder-button:hover, #copy-files-button:hover {
+  background-color: rgb(194, 209, 252);
+}
+
+.button3:hover {
+  transform: scale(1.05);
+}
+
+::-webkit-scrollbar {
+width: 8px; 
+}
+
+::-webkit-scrollbar-track {
+background-color: #000000; 
+border-radius: 10px; 
+}
+
+::-webkit-scrollbar-thumb {
+background-color: #fb8556; 
+border-radius: 10px; 
+border: 2px solid #000000; 
+}
+
+::-webkit-scrollbar-thumb:hover {
+background-color: #fb8556 
+}
+
+html {
+scrollbar-gutter: stable; 
+}
+
+#hints-container {
+position: fixed;
+top: 110px;
+left: 330px;
+background-color: rgb(107, 143, 255);
+padding: 5px 5px 0px 5px;
+border-radius: 10px;
+z-index: 0;
+max-height: calc(100vh - 220px);
+min-height: 50px;
+min-width: 170px;
+display: flex; 
+flex-direction: column;
+overflow: hidden;
+}
+
+.hints-wrapper {
+flex-grow: 1;
+overflow-y: auto; 
+padding: 5px 5px 0px 5px;
+}
+
+.hints-wrapper::-webkit-scrollbar {
+width: 8px;
+}
+.hints-wrapper::-webkit-scrollbar-track {
+background: rgba(0,0,0,0.1);
+border-radius: 4px;
+}
+.hints-wrapper::-webkit-scrollbar-thumb {
+background: rgba(0,0,0,0.2);
+border-radius: 4px;
+border-width: 2px;
+}
+
+input[type="checkbox"] {
+accent-color: black; 
+}
+
+#hints-container .hint-item.active {
+background-color: #c3f57c;
+}
+
+#hints-container .hint-item {
+display: block; 
+width: 100%; 
+margin-bottom: 5px; 
+border-radius: 5px;
+transition: background-color 0.2s ease;
+}
+
+#hints-container .hint-item .hint-checkbox {
+margin-right: 8px; 
+width: 20px; 
+height: 20px;
+cursor: pointer;
+}
+
+#hints-container .hint-item .hint-label {
+flex: 1; 
+font-family: 'Varela Round', sans-serif;
+font-weight: bold;
+color: #000000;
+font-size: 17px;
+line-height: 1.2;
+margin-right: 10px; 
+word-wrap: break-word; 
+}
+
+.hint-label.general {
+color:  #fb8556  !important
+}
+
+#hints-container .hint-item .hint-delete-btn {
+flex-shrink: 0; 
+background: none;
+border: none;
+padding: 0;
+cursor: pointer;
+transition: transform 0.2s ease, background-color 0.2s ease;
+}
+
+#hints-container .hint-item .hint-delete-btn .icon-trash {
+display: inline-block;
+width: 20px; 
+height: 20px;
+transition: fill 0.2s ease;
+}
+
+#hints-container .hint-item .hint-delete-btn:hover {
+transform: scale(1.1);
+background-color: rgb(0, 0, 0);
+border-radius: 10%;
+}
+
+.hint-wrapper {
+display: flex;
+flex-direction: row;
+justify-content: space-between;
+align-items: center;
+width: 100%; 
+}
+
+.error-message {
+font-family: 'Varela Round', sans-serif;
+color: red;
+font-weight: bold;
+font-size: 18px;
+}
+
+.info-tooltip-container {
+position: fixed;
+left: 535px;
+top: 40px;
+display: inline-block;
+z-index: 10;
+}
+
+.info-icon {
+color: #ffffff;
+cursor: pointer;
+}
+
+.tooltip-text {
+font-family: 'Varela Round', sans-serif;
+font-size: 18px;
+position: fixed; 
+top: 50%;
+left: 50%;
+transform: translate(-50%, -50%);
+background-color: #fffafa;
+color: rgb(0, 0, 0);
+text-align: center;
+padding: 10px 20px;
+border-radius: 6px;
+z-index: 20;
+width: 400px; 
+white-space: normal; 
+word-wrap: break-word; 
+opacity: 0;
+visibility: hidden;
+transition: opacity 0.3s, visibility 0.3s;
+}
+
+.blue {
+color: #007bff 
+}
+
+.orange {
+color:#fb8556
+}
+
+.personal {
+color: #007bff 
+}
+
+.general {
+color:#fb8556
+}
+
+.info-tooltip-container:hover .tooltip-text {
+visibility: visible;
+opacity: 1;
+}
+
+#add-hint-btn, #add-general-hint-btn {
+position: fixed;
+background: none;
+border: 2px dashed #007bff;
+color: #007bff;
+border-radius: 5px;
+cursor: pointer;
+padding: 5px 10px;
+transition: all 0.3s ease;
+left: 500px;
+top: 10px;
+z-index: 100;
+}
+
+#add-general-hint-btn {
+top:60px;
+border: 2px dashed #fb8556;
+color: #fb8556
+}
+
+#add-hint-btn:hover {
+background-color: #007bff;
+color: white;
+}
+
+#add-general-hint-btn:hover {
+background-color: #fb8556;
+color: white;
+}
+
+.modal {
+position: fixed;
+z-index: 1000;
+left: 0;
+top: 0;
+width: 100%;
+height: 100%;
+overflow: auto;
+background-color: rgba(0,0,0,0.4);
+display: flex;
+align-items: center;
+justify-content: center;
+}
+
+.modal.hidden {
+display: none;
+}
+
+.modal-content {
+background-color: #fefefe;
+padding: 20px;
+border-radius: 10px;
+width: 300px;
+box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+display: flex;
+flex-direction: column;
+justify-content: center;
+align-items: center;
+}
+
+#hint-input, #general-hint-input {
+width: 90%;
+padding: 8px;
+border: 1px solid #ddd;
+border-radius: 4px;
+color: black;
+font-family: 'Varela Round', sans-serif;
+font-size: 18px;
+}
+
+#save-hint-btn, #close-modal-btn, #save-general-hint-btn, #close-general-modal-btn {
+width: 120px;
+font-family: 'Varela Round', sans-serif;
+font-size: 18px;
+background-color: rgb(107, 143, 255);
+font-weight: bold;
+border-radius: 10px;
+text-decoration: none;
+overflow: hidden;
+text-overflow: ellipsis;
+white-space: normal;
+color: black;
+transition: all 0.3s;
+padding: 10px;
+border: solid black 1px;
+}
+
+#save-hint-btn:hover, #close-modal-btn:hover , #save-general-hint-btn:hover, #close-general-modal-btn:hover {
+background-color: rgb(194, 209, 252);
+cursor: pointer;
+}
+
+.btn-wrapper {
+margin-top: 10px;
+display: flex;
+width: 100%;
+flex-direction: row;
+justify-content: space-evenly;
+align-items: center;
+}
+
+::placeholder {
+font-size: 16px;
+}
+
+.image-controls {
+position: absolute;
+bottom: 10px;
+right: 10px;
+display: flex;
+gap: 10px;
+background-color: rgba(0, 0, 0, 0.6);
+padding: 5px;
+border-radius: 5px;
+}
+
+.rotate-button {
+cursor: pointer;
+color: white;
+background-color: rgb(0, 0, 0);
+padding: 5px 10px;
+border-radius: 4px;
+font-size: 18px;
+transition: background-color 0.2s;
+margin-right: 2px;
+}
+
+.media-controls {
+position: absolute;
+left: 245px;
+bottom:3px;
+}
+
+.media-container.rotated-90,
+.media-container.rotated-270 {
+  transform-origin: center center;
+}
+
+.buttons-grid {
+left:50px;
+position: fixed;
+display: flex;
+flex-direction:row;
+gap: 3px;
+z-index: 1000;
+font-family: 'Varela Round', sans-serif;
+font-weight: bold;
+color: #000000;
+}
+
+.message-button {
+background-color: #fbdf56;
+color: black;
+border: none;
+border-radius: 5px;
+cursor: pointer;
+font-size: 18px;
+transition: background-color 0.2s;
+white-space: nowrap;
+text-align: center;
+font-weight: bold;
+min-width: 40px;
+min-height: 40px;
+border-radius: 10px;
+border: 2px solid black;
+transition: 0.3s all;
+}
+
+.message-button:hover {
+background-color: #fffafa;
+transition: 0.3s all;
+}
+
+.message-button.active {
+background-color: #c3f57c;
+transform: translateY(1px);
+}
+
+.main-container {
+position: relative; 
+display: flex; 
+flex-direction: column;
+}
+
+.sort-buttons {
+display: flex;
+flex-direction: row;
+align-items: center;
+justify-content: space-evenly;
+padding: 2px 5px 7px 5px;
+}
+
+.sort-btn {
+border: none;
+cursor: pointer;
+background: none;
+}
+
+.sort-btn svg {
+display: block;
+}
+
+.sort-btn.active {
+background: #ffffff;
+border-radius: 3px;
+border: none;
+}
+
+.auto-delete-container {
+  position: fixed;
+  left: 330px;
+  bottom: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 170px;
+  padding: 5px;
+  transition: all 0.3s ease;
+  background: none;
+}
+
+@media screen and (max-height: 400px) {
+  .auto-delete-container {
+      left: 5px;
+      transform: scale(0.7);
+      bottom: 0px;
+      transform-origin: bottom left;
+  }
+
+  #hints-container {
+      max-height: calc(100vh - 120px);
+  }
+}
+
+.toggle-switch {
+  position: relative;
+  width: 100px;
+  height: 40px;
+  background-color: #e0e0e0;
+  border-radius: 25px;
+  cursor: pointer;
+  transition: background-color 0.5s ease;
+}
+
+.toggle-switch.active {
+  background-color: rgba(255, 77, 77, 0.5);
+}
+
+.toggle-switch .slider {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 34px;
+  height: 34px;
+  background-color: white;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: transform 0.5s ease, background-color 0.5s ease;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.toggle-switch.active .slider {
+  transform: translateX(60px);
+  background-color: #ff4d4d;
+}
+
+.file-stats {
+  color: #666;
+  font-weight: 600;
+  transition: color 0.3s ease;
+  font-size: 14px;
+}
+
+.slider svg {
+  width: 18px;
+  height: 18px;
+  position: absolute;
+  transition: opacity 0.3s ease;
+}
+
+.slider .icon-shield {
+  opacity: 1;
+  stroke: #3b82f6;
+}
+
+.slider .icon-trash {
+  opacity: 0;
+  stroke: white;
+}
+
+.toggle-switch.active .slider .icon-shield {
+  opacity: 0;
+}
+
+.toggle-switch.active .slider .icon-trash {
+  opacity: 1;
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+
+.file-stats {
+  font-family: 'Varela Round', sans-serif;
+  font-size: 14px;
+  color: #424242;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 8px 8px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  transition: all 0.3s ease;
+  width: 90%;
+  justify-content: center;
+}
+
+.file-stats span {
+  font-weight: 600;
+  color: #2d2d2d;
+}
+
+#file-count {
+  color: #2196F3;
+}
+
+#file-size {
+  color: #4CAF50;
+}

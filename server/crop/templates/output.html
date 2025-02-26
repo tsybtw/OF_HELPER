@@ -1,0 +1,41 @@
+
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            @keyframes swing {
+                0% { transform: rotate(30deg); }
+                50% { transform: rotate(15deg); }
+                100% { transform: rotate(30deg); }
+            }
+            body {
+                background-color: black;
+                color: white;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+                margin: 0;
+                font-size: 2em;
+                font-family: Arial, sans-serif;
+                overflow-x: hidden;
+                overflow-y: hidden;
+            }
+            .logo {
+                background-color: white;
+                width: 400px;
+                height: 400px;
+                background-image: url('https://i.imgur.com/5dQ4At1.jpg');
+                background-size: 107%;
+                background-position: center;
+                border-radius: 50%;
+                transform: rotate(30deg);
+                animation: swing 2s infinite ease-in-out;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="logo"></div>
+    </body>
+    </html>
+    

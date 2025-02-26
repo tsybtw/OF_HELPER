@@ -1,0 +1,18 @@
+* text=auto eol=lf
+
+*.js linguist-language=JavaScript
+*.mjs linguist-language=JavaScript
+
+*.au3 linguist-language=AutoIt
+
+**/node_modules/** linguist-vendored
+**/AutoIt3/** linguist-vendored
+
+*.exe binary
+
+*.md linguist-documentation
+*.txt linguist-documentation
+
+crop binary linguist-language=Python
+upd binary linguist-language=Python
+main binary linguist-language=JavaScript

@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "OF HELPER",
+  "version": "5.6.0",
+  "description": "By @yen_ofsfs",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "tabs",
+    "scripting",
+    "clipboardWrite",
+    "clipboardRead",
+     "webNavigation"
+  ],
+  "host_permissions": ["*://*/*"],
+  "web_accessible_resources": [
+    {
+      "resources": ["inject.js", "server/crop/images/*", "server/files/*"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "OF HELPER"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {
+    "128": "icons/ico128.png"
+  }
+}
