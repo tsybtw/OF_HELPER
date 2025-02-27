@@ -79,7 +79,7 @@ video {
 
 .copy-button.img {
   margin: 5px 2px 5px;
-  background-color: 6BFF96;
+  background-color: rgb(107, 143, 255);
 }
 
 #delete-button {
@@ -616,21 +616,44 @@ padding: 5px;
 border-radius: 5px;
 }
 
-.rotate-button {
-cursor: pointer;
-color: white;
-background-color: rgb(0, 0, 0);
-padding: 5px 10px;
-border-radius: 4px;
-font-size: 18px;
-transition: background-color 0.2s;
-margin-right: 2px;
-}
 
 .media-controls {
 position: absolute;
-left: 245px;
+left: 5px;
 bottom:3px;
+}
+
+.control-button, .rotate-button {
+  cursor: pointer;
+  background-color: rgb(0, 0, 0);
+  padding: 5px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  margin-right: 2px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  width: 24px;
+  height: 24px;
+  line-height: 1;
+  vertical-align: middle;
+  position: relative;
+}
+
+.control-button svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.rotate-button {
+  font-size: 16px;
+  line-height: 1;
+  padding-top: 5px;
 }
 
 .media-container.rotated-90,
@@ -832,4 +855,123 @@ border: none;
 
 #file-size {
   color: #4CAF50;
+}
+
+.crop-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0,0,0,0.8);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.img-container {
+  position: relative;
+  max-width: 50%;
+  max-height: 50%;
+}
+
+.img-clone {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.crop-rect {
+  position: absolute;
+  border: 2px dashed #ffffff;
+  background-color: rgba(255,255,255,0.2);
+  cursor: move;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
+}
+
+.crop-rect.active {
+  border-color: #4CAF50;
+}
+
+.marker {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background-color: white;
+  border: 2px solid #4CAF50;
+  border-radius: 50%;
+  z-index: 1001;
+}
+
+.marker-nw {
+  top: -7px;
+  left: -7px;
+  cursor: nw-resize;
+}
+
+.marker-ne {
+  top: -7px;
+  right: -7px;
+  cursor: ne-resize;
+}
+
+.marker-sw {
+  bottom: -7px;
+  left: -7px;
+  cursor: sw-resize;
+}
+
+.marker-se {
+  bottom: -7px;
+  right: -7px;
+  cursor: se-resize;
+}
+
+.controls-container {
+  margin-top: 5px;
+  display: flex;
+  gap: 20px;
+  z-index: 1;
+}
+
+.button {
+  font-family: "Varela Round", sans-serif;
+  color: rgb(0, 0, 0);
+  font-weight: bold;
+  text-align: center;
+  display: inline-block;
+  font-size: 18px;
+  cursor: pointer;
+  width: 160px;
+  border: none;
+  padding: 12px 5px;
+  text-decoration: none;
+  margin: 0px 2px;
+  border-radius: 10px;
+  transition: 0.3s;
+}
+
+.apply-button {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.cancel-button {
+  background-color: #f44336;
+  color: white;
+}
+
+.button-hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.info-text {
+  color: white;
+  font-family: "Varela Round", sans-serif;
+  font-size: 16px;
+  margin-top: 5px;
+  text-align: center;
 }
