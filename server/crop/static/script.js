@@ -12,10 +12,10 @@ function copyToClipboard(text, event) {
     copyButton.classList.add('animate');
 
     if (!copyButton.dataset.clickCount || copyButton.dataset.clickCount % 2 === 0) {
-        copyButton.style.backgroundColor = '#D26BFF';
+        copyButton.style.backgroundColor = '#fbdf56';
         copyButton.dataset.clickCount = 1;
     } else {
-        copyButton.style.backgroundColor = '#fbdf56';
+        copyButton.style.backgroundColor = '#D26BFF';
         copyButton.dataset.clickCount++;
     }
 
@@ -793,6 +793,575 @@ function switchSortMode(newMode) {
 
     const hintsWrapper = container.querySelector('.hints-wrapper') || container;
     hintsWrapper.replaceChildren(...sortedHints);
+}
+
+function saveImageToServer(imageData, imagePath) {
+
+    var statusElement = document.getElementById('delete-status');
+    statusElement.textContent = 'Saving image...';
+    statusElement.classList.add('show');
+    statusElement.style.animation = 'slide-up 0.5s forwards';
+
+    fetch('/save_cropped_image', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            image_data: imageData,
+            file_path: imagePath
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+
+        var element = document.getElementById('delete-status');
+        if (data.success) {
+            element.textContent = 'Image successfully saved';
+        } else {
+            element.textContent = 'Error saving image: ' + (data.error || 'unknown error');
+        }
+        
+        element.classList.add('show');
+        element.style.animation = 'slide-up 0.5s forwards';
+        setTimeout(function() {
+            element.classList.remove('show');
+            element.style.animation = 'none';
+        }, 5000);
+    })
+    .catch(error => {
+
+        var element = document.getElementById('delete-status');
+        element.textContent = 'Error saving image: ' + error.message;
+        element.classList.add('show');
+        element.style.animation = 'slide-up 0.5s forwards';
+        setTimeout(function() {
+            element.classList.remove('show');
+            element.style.animation = 'none';
+        }, 5000);
+
+        console.error('Error saving image:', error);
+    });
+}
+
+function recropImage(mediaId, imagePath) {
+    const img = document.getElementById(mediaId);
+    if (!img) return;
+
+    const currentTransform = img.style.transform || '';
+    const rotateMatch = currentTransform.match(/rotate\(([^)]+)\)/);
+    const currentRotation = rotateMatch ? rotateMatch[1] : '0deg';
+    const rotationDegrees = parseInt(currentRotation) || 0;
+    
+    const normalizedRotation = ((rotationDegrees % 360) + 360) % 360;
+    const shouldSwapDimensions = (normalizedRotation > 45 && normalizedRotation < 135) || 
+                                (normalizedRotation > 225 && normalizedRotation < 315);
+
+    const cropContainer = document.createElement('div');
+    cropContainer.className = 'crop-container';
+
+    const imgContainer = document.createElement('div');
+    imgContainer.className = 'img-container';
+
+    const imgClone = new Image();
+    imgClone.src = img.src;
+    imgClone.className = 'img-clone';
+    imgClone.style.transform = `rotate(${currentRotation})`;
+    imgContainer.appendChild(imgClone);
+
+    const cropRect = document.createElement('div');
+    cropRect.className = 'crop-rect';
+
+    const markers = ['nw', 'ne', 'sw', 'se'];
+    markers.forEach(pos => {
+        const marker = document.createElement('div');
+        marker.dataset.position = pos;
+        marker.className = `marker marker-${pos}`;
+        cropRect.appendChild(marker);
+    });
+
+    const controlsContainer = document.createElement('div');
+    controlsContainer.className = 'controls-container';
+
+    const dimensionsInfo = document.createElement('div');
+    dimensionsInfo.className = 'info-text dimensions-info';
+    
+    const rotationInfo = document.createElement('div');
+    rotationInfo.textContent = `Current rotation: ${rotationDegrees}°`;
+    rotationInfo.className = 'info-text';
+    
+    const instructions = document.createElement('div');
+    instructions.textContent = 'Drag to move. Use corners to resize.';
+    instructions.className = 'info-text';
+    
+    const applyButton = document.createElement('button');
+    applyButton.textContent = 'Apply';
+    applyButton.className = 'button apply-button';
+    applyButton.onmouseover = function() {
+        this.classList.add('button-hover');
+    };
+    applyButton.onmouseout = function() {
+        this.classList.remove('button-hover');
+    };
+
+    const cancelButton = document.createElement('button');
+    cancelButton.textContent = 'Cancel';
+    cancelButton.className = 'button cancel-button';
+    cancelButton.onmouseover = function() {
+        this.classList.add('button-hover');
+    };
+    cancelButton.onmouseout = function() {
+        this.classList.remove('button-hover');
+    };
+
+    controlsContainer.appendChild(applyButton);
+    controlsContainer.appendChild(cancelButton);
+    cropContainer.appendChild(imgContainer);
+    cropContainer.appendChild(dimensionsInfo);
+    cropContainer.appendChild(rotationInfo);
+    cropContainer.appendChild(instructions);
+    cropContainer.appendChild(controlsContainer);
+    document.body.appendChild(cropContainer);
+
+    let originalWidth, originalHeight;
+
+    imgClone.onload = function() {
+        originalWidth = imgClone.naturalWidth;
+        originalHeight = imgClone.naturalHeight;
+        dimensionsInfo.textContent = `${originalWidth}×${originalHeight}px -> ${originalWidth - 1}×${originalHeight - 1}px`
+        
+        setTimeout(() => {
+            const containerBox = imgContainer.getBoundingClientRect();
+            const imageBox = imgClone.getBoundingClientRect();
+            
+            const offsetX = imageBox.left - containerBox.left;
+            const offsetY = imageBox.top - containerBox.top;
+            cropRect.style.left = offsetX + 'px';
+            cropRect.style.top = offsetY + 'px';
+            cropRect.style.width = imageBox.width + 'px';
+            cropRect.style.height = imageBox.height + 'px';
+            imgContainer.appendChild(cropRect);
+
+            let isDragging = false;
+            let isResizing = false;
+            let resizeDirection = '';
+            let startX, startY;
+            let startLeft, startTop, startWidth, startHeight;
+            let startRight, startBottom;
+
+            cropRect.addEventListener('mousedown', onMouseDown);
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+
+            const resizeMarkers = cropRect.querySelectorAll('[data-position]');
+            resizeMarkers.forEach(marker => {
+                marker.addEventListener('mousedown', onResizeStart);
+            });
+
+            function onMouseDown(e) {
+                if (e.target.dataset.position) return;
+                isDragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                startLeft = parseInt(cropRect.style.left) || 0;
+                startTop = parseInt(cropRect.style.top) || 0;
+                e.preventDefault();
+            }
+
+            function onResizeStart(e) {
+                isResizing = true;
+                resizeDirection = e.target.dataset.position;
+                startX = e.clientX;
+                startY = e.clientY;
+                startLeft = parseInt(cropRect.style.left) || 0;
+                startTop = parseInt(cropRect.style.top) || 0;
+                startWidth = parseInt(cropRect.style.width) || cropRect.offsetWidth;
+                startHeight = parseInt(cropRect.style.height) || cropRect.offsetHeight;
+                startRight = startLeft + startWidth;
+                startBottom = startTop + startHeight;
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            function onMouseMove(e) {
+                const imageBox = imgClone.getBoundingClientRect();
+                const containerBox = imgContainer.getBoundingClientRect();
+                const offsetX = imageBox.left - containerBox.left;
+                const offsetY = imageBox.top - containerBox.top;
+                const maxX = offsetX + imageBox.width;
+                const maxY = offsetY + imageBox.height;
+
+                if (isDragging) {
+                    const deltaX = e.clientX - startX;
+                    const deltaY = e.clientY - startY;
+                    let newLeft = startLeft + deltaX;
+                    let newTop = startTop + deltaY;
+                    const rectWidth = cropRect.offsetWidth;
+                    const rectHeight = cropRect.offsetHeight;
+                    
+                    if (newLeft < offsetX) newLeft = offsetX;
+                    if (newLeft + rectWidth > maxX) newLeft = maxX - rectWidth;
+                    if (newTop < offsetY) newTop = offsetY;
+                    if (newTop + rectHeight > maxY) newTop = maxY - rectHeight;
+                    
+                    cropRect.style.left = newLeft + 'px';
+                    cropRect.style.top = newTop + 'px';
+                    cropRect.classList.add('active');
+                    
+                    updateDimensionsInfo();
+                } else if (isResizing) {
+                    const deltaX = e.clientX - startX;
+                    const deltaY = e.clientY - startY;
+                    let left = startLeft;
+                    let right = startRight;
+                    let top = startTop;
+                    let bottom = startBottom;
+                    
+                    if (resizeDirection.includes('w')) left += deltaX;
+                    if (resizeDirection.includes('e')) right += deltaX;
+                    if (resizeDirection.includes('n')) top += deltaY;
+                    if (resizeDirection.includes('s')) bottom += deltaY;
+                    
+                    if (left > right) [left, right] = [right, left];
+                    if (top > bottom) [top, bottom] = [bottom, top];
+                    
+                    if (left < offsetX) left = offsetX;
+                    if (top < offsetY) top = offsetY;
+                    if (right > maxX) right = maxX;
+                    if (bottom > maxY) bottom = maxY;
+                    
+                    cropRect.style.left = left + 'px';
+                    cropRect.style.top = top + 'px';
+                    cropRect.style.width = (right - left) + 'px';
+                    cropRect.style.height = (bottom - top) + 'px';
+                    cropRect.classList.add('active');
+                    
+                    updateDimensionsInfo();
+                }
+            }
+            
+            function updateDimensionsInfo() {
+                const rectWidth = parseInt(cropRect.style.width) || cropRect.offsetWidth;
+                const rectHeight = parseInt(cropRect.style.height) || cropRect.offsetHeight;
+                
+                const scaleX = originalWidth / (shouldSwapDimensions ? imageBox.height : imageBox.width);
+                const scaleY = originalHeight / (shouldSwapDimensions ? imageBox.width : imageBox.height);
+                
+                let actualWidth, actualHeight;
+                
+                if (shouldSwapDimensions) {
+                    actualWidth = Math.round(rectHeight * scaleY);
+                    actualHeight = Math.round(rectWidth * scaleX);      
+                } else {
+                    actualWidth = Math.round(rectWidth * scaleX);
+                    actualHeight = Math.round(rectHeight * scaleY);
+                }
+                dimensionsInfo.textContent = `${originalWidth}×${originalHeight}px -> ${actualWidth}×${actualHeight}px`
+            }
+
+            function onMouseUp() {
+                isDragging = false;
+                isResizing = false;
+                cropRect.classList.remove('active');
+            }
+            
+            updateDimensionsInfo();
+        }, 50);
+    };
+
+    cancelButton.addEventListener('click', function() {
+        document.body.removeChild(cropContainer);
+    });
+
+    applyButton.addEventListener('click', function() {
+        const statusElement = document.getElementById('delete-status');
+        if (statusElement) {
+            statusElement.textContent = 'Processing image...';
+            statusElement.classList.add('show');
+            statusElement.style.animation = 'slide-up 0.5s forwards';
+        }
+        
+        const rectLeft = parseInt(cropRect.style.left) || 0;
+        const rectTop = parseInt(cropRect.style.top) || 0;
+        const rectWidth = parseInt(cropRect.style.width) || cropRect.offsetWidth;
+        const rectHeight = parseInt(cropRect.style.height) || cropRect.offsetHeight;
+        
+        const containerBox = imgContainer.getBoundingClientRect();
+        const imageBox = imgClone.getBoundingClientRect();
+        const offsetX = imageBox.left - containerBox.left;
+        const offsetY = imageBox.top - containerBox.top;
+        
+        const relativeLeft = rectLeft - offsetX;
+        const relativeTop = rectTop - offsetY;
+        const relativeRight = relativeLeft + rectWidth;
+        const relativeBottom = relativeTop + rectHeight;
+        
+        let normalizedLeft, normalizedTop, normalizedRight, normalizedBottom;
+        
+        if (shouldSwapDimensions) {
+            const imageWidth = imageBox.width;
+            const imageHeight = imageBox.height;
+            
+            if (normalizedRotation > 45 && normalizedRotation < 135) {
+                normalizedLeft = relativeTop / imageHeight;
+                normalizedTop = (imageWidth - relativeRight) / imageWidth;
+                normalizedRight = relativeBottom / imageHeight;
+                normalizedBottom = (imageWidth - relativeLeft) / imageWidth;
+            } else {
+                normalizedLeft = (imageHeight - relativeBottom) / imageHeight;
+                normalizedTop = relativeLeft / imageWidth;
+                normalizedRight = (imageHeight - relativeTop) / imageHeight;
+                normalizedBottom = relativeRight / imageWidth;
+            }
+        } else {
+            normalizedLeft = relativeLeft / imageBox.width;
+            normalizedTop = relativeTop / imageBox.height;
+            normalizedRight = relativeRight / imageBox.width;
+            normalizedBottom = relativeBottom / imageBox.height;
+            
+            if (normalizedRotation > 135 && normalizedRotation < 225) {
+                [normalizedLeft, normalizedRight] = [1 - normalizedRight, 1 - normalizedLeft];
+                [normalizedTop, normalizedBottom] = [1 - normalizedBottom, 1 - normalizedTop];
+            }
+        }
+        
+        const originalImg = new Image();
+        originalImg.onload = function() {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            const origLeft = Math.max(0, Math.round(normalizedLeft * originalImg.width));
+            const origTop = Math.max(0, Math.round(normalizedTop * originalImg.height));
+            const origWidth = Math.min(originalImg.width - origLeft, Math.round((normalizedRight - normalizedLeft) * originalImg.width));
+            const origHeight = Math.min(originalImg.height - origTop, Math.round((normalizedBottom - normalizedTop) * originalImg.height));
+            
+            canvas.width = origWidth;
+            canvas.height = origHeight;
+            
+            ctx.drawImage(
+                originalImg,
+                origLeft, origTop, origWidth, origHeight,
+                0, 0, origWidth, origHeight
+            );
+            
+            const croppedImageData = canvas.toDataURL('image/png');
+            
+            const tempImg = new Image();
+            tempImg.onload = function() {
+                img.src = croppedImageData;
+                
+                saveImageToServer(croppedImageData, imagePath, rotationDegrees);
+                
+                document.body.removeChild(cropContainer);
+            };
+            tempImg.src = croppedImageData;
+        };
+        
+        originalImg.src = img.src;
+    });
+}
+
+function saveImageToServer(imageData, imagePath, rotation = 0) {
+    fetch('/save_cropped_image', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            image_data: imageData,
+            file_path: imagePath,
+            rotation: rotation
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        const statusElement = document.getElementById('delete-status');
+        if (statusElement) {
+            if (data.success) {
+                statusElement.textContent = 'Image saved successfully!';
+                setTimeout(() => {
+                    statusElement.classList.remove('show');
+                    statusElement.style.animation = 'slide-down 0.5s forwards';
+                }, 2000);
+            } else {
+                statusElement.textContent = 'Error: ' + (data.error || 'Unknown error');
+                statusElement.style.backgroundColor = '#f44336';
+            }
+        }
+    })
+    .catch(error => {
+        console.error('Error saving image:', error);
+        const statusElement = document.getElementById('delete-status');
+        if (statusElement) {
+            statusElement.textContent = 'Error saving image';
+            statusElement.style.backgroundColor = '#f44336';
+        }
+    });
+}
+
+function replaceMedia(mediaId, mediaPath) {
+    navigator.clipboard.read()
+        .then(clipboardItems => {
+            let foundImage = false;
+            
+            for (const clipboardItem of clipboardItems) {
+                for (const type of clipboardItem.types) {
+                    console.log('Тип контента в буфере:', type);
+                    if (type.startsWith('image/')) {
+                        foundImage = true;
+                        clipboardItem.getType(type)
+                            .then(blob => {
+                                const reader = new FileReader();
+                                reader.onload = function(e) {
+                                    const mediaElement = document.getElementById(mediaId);
+                                    if (mediaElement) {
+                                        processAndReplaceImage(e.target.result, mediaElement, mediaPath);
+                                    }
+                                };
+                                reader.readAsDataURL(blob);
+                            })
+                            .catch(error => {
+                                console.error('Ошибка получения изображения из буфера:', error);
+                                showStatus('No image in buffer...');
+                            });
+                        return;
+                    }
+                }
+            }
+            
+            if (!foundImage) {
+                showStatus('No image in buffer...');
+            }
+        })
+        .catch(error => {
+            console.error('Buffer access error...', error);
+            showStatus('Buffer access error...');
+        });
+}
+
+function processAndReplaceImage(dataUrl, mediaElement, mediaPath) {
+    const tempImg = new Image();
+    tempImg.onload = function() {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width = tempImg.width;
+        let height = tempImg.height;
+        const maxSize = 1000;
+        
+        if (width > maxSize || height > maxSize) {
+            const ratio = width / height;
+            if (width > height) {
+                width = maxSize;
+                height = maxSize / ratio;
+            } else {
+                height = maxSize;
+                width = maxSize * ratio;
+            }
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        
+        ctx.drawImage(tempImg, 0, 0, width, height);
+        
+        const processedDataUrl = canvas.toDataURL('image/png');
+        
+        replaceElementWithImage(mediaElement, processedDataUrl, mediaPath);
+    };
+    tempImg.src = dataUrl;
+}
+
+
+function replaceElementWithImage(mediaElement, dataUrl, mediaPath) {
+    const container = mediaElement.parentElement;
+    const mediaId = mediaElement.id;
+    const newImage = document.createElement('img');
+
+    newImage.id = mediaId;
+    newImage.src = dataUrl;
+
+    const pathParts = mediaPath.split('.');
+    const basePath = pathParts.slice(0, pathParts.length - 1).join('.');
+    const newPath = `${basePath}.png`;
+
+    container.replaceChild(newImage, mediaElement);
+
+    const replaceBtn = container.querySelector('.replace-button');
+    if (replaceBtn) {
+        replaceBtn.setAttribute('onclick', `replaceMedia('${mediaId}', '${newPath}')`);
+    }
+
+    const rotateLeftBtn = container.querySelector('.rotate-button.left');
+    const rotateRightBtn = container.querySelector('.rotate-button.right');
+    
+    if (rotateLeftBtn) {
+        rotateLeftBtn.setAttribute('onclick', `rotateMedia('${mediaId}', 'left', '${newPath}', 'image')`);
+    }
+    
+    if (rotateRightBtn) {
+        rotateRightBtn.setAttribute('onclick', `rotateMedia('${mediaId}', 'right', '${newPath}', 'image')`);
+    }
+    
+    const isVideoElement = mediaElement.tagName.toLowerCase() === 'video';
+    
+    if (isVideoElement && !container.querySelector('.crop-button')) {
+        const controlsContainer = container.querySelector('.media-controls');
+        
+        if (controlsContainer) {
+            const cropButton = document.createElement('span');
+            cropButton.className = 'crop-button control-button';
+            cropButton.setAttribute('onclick', `recropImage('${mediaId}', '${newPath}')`);
+            cropButton.innerHTML = `
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M7 21C8.65685 21 10 19.6569 10 18C10 16.3431 8.65685 15 7 15C5.34315 15 4 16.3431 4 18C4 19.6569 5.34315 21 7 21Z" stroke="white" stroke-width="2"/>
+                    <path d="M17 21C18.6569 21 20 19.6569 20 18C20 16.3431 18.6569 15 17 15C15.3431 15 14 16.3431 14 18C14 19.6569 15.3431 21 17 21Z" stroke="white" stroke-width="2"/>
+                    <path d="M16.0001 3L8.66479 15.2255" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M8.00007 3L15.3066 15.1776" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            `;
+            
+            controlsContainer.insertBefore(cropButton, controlsContainer.firstChild);
+        }
+    }
+    
+    const mainContainer = container.closest('.main-container');
+    const copyBtn = mainContainer.nextElementSibling;
+    
+    if (copyBtn && copyBtn.classList.contains('copy-button')) {
+        copyBtn.setAttribute('onclick', `copyImageToClipboard('data:image/png;base64,${dataUrl.split(',')[1]}', event)`);
+        copyBtn.textContent = 'copy image';
+    }
+    
+    fetch('/replace_media', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            media_data: dataUrl,
+            file_path: mediaPath,
+            new_file_path: newPath,
+            media_type: 'image'
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        showStatus(data.success ? "Sucess!" : "Error!");
+    })
+    .catch(error => {
+        console.error('Ошибка отправки данных на сервер:', error);
+        showStatus('Server error...');
+    });
+}
+
+function showStatus(message) {
+    var element = document.getElementById('delete-status');
+    element.textContent = message;
+    element.classList.add('show');
+    element.style.animation = 'slide-up 0.5s forwards';
+    setTimeout(function() {
+        element.classList.remove('show');
+        element.style.animation = 'none';
+    }, 5000);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
