@@ -852,7 +852,7 @@ function recropImage(mediaId, imagePath) {
     const rotateMatch = currentTransform.match(/rotate\(([^)]+)\)/);
     const currentRotation = rotateMatch ? rotateMatch[1] : '0deg';
     const rotationDegrees = parseInt(currentRotation) || 0;
-    
+
     const normalizedRotation = ((rotationDegrees % 360) + 360) % 360;
     const shouldSwapDimensions = (normalizedRotation > 45 && normalizedRotation < 135) || 
                                 (normalizedRotation > 225 && normalizedRotation < 315);
@@ -871,6 +871,7 @@ function recropImage(mediaId, imagePath) {
 
     const cropRect = document.createElement('div');
     cropRect.className = 'crop-rect';
+    cropRect.style.boxSizing = 'border-box';
 
     const markers = ['nw', 'ne', 'sw', 'se'];
     markers.forEach(pos => {
@@ -883,17 +884,20 @@ function recropImage(mediaId, imagePath) {
     const controlsContainer = document.createElement('div');
     controlsContainer.className = 'controls-container';
 
+    const infoContainer = document.createElement('div');
+    infoContainer.className = 'info-container';
+
     const dimensionsInfo = document.createElement('div');
     dimensionsInfo.className = 'info-text dimensions-info';
-    
+
     const rotationInfo = document.createElement('div');
     rotationInfo.textContent = `Current rotation: ${rotationDegrees}°`;
     rotationInfo.className = 'info-text';
-    
+
     const instructions = document.createElement('div');
     instructions.textContent = 'Drag to move. Use corners to resize.';
     instructions.className = 'info-text';
-    
+
     const applyButton = document.createElement('button');
     applyButton.textContent = 'Apply';
     applyButton.className = 'button apply-button';
@@ -917,159 +921,357 @@ function recropImage(mediaId, imagePath) {
     controlsContainer.appendChild(applyButton);
     controlsContainer.appendChild(cancelButton);
     cropContainer.appendChild(imgContainer);
-    cropContainer.appendChild(dimensionsInfo);
-    cropContainer.appendChild(rotationInfo);
-    cropContainer.appendChild(instructions);
-    cropContainer.appendChild(controlsContainer);
+    infoContainer.appendChild(dimensionsInfo);
+    infoContainer.appendChild(rotationInfo);
+    infoContainer.appendChild(instructions);
     document.body.appendChild(cropContainer);
+    document.body.appendChild(infoContainer)
+    document.body.appendChild(controlsContainer)
 
     let originalWidth, originalHeight;
+
+    let normalizedCropCoords = {
+        left: 0,
+        top: 0,
+        width: 1,
+        height: 1
+    };
 
     imgClone.onload = function() {
         originalWidth = imgClone.naturalWidth;
         originalHeight = imgClone.naturalHeight;
-        dimensionsInfo.textContent = `${originalWidth}×${originalHeight}px -> ${originalWidth - 1}×${originalHeight - 1}px`
-        
+
+        initCropArea();
+    };
+
+    function initCropArea() {
         setTimeout(() => {
+            
             const containerBox = imgContainer.getBoundingClientRect();
             const imageBox = imgClone.getBoundingClientRect();
             
-            const offsetX = imageBox.left - containerBox.left;
-            const offsetY = imageBox.top - containerBox.top;
-            cropRect.style.left = offsetX + 'px';
-            cropRect.style.top = offsetY + 'px';
-            cropRect.style.width = imageBox.width + 'px';
-            cropRect.style.height = imageBox.height + 'px';
-            imgContainer.appendChild(cropRect);
+            // Корректируем расчет смещения
+            const offsetX = Math.floor(imageBox.left - containerBox.left);
+            const offsetY = Math.floor(imageBox.top - containerBox.top);
+    
+            // Учитываем физические границы изображения
+            const imgDisplayWidth = Math.floor(imageBox.width);
+            const imgDisplayHeight = Math.floor(imageBox.height);
+    
+            // Новые границы с учетом 1px отступа со всех сторон
+            const minX = offsetX + 1;
+            const minY = offsetY + 1;
+            const maxX = offsetX + imgDisplayWidth - 1;
+            const maxY = offsetY + imgDisplayHeight - 1;
+    
+            // Корректный расчет начальных размеров
+            const initialWidth = Math.max(1, imgDisplayWidth - 2);
+            const initialHeight = Math.max(1, imgDisplayHeight - 2);
+    
+            if (normalizedCropCoords.width === 1) {
+                cropRect.style.left = minX + 'px';
+                cropRect.style.top = minY + 'px';
+                cropRect.style.width = initialWidth + 'px';
+                cropRect.style.height = initialHeight + 'px';
+    
+                normalizedCropCoords = {
+                    left: 1 / imgDisplayWidth,
+                    top: 1 / imgDisplayHeight,
+                    width: initialWidth / imgDisplayWidth,
+                    height: initialHeight / imgDisplayHeight
+                };
+            } else {
 
-            let isDragging = false;
-            let isResizing = false;
-            let resizeDirection = '';
-            let startX, startY;
-            let startLeft, startTop, startWidth, startHeight;
-            let startRight, startBottom;
+                const newCropLeft = offsetX + (normalizedCropCoords.left * imgDisplayWidth);
+                const newCropTop = offsetY + (normalizedCropCoords.top * imgDisplayHeight);
+                const newCropWidth = normalizedCropCoords.width * imgDisplayWidth;
+                const newCropHeight = normalizedCropCoords.height * imgDisplayHeight;
 
-            cropRect.addEventListener('mousedown', onMouseDown);
-            document.addEventListener('mousemove', onMouseMove);
-            document.addEventListener('mouseup', onMouseUp);
-
-            const resizeMarkers = cropRect.querySelectorAll('[data-position]');
-            resizeMarkers.forEach(marker => {
-                marker.addEventListener('mousedown', onResizeStart);
-            });
-
-            function onMouseDown(e) {
-                if (e.target.dataset.position) return;
-                isDragging = true;
-                startX = e.clientX;
-                startY = e.clientY;
-                startLeft = parseInt(cropRect.style.left) || 0;
-                startTop = parseInt(cropRect.style.top) || 0;
-                e.preventDefault();
+                cropRect.style.left = Math.max(minX, Math.min(maxX - newCropWidth, newCropLeft)) + 'px';
+                cropRect.style.top = Math.max(minY, Math.min(maxY - newCropHeight, newCropTop)) + 'px';
+                cropRect.style.width = Math.min(newCropWidth, maxX - parseInt(cropRect.style.left)) + 'px';
+                cropRect.style.height = Math.min(newCropHeight, maxY - parseInt(cropRect.style.top)) + 'px';
             }
 
-            function onResizeStart(e) {
-                isResizing = true;
-                resizeDirection = e.target.dataset.position;
-                startX = e.clientX;
-                startY = e.clientY;
-                startLeft = parseInt(cropRect.style.left) || 0;
-                startTop = parseInt(cropRect.style.top) || 0;
-                startWidth = parseInt(cropRect.style.width) || cropRect.offsetWidth;
-                startHeight = parseInt(cropRect.style.height) || cropRect.offsetHeight;
-                startRight = startLeft + startWidth;
-                startBottom = startTop + startHeight;
-                e.preventDefault();
-                e.stopPropagation();
+            if (!imgContainer.contains(cropRect)) {
+                imgContainer.appendChild(cropRect);
             }
 
-            function onMouseMove(e) {
-                const imageBox = imgClone.getBoundingClientRect();
-                const containerBox = imgContainer.getBoundingClientRect();
-                const offsetX = imageBox.left - containerBox.left;
-                const offsetY = imageBox.top - containerBox.top;
-                const maxX = offsetX + imageBox.width;
-                const maxY = offsetY + imageBox.height;
+            updateDimensionsInfo();
 
-                if (isDragging) {
-                    const deltaX = e.clientX - startX;
-                    const deltaY = e.clientY - startY;
-                    let newLeft = startLeft + deltaX;
-                    let newTop = startTop + deltaY;
-                    const rectWidth = cropRect.offsetWidth;
-                    const rectHeight = cropRect.offsetHeight;
-                    
-                    if (newLeft < offsetX) newLeft = offsetX;
-                    if (newLeft + rectWidth > maxX) newLeft = maxX - rectWidth;
-                    if (newTop < offsetY) newTop = offsetY;
-                    if (newTop + rectHeight > maxY) newTop = maxY - rectHeight;
-                    
-                    cropRect.style.left = newLeft + 'px';
-                    cropRect.style.top = newTop + 'px';
-                    cropRect.classList.add('active');
-                    
-                    updateDimensionsInfo();
-                } else if (isResizing) {
-                    const deltaX = e.clientX - startX;
-                    const deltaY = e.clientY - startY;
-                    let left = startLeft;
-                    let right = startRight;
-                    let top = startTop;
-                    let bottom = startBottom;
-                    
-                    if (resizeDirection.includes('w')) left += deltaX;
-                    if (resizeDirection.includes('e')) right += deltaX;
-                    if (resizeDirection.includes('n')) top += deltaY;
-                    if (resizeDirection.includes('s')) bottom += deltaY;
-                    
-                    if (left > right) [left, right] = [right, left];
-                    if (top > bottom) [top, bottom] = [bottom, top];
-                    
-                    if (left < offsetX) left = offsetX;
-                    if (top < offsetY) top = offsetY;
-                    if (right > maxX) right = maxX;
-                    if (bottom > maxY) bottom = maxY;
-                    
-                    cropRect.style.left = left + 'px';
-                    cropRect.style.top = top + 'px';
-                    cropRect.style.width = (right - left) + 'px';
-                    cropRect.style.height = (bottom - top) + 'px';
-                    cropRect.classList.add('active');
-                    
-                    updateDimensionsInfo();
-                }
-            }
-            
-            function updateDimensionsInfo() {
+            setupEventListeners();
+        }, 50);
+    }
+
+    function setupEventListeners() {
+
+        const oldEventListeners = cropRect._eventHandlers || {};
+
+        if (oldEventListeners.mousedown) {
+            cropRect.removeEventListener('mousedown', oldEventListeners.mousedown);
+        }
+        if (oldEventListeners.mousemove) {
+            document.removeEventListener('mousemove', oldEventListeners.mousemove);
+        }
+        if (oldEventListeners.mouseup) {
+            document.removeEventListener('mouseup', oldEventListeners.mouseup);
+        }
+
+        let isDragging = false;
+        let isResizing = false;
+        let resizeDirection = '';
+        let startX, startY;
+        let startLeft, startTop, startWidth, startHeight;
+        let lastX, lastY; 
+
+        function onMouseDown(e) {
+            if (e.target.dataset.position) return;
+            isDragging = true;
+            startX = lastX = e.clientX;
+            startY = lastY = e.clientY;
+            startLeft = parseInt(cropRect.style.left) || 0;
+            startTop = parseInt(cropRect.style.top) || 0;
+            e.preventDefault();
+        }
+
+        function onResizeStart(e) {
+            isResizing = true;
+            resizeDirection = e.target.dataset.position;
+
+            startX = lastX = e.clientX;
+            startY = lastY = e.clientY;
+            startLeft = parseInt(cropRect.style.left) || 0;
+            startTop = parseInt(cropRect.style.top) || 0;
+            startWidth = parseInt(cropRect.style.width) || cropRect.offsetWidth;
+            startHeight = parseInt(cropRect.style.height) || cropRect.offsetHeight;
+
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        function onMouseMove(e) {
+
+            const currentImageBox = imgClone.getBoundingClientRect();
+            const containerBox = imgContainer.getBoundingClientRect();
+
+            const imgWidth = Math.floor(currentImageBox.width);
+            const imgHeight = Math.floor(currentImageBox.height);
+
+            const offsetX = Math.ceil(currentImageBox.left - containerBox.left);
+            const offsetY = Math.ceil(currentImageBox.top - containerBox.top);
+
+            const minX = offsetX + 1;
+            const minY = offsetY + 1;
+            const maxX = offsetX + imgWidth - 1; 
+            const maxY = offsetY + imgHeight - 1; 
+
+            if (isDragging) {
+
+                const deltaX = e.clientX - startX;
+                const deltaY = e.clientY - startY;
+
+                let newLeft = startLeft + deltaX;
+                let newTop = startTop + deltaY;
                 const rectWidth = parseInt(cropRect.style.width) || cropRect.offsetWidth;
                 const rectHeight = parseInt(cropRect.style.height) || cropRect.offsetHeight;
-                
-                const scaleX = originalWidth / (shouldSwapDimensions ? imageBox.height : imageBox.width);
-                const scaleY = originalHeight / (shouldSwapDimensions ? imageBox.width : imageBox.height);
-                
-                let actualWidth, actualHeight;
-                
-                if (shouldSwapDimensions) {
-                    actualWidth = Math.round(rectHeight * scaleY);
-                    actualHeight = Math.round(rectWidth * scaleX);      
-                } else {
-                    actualWidth = Math.round(rectWidth * scaleX);
-                    actualHeight = Math.round(rectHeight * scaleY);
+
+                if (newLeft < minX) newLeft = minX;
+                if (newLeft + rectWidth > maxX) newLeft = maxX - rectWidth;
+                if (newTop < minY) newTop = minY;
+                if (newTop + rectHeight > maxY) newTop = maxY - rectHeight;
+
+                cropRect.style.left = newLeft + 'px';
+                cropRect.style.top = newTop + 'px';
+                cropRect.classList.add('active');
+
+                updateNormalizedCoords();
+                updateDimensionsInfo();
+            } else if (isResizing) {
+
+                const deltaX = e.clientX - lastX;
+                const deltaY = e.clientY - lastY;
+
+                let currentLeft = parseInt(cropRect.style.left) || 0;
+                let currentTop = parseInt(cropRect.style.top) || 0;
+                let currentWidth = parseInt(cropRect.style.width) || cropRect.offsetWidth;
+                let currentHeight = parseInt(cropRect.style.height) || cropRect.offsetHeight;
+
+                if (resizeDirection.includes('n')) {
+
+                    let newTop = currentTop + deltaY;
+                    let newHeight = currentHeight - deltaY;
+
+                    if (newHeight <= 0) {
+
+                        newHeight = 1;
+                        newTop = currentTop + currentHeight - 1;
+
+                        resizeDirection = resizeDirection.replace('n', 's');
+                    }
+
+                    if (newTop < minY) {
+                        newHeight = currentHeight + (currentTop - minY);
+                        newTop = minY;
+                    }
+
+                    cropRect.style.top = newTop + 'px';
+                    cropRect.style.height = newHeight + 'px';
                 }
-                dimensionsInfo.textContent = `${originalWidth}×${originalHeight}px -> ${actualWidth}×${actualHeight}px`
+
+                if (resizeDirection.includes('s')) {
+
+                    let newHeight = currentHeight + deltaY;
+
+                    if (newHeight <= 0) {
+
+                        newHeight = 1;
+                        cropRect.style.top = (currentTop + currentHeight - 1) + 'px';
+
+                        resizeDirection = resizeDirection.replace('s', 'n');
+                    } else if (currentTop + newHeight > maxY) {
+
+                        newHeight = maxY - currentTop;
+                    }
+
+                    cropRect.style.height = newHeight + 'px';
+                }
+
+                if (resizeDirection.includes('w')) {
+
+                    let newLeft = currentLeft + deltaX;
+                    let newWidth = currentWidth - deltaX;
+
+                    if (newWidth <= 0) {
+
+                        newWidth = 1;
+                        newLeft = currentLeft + currentWidth - 1;
+
+                        resizeDirection = resizeDirection.replace('w', 'e');
+                    }
+
+                    if (newLeft < minX) {
+                        newWidth = currentWidth + (currentLeft - minX);
+                        newLeft = minX;
+                    }
+
+                    cropRect.style.left = newLeft + 'px';
+                    cropRect.style.width = newWidth + 'px';
+                }
+
+                if (resizeDirection.includes('e')) {
+
+                    let newWidth = currentWidth + deltaX;
+
+                    if (newWidth <= 0) {
+
+                        newWidth = 1;
+                        cropRect.style.left = (currentLeft + currentWidth - 1) + 'px';
+
+                        resizeDirection = resizeDirection.replace('e', 'w');
+                    } else if (currentLeft + newWidth > maxX) {
+
+                        newWidth = maxX - currentLeft;
+                    }
+
+                    cropRect.style.width = newWidth + 'px';
+                }
+
+                cropRect.classList.add('active');
+
+                updateNormalizedCoords();
+                updateDimensionsInfo();
+
+                lastX = e.clientX;
+                lastY = e.clientY;
+            }
+        }
+
+        function onMouseUp() {
+            isDragging = false;
+            isResizing = false;
+            cropRect.classList.remove('active');
+        }
+
+        cropRect._eventHandlers = {
+            mousedown: onMouseDown,
+            mousemove: onMouseMove,
+            mouseup: onMouseUp
+        };
+
+        cropRect.addEventListener('mousedown', onMouseDown);
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+
+        const resizeMarkers = cropRect.querySelectorAll('[data-position]');
+        resizeMarkers.forEach(marker => {
+
+            const oldHandler = marker._resizeStartHandler;
+            if (oldHandler) {
+                marker.removeEventListener('mousedown', oldHandler);
             }
 
-            function onMouseUp() {
-                isDragging = false;
-                isResizing = false;
-                cropRect.classList.remove('active');
+            marker._resizeStartHandler = onResizeStart;
+            marker.addEventListener('mousedown', onResizeStart);
+        });
+    }
+
+    function updateNormalizedCoords() {
+        const imageBox = imgClone.getBoundingClientRect();
+        const containerBox = imgContainer.getBoundingClientRect();
+        const offsetX = imageBox.left - containerBox.left;
+        const offsetY = imageBox.top - containerBox.top;
+
+        const cropLeft = parseInt(cropRect.style.left) || 0;
+        const cropTop = parseInt(cropRect.style.top) || 0;
+        const cropWidth = parseInt(cropRect.style.width) || cropRect.offsetWidth;
+        const cropHeight = parseInt(cropRect.style.height) || cropRect.offsetHeight;
+
+        const relativeLeft = Math.max(0, cropLeft - offsetX);
+        const relativeTop = Math.max(0, cropTop - offsetY);
+
+        normalizedCropCoords = {
+            left: relativeLeft / imageBox.width,
+            top: relativeTop / imageBox.height,
+            width: cropWidth / imageBox.width,
+            height: cropHeight / imageBox.height
+        };
+    }
+
+    function updateDimensionsInfo() {
+        const imageBox = imgClone.getBoundingClientRect();
+        const rectWidth = parseInt(cropRect.style.width) || cropRect.offsetWidth;
+        const rectHeight = parseInt(cropRect.style.height) || cropRect.offsetHeight;
+
+        const scaleX = originalWidth / (shouldSwapDimensions ? imageBox.height : imageBox.width);
+        const scaleY = originalHeight / (shouldSwapDimensions ? imageBox.width : imageBox.height);
+
+        let actualWidth, actualHeight;
+
+        if (shouldSwapDimensions) {
+            actualWidth = Math.round(rectHeight * scaleY);
+            actualHeight = Math.round(rectWidth * scaleX);      
+        } else {
+            actualWidth = Math.round(rectWidth * scaleX);
+            actualHeight = Math.round(rectHeight * scaleY);
+        }
+        dimensionsInfo.textContent = `${originalWidth}×${originalHeight}px → ${actualWidth}×${actualHeight}px`;
+    }
+
+    const handleResize = function() {
+
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(function() {
+            if (document.body.contains(cropContainer)) {
+                initCropArea();
             }
-            
-            updateDimensionsInfo();
-        }, 50);
+        }, 100);
     };
 
+    let resizeTimeout;
+    window.addEventListener('resize', handleResize);
+
     cancelButton.addEventListener('click', function() {
+        window.removeEventListener('resize', handleResize);
         document.body.removeChild(cropContainer);
     });
 
@@ -1080,28 +1282,28 @@ function recropImage(mediaId, imagePath) {
             statusElement.classList.add('show');
             statusElement.style.animation = 'slide-up 0.5s forwards';
         }
-        
+
         const rectLeft = parseInt(cropRect.style.left) || 0;
         const rectTop = parseInt(cropRect.style.top) || 0;
         const rectWidth = parseInt(cropRect.style.width) || cropRect.offsetWidth;
         const rectHeight = parseInt(cropRect.style.height) || cropRect.offsetHeight;
-        
+
         const containerBox = imgContainer.getBoundingClientRect();
         const imageBox = imgClone.getBoundingClientRect();
         const offsetX = imageBox.left - containerBox.left;
         const offsetY = imageBox.top - containerBox.top;
-        
+
         const relativeLeft = rectLeft - offsetX;
         const relativeTop = rectTop - offsetY;
         const relativeRight = relativeLeft + rectWidth;
         const relativeBottom = relativeTop + rectHeight;
-        
+
         let normalizedLeft, normalizedTop, normalizedRight, normalizedBottom;
-        
+
         if (shouldSwapDimensions) {
             const imageWidth = imageBox.width;
             const imageHeight = imageBox.height;
-            
+
             if (normalizedRotation > 45 && normalizedRotation < 135) {
                 normalizedLeft = relativeTop / imageHeight;
                 normalizedTop = (imageWidth - relativeRight) / imageWidth;
@@ -1118,45 +1320,47 @@ function recropImage(mediaId, imagePath) {
             normalizedTop = relativeTop / imageBox.height;
             normalizedRight = relativeRight / imageBox.width;
             normalizedBottom = relativeBottom / imageBox.height;
-            
+
             if (normalizedRotation > 135 && normalizedRotation < 225) {
                 [normalizedLeft, normalizedRight] = [1 - normalizedRight, 1 - normalizedLeft];
                 [normalizedTop, normalizedBottom] = [1 - normalizedBottom, 1 - normalizedTop];
             }
         }
-        
+
+        window.removeEventListener('resize', handleResize);
+
         const originalImg = new Image();
         originalImg.onload = function() {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
-            
+
             const origLeft = Math.max(0, Math.round(normalizedLeft * originalImg.width));
             const origTop = Math.max(0, Math.round(normalizedTop * originalImg.height));
             const origWidth = Math.min(originalImg.width - origLeft, Math.round((normalizedRight - normalizedLeft) * originalImg.width));
             const origHeight = Math.min(originalImg.height - origTop, Math.round((normalizedBottom - normalizedTop) * originalImg.height));
-            
+
             canvas.width = origWidth;
             canvas.height = origHeight;
-            
+
             ctx.drawImage(
                 originalImg,
                 origLeft, origTop, origWidth, origHeight,
                 0, 0, origWidth, origHeight
             );
-            
+
             const croppedImageData = canvas.toDataURL('image/png');
-            
+
             const tempImg = new Image();
             tempImg.onload = function() {
                 img.src = croppedImageData;
-                
+
                 saveImageToServer(croppedImageData, imagePath, rotationDegrees);
-                
+
                 document.body.removeChild(cropContainer);
             };
             tempImg.src = croppedImageData;
         };
-        
+
         originalImg.src = img.src;
     });
 }
@@ -1345,7 +1549,7 @@ function replaceElementWithImage(mediaElement, dataUrl, mediaPath) {
     })
     .then(response => response.json())
     .then(data => {
-        showStatus(data.success ? "Sucess!" : "Error!");
+        showStatus(data.success ? "Success!" : "Error!");
     })
     .catch(error => {
         console.error('Ошибка отправки данных на сервер:', error);

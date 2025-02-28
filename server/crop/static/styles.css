@@ -873,8 +873,33 @@ border: none;
 
 .img-container {
   position: relative;
-  max-width: 50%;
-  max-height: 50%;
+  max-width: 95%;
+  max-height: 95%;
+  z-index: -1;
+}
+
+.info-container {
+  position: sticky;
+  bottom: 70px;
+  z-index: 1001;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 300px;
+  background: black;
+  padding: 10px;
+  border-radius: 5px;
+}
+
+
+.controls-container {
+  position: sticky;
+  display: flex;
+  gap: 20px;
+  z-index: 1001;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 300px;
 }
 
 .img-clone {
@@ -927,13 +952,6 @@ border: none;
   bottom: -7px;
   right: -7px;
   cursor: se-resize;
-}
-
-.controls-container {
-  margin-top: 5px;
-  display: flex;
-  gap: 20px;
-  z-index: 1;
 }
 
 .button {
