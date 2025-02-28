@@ -31,7 +31,7 @@ function checkAndCloseTab(tabId, serializedIntervals) {
   };
   
   if (hasInterval) {
-    cleanupInterval()
+    cleanupInterval(tabId); 
   }
 
   const editor = document.querySelector(".tiptap.ProseMirror");
@@ -47,15 +47,6 @@ function checkAndCloseTab(tabId, serializedIntervals) {
       );
       
       if (!selector) {
-        cleanupInterval(tabId);
-        return;
-      }
-
-      const errorNode = document.querySelector(
-        ".b-reminder-form.m-error div"
-      );
-
-      if (errorNode?.textContent.match(/Internal|Nothing|Daily/i)) {
         cleanupInterval(tabId);
         return;
       }
@@ -86,7 +77,14 @@ function checkAndCloseTab(tabId, serializedIntervals) {
     });
   };
 
-  if (!document.querySelector(".b-reminder-form.m-error")) {
+  const secondTargetNode = document.querySelector(
+    ".b-reminder-form.m-error",
+  );
+  const innerDiv = secondTargetNode
+    ? secondTargetNode.querySelector("div")
+    : null;
+    
+  if (!document.querySelector(".b-reminder-form.m-error") || (innerDiv && innerDiv.textContent.includes("10"))) {
     pressBind();
   }
 }
@@ -192,7 +190,7 @@ function updateTabCounterOnActiveTab(isReset) {
             if (!activeTab || !tabs?.length) return;
             tabs
               .filter((tab) => tab.id !== activeTab.id)
-              .slice(0, 3)
+              .slice(0, 5)
               .forEach((tab) => {
                 if (
                   tab.url === "https://onlyfans.com/posts/create" &&
