@@ -817,21 +817,8 @@ async function createBrowser(browserType, index, totalIndex, repeat) {
   }
 }
 
-async function addTextToPost(
-  text,
-  imageUrl,
-  index,
-  browserType,
-  exp,
-  txt,
-  pht,
-) {
-  async function fetchWithRetry(
-    resource,
-    options,
-    timeout = 5000,
-    retries = 5,
-  ) {
+async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht) {
+  async function fetchWithRetry(resource, options, timeout = 5000, retries = 5) {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeout);
 
@@ -892,11 +879,40 @@ async function addTextToPost(
   }
 
   let isUploading = false;
+  let imageInserted = false;
+  let textInserted = false;
+
+  async function sendUpdateRequest() {
+    if ((imageInserted || !pht) && (textInserted || !txt)) {
+      let number = parseInt(browserType.replace(/\D/g, ""));
+      
+      await fetchWithRetry(
+        "http://localhost:3000/update-browser",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            index: index,
+            number: number,
+          }),
+        },
+        5000,
+      );
+    }
+  }
 
   async function handleImageUpload(pht) {
     if (isUploading) return;
     isUploading = true;
-    let number = parseInt(browserType.replace(/\D/g, ""));
+    
+    if (!pht) {
+      isUploading = false;
+      imageInserted = true;
+      await sendUpdateRequest(); 
+      return;
+    }
 
     const fileExtension = imageUrl.split(".").pop().toLowerCase();
     let fileType = "image/png";
@@ -916,91 +932,65 @@ async function addTextToPost(
 
     mediaElement.onload = mediaElement.onloadedmetadata = async function () {
       try {
-        if (pht) {
-          const mediaBlob = await fetch(imageUrl).then((res) => res.blob());
-          const file = new File([mediaBlob], `media.${fileExtension}`, {
-            type: fileType,
-          });
-          let mediaInserted = false;
+        const mediaBlob = await fetch(imageUrl).then((res) => res.blob());
+        const file = new File([mediaBlob], `media.${fileExtension}`, {
+          type: fileType,
+        });
+        let mediaInserted = false;
 
-          await new Promise((resolve) => {
-            const observer = new MutationObserver((mutationsList, observer) => {
-              for (let mutation of mutationsList) {
-                if (mutation.type === "childList") {
-                  let el = document.querySelector(
-                    ".b-make-post__media-wrapper",
-                  );
-                  if (el && !mediaInserted) {
-                    mediaInserted = true;
-                    clearInterval(intervalId);
-                    isUploading = false;
-                    resolve();
-                    observer.disconnect();
-                  }
-                }
-              }
-            });
-
-            observer.observe(document.body, { childList: true, subtree: true });
-
-            let dragAttempts = 0;
-
-            const intervalId = setInterval(function () {
-              let element = document.querySelector(
-                ".tiptap.ProseMirror.b-text-editor.js-text-editor.m-native-custom-scrollbar.m-scrollbar-y.m-scroll-behavior-auto.m-overscroll-behavior-auto",
-              );
-              let el = document.querySelector(".b-make-post__media-wrapper");
-
-              if (element && !el && dragAttempts === 0 && !mediaInserted) {
-                element.focus();
-                simulateDragAndDrop(mediaElement, element, file);
-                mediaInserted = true;
-                dragAttempts++;
-              }
-
-              setTimeout(function () {
-                el = document.querySelector(".b-make-post__media-wrapper");
-                if (el || dragAttempts >= 2) {
+        await new Promise((resolve) => {
+          const observer = new MutationObserver((mutationsList, observer) => {
+            for (let mutation of mutationsList) {
+              if (mutation.type === "childList") {
+                let el = document.querySelector(
+                  ".b-make-post__media-wrapper",
+                );
+                if (el && !mediaInserted) {
                   mediaInserted = true;
                   clearInterval(intervalId);
                   isUploading = false;
                   resolve();
                   observer.disconnect();
                 }
-              }, 500);
-            }, 200);
+              }
+            }
           });
-        }
-        await fetchWithRetry(
-          "http://localhost:3000/update-browser",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              index: index,
-              number: number,
-            }),
-          },
-          5000,
-        );
+
+          observer.observe(document.body, { childList: true, subtree: true });
+
+          let dragAttempts = 0;
+
+          const intervalId = setInterval(function () {
+            let element = document.querySelector(
+              ".tiptap.ProseMirror.b-text-editor.js-text-editor.m-native-custom-scrollbar.m-scrollbar-y.m-scroll-behavior-auto.m-overscroll-behavior-auto",
+            );
+            let el = document.querySelector(".b-make-post__media-wrapper");
+
+            if (element && !el && dragAttempts === 0 && !mediaInserted) {
+              element.focus();
+              simulateDragAndDrop(mediaElement, element, file);
+              mediaInserted = true;
+              dragAttempts++;
+            }
+
+            setTimeout(function () {
+              el = document.querySelector(".b-make-post__media-wrapper");
+              if (el || dragAttempts >= 2) {
+                mediaInserted = true;
+                clearInterval(intervalId);
+                isUploading = false;
+                resolve();
+                observer.disconnect();
+              }
+            }, 500);
+          }, 200);
+        });
+        
+        imageInserted = true;
+        await sendUpdateRequest();
       } catch (e) {
         console.log(e);
-        await fetchWithRetry(
-          "http://localhost:3000/update-browser",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              index: index,
-              number: number,
-            }),
-          },
-          5000,
-        );
+        isUploading = false;
       }
     };
 
@@ -1008,6 +998,43 @@ async function addTextToPost(
       isUploading = false;
     };
   }
+
+  const formatText = (text) => {
+    if (!text) return '';
+  
+    let formattedText = text.split('\n').join('<br>');
+
+    const patterns = [
+      {
+        regex: /\*{3}(.*?)\*{3}/g,
+        replacement: '<span class="m-editor-fc__blue-1"><em><strong>$1</strong></em></span>'
+      },
+      {
+        regex: /\*{2}(.*?)\*{2}/g,
+        replacement: '<strong>$1</strong>'
+      },
+      {
+        regex: /\*{1}(.*?)\*{1}/g,
+        replacement: '<em>$1</em>'
+      }
+    ];
+
+    patterns.forEach(({ regex, replacement }) => {
+      formattedText = formattedText.replace(regex, replacement);
+    });
+  
+    const segments = formattedText.split('<br>');
+    formattedText = segments
+      .map(segment => {
+        if (segment.trim().startsWith('<') && segment.trim().endsWith('>')) {
+          return segment;
+        }
+        return `<p>${segment}</p>`;
+      })
+      .join('');
+  
+    return formattedText;
+  };
 
   const clickEvent = new Event("click", {
     bubbles: true,
@@ -1020,50 +1047,20 @@ async function addTextToPost(
       clearInterval(checkButton);
       if (imageUrl) {
         await handleImageUpload(pht);
+      } else {
+        imageInserted = true;
       }
-
-      const formatText = (text) => {
-        if (!text) return '';
-      
-        let formattedText = text.split('\n').join('<br>');
-  
-        const patterns = [
-          {
-            regex: /\*{3}(.*?)\*{3}/g,
-            replacement: '<span class="m-editor-fc__blue-1"><em><strong>$1</strong></em></span>'
-          },
-          {
-            regex: /\*{2}(.*?)\*{2}/g,
-            replacement: '<strong>$1</strong>'
-          },
-          {
-            regex: /\*{1}(.*?)\*{1}/g,
-            replacement: '<em>$1</em>'
-          }
-        ];
-
-        patterns.forEach(({ regex, replacement }) => {
-          formattedText = formattedText.replace(regex, replacement);
-        });
-      
-        const segments = formattedText.split('<br>');
-        formattedText = segments
-          .map(segment => {
-            if (segment.trim().startsWith('<') && segment.trim().endsWith('>')) {
-              return segment;
-            }
-            return `<p>${segment}</p>`;
-          })
-          .join('');
-      
-        return formattedText;
-      };
 
       setTimeout(async () => {
         const textarea = document.querySelector(".tiptap.ProseMirror"); 
         if (textarea) {
           if (txt) {
             textarea.innerHTML = formatText(text);
+            textInserted = true;
+            await sendUpdateRequest();
+          } else {
+            textInserted = true;
+            await sendUpdateRequest();
           }
 
           if (exp) {
@@ -1737,37 +1734,17 @@ async function checkDataFile() {
     var isApart = false;
 
     if (lastEntry) {
-      if (browser1 && !lastEntry.browser1) {
-        browserType = "browser1";
-      } else if (browser2 && !lastEntry.browser2) {
-        browserType = "browser2";
-      } else if (browser3 && !lastEntry.browser3) {
-        browserType = "browser3";
-      } else if (browser4 && !lastEntry.browser4) {
-        browserType = "browser4";
-      } else if (browser5 && !lastEntry.browser5) {
-        browserType = "browser5";
-      } else if (browser6 && !lastEntry.browser6) {
-        browserType = "browser6";
-      } else if (browser7 && !lastEntry.browser7) {
-        browserType = "browser7";
-      } else if (browser8 && !lastEntry.browser8) {
-        browserType = "browser8";
-      } else if (browser9 && !lastEntry.browser9) {
-        browserType = "browser9";
-      } else if (browser10 && !lastEntry.browser10) {
-        browserType = "browser10";
-      } else if (browser11 && !lastEntry.browser11) {
-        browserType = "browser11";
-      } else if (browser12 && !lastEntry.browser12) {
-        browserType = "browser12";
-      } else if (browser13 && !lastEntry.browser13) {
-        browserType = "browser13";
-      } else if (browser14 && !lastEntry.browser14) {
-        browserType = "browser14";
-      } else if (browser15 && !lastEntry.browser15) {
-        browserType = "browser15";
-      }
+      
+      const browserVars = [browser1, browser2, browser3, browser4, browser5, browser6, browser7, 
+        browser8, browser9, browser10, browser11, browser12, browser13, 
+        browser14, browser15];
+
+        for (let i = 0; i < 15; i++) {
+          if (browserVars[i] && !lastEntry[`browser${i+1}`]) {
+            browserType = `browser${i+1}`;
+            break;
+          }
+        }  
 
       isApart = lastEntry.isApart;
       isDelete = lastEntry.isDelete;
@@ -2216,24 +2193,26 @@ async function checkDataFile() {
     if (lastEntry && lastEntry.id === "22" && browserType !== "") {
       await sendTypeToServer(lastIndex, browserType);
       chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
-        const currentTabId = tabs[0].id;
-        chrome.tabs.query({ url: "https://onlyfans.com/*" }, function(matchingTabs) {
-            if (matchingTabs.length > 2) {
-                const firstMatchingTab = matchingTabs[0];
-                chrome.tabs.update(firstMatchingTab.id, { active: true }, () => {
-                    setTimeout(() => {
-                        chrome.tabs.update(currentTabId, { active: true });
-                    }, 1000);
-                    chrome.scripting.executeScript({
-                      target: { tabId: firstMatchingTab.id },
-                      func: checkAndCloseTab,
-                      args: [firstMatchingTab.id, Object.fromEntries(intervals)],
-                    });
-                });
-            }
-        });
-    });
-    return
+          const currentTabId = tabs[0].id;
+          chrome.tabs.query({ url: "https://onlyfans.com/*" }, function(matchingTabs) {
+              if (matchingTabs.length > 2) {
+                  const firstMatchingTab = matchingTabs[0];
+                  if (currentTabId !== firstMatchingTab.id) {
+                      chrome.tabs.update(firstMatchingTab.id, { active: true }, () => {
+                          setTimeout(() => {
+                              chrome.tabs.update(currentTabId, { active: true });
+                          }, 1000);
+                          chrome.scripting.executeScript({
+                              target: { tabId: firstMatchingTab.id },
+                              func: checkAndCloseTab,
+                              args: [firstMatchingTab.id, Object.fromEntries(intervals)],
+                          });
+                      });
+                  }
+              }
+          });
+      });
+      return;
     }
 
     if (lastEntry && lastEntry.id === "16" && browserType !== "") {
