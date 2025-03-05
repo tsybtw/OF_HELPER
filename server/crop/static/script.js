@@ -923,8 +923,8 @@ function recropImage(mediaId, imagePath) {
     cropContainer.appendChild(imgContainer);
     infoContainer.appendChild(dimensionsInfo);
     infoContainer.appendChild(rotationInfo);
-    infoContainer.appendChild(instructions);
-    document.body.appendChild(cropContainer);
+    infoContainer.appendChild(instructions);                                
+    document.body.appendChild(cropContainer);               
     document.body.appendChild(infoContainer)
     document.body.appendChild(controlsContainer)
 
@@ -1273,6 +1273,8 @@ function recropImage(mediaId, imagePath) {
     cancelButton.addEventListener('click', function() {
         window.removeEventListener('resize', handleResize);
         document.body.removeChild(cropContainer);
+        document.body.removeChild(infoContainer);
+        document.body.removeChild(controlsContainer);
     });
 
     applyButton.addEventListener('click', function() {
@@ -1357,6 +1359,8 @@ function recropImage(mediaId, imagePath) {
                 saveImageToServer(croppedImageData, imagePath, rotationDegrees);
 
                 document.body.removeChild(cropContainer);
+                document.body.removeChild(infoContainer);
+                document.body.removeChild(controlsContainer);
             };
             tempImg.src = croppedImageData;
         };
