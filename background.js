@@ -2128,7 +2128,6 @@ async function checkDataFile() {
                               const button =
                                 document.querySelector("#split-button1");
                               if (button) {
-    
                                 const rect = button.getBoundingClientRect();
                                 const leftPartX = rect.left + 5; 
                                 const leftPartY = rect.top + rect.height / 2; 
@@ -2146,7 +2145,7 @@ async function checkDataFile() {
                           });
                         }
                         await new Promise((resolve) =>
-                          setTimeout(resolve, 1000),
+                          setTimeout(resolve, 2000),
                         );
   
                         const tabIdsToClose = tabsToClose.map((tab) => tab.id);
@@ -2767,7 +2766,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.6.0';
+            const VERSION = '5.6.1.5';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
         
@@ -3255,13 +3254,10 @@ async function pressBindFix(tab, browserType) {
                 tabId: tab.id,
               });
             }
-            if (
-              innerDiv.textContent.includes("Daily") ||
-              innerDiv.textContent.includes("Internal") ||
-              innerDiv.textContent.includes("Nothing")
-            ) {
+            else if (/(Daily|Internal|Nothing)/.test(innerDiv.textContent)) {
               await delay(20000);
-            } else if (innerDiv.textContent.includes("attached") || innerDiv.textContent.includes("issue")) {
+            } 
+            else if (/(attached|issue)/i.test(innerDiv.textContent)) { 
               let elements = document.querySelectorAll(
                 ".b-dropzone__preview__delete.g-btn.m-rounded.m-reset-width.m-thumb-r-corner-pos.m-btn-remove.m-sm-icon-size.has-tooltip",
               );
@@ -3448,11 +3444,9 @@ async function pressBindFix(tab, browserType) {
               }
               innerDiv.textContent = "[OFH] Fixing media issue...";
               await delay(7000);
-            } else if (!innerDiv.textContent.includes("[OFH]")){
+            } 
+            else if (!innerDiv.textContent.includes("[OFH]")){
               return;
-            }
-            else {
-              await delay(1000);
             }
           }
         }
