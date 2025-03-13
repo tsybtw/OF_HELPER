@@ -28,7 +28,7 @@ If $i > 0 Then
     Else
         _SendKeyCombination($combos[0])
     EndIf
-    Sleep(200)
+    Sleep(300)
 EndIf
 
 If $i > 1 Then

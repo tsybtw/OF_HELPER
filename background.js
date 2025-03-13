@@ -104,7 +104,7 @@ function updateTabCounterOnActiveTab(isReset) {
         func: (isVisible) => {
           const elements = [
             "tabCounter", "cont1", "cont2", "cont3", 
-            "switch-button", "fakeMakeButton", "version", "clear-button", "reload-button"
+            "switch-button", "fakeMakeButton", "version", "clear-button", "reload-button", "stories-container", "bottom-overlay", "joy"
           ].map(id => document.getElementById(id));
           
           elements.forEach(el => {
@@ -154,7 +154,7 @@ function updateTabCounterOnActiveTab(isReset) {
               Object.assign(counter.style, {
                 position: "fixed",
                 bottom: "65px",
-                left: "15px",
+                left: "7px",
                 fontFamily: "'Josefin Sans', sans-serif",
                 fontSize: "20px",
                 borderRadius: "5px",
@@ -551,6 +551,295 @@ async function checkModels() {
       }
     }, 100);
   }
+}
+
+let lastMentionPos = null;
+
+function updateMentionPosition(newX, newY) {
+  const canvas = document.querySelector(".upper-canvas");
+  const canvasRect = canvas.getBoundingClientRect();
+  const startX = canvasRect.left + lastMentionPos.x;
+  const startY = canvasRect.top + lastMentionPos.y;
+  const endX = canvasRect.left + newX;
+  const endY = canvasRect.top + newY;
+  const mouseDownEvent = new MouseEvent("mousedown", {
+    bubbles: true,
+    cancelable: true,
+    view: window,
+    clientX: startX,
+    clientY: startY
+  });
+  canvas.dispatchEvent(mouseDownEvent);
+  const mouseMoveEvent = new MouseEvent("mousemove", {
+    bubbles: true,
+    cancelable: true,
+    view: window,
+    clientX: endX,
+    clientY: endY
+  });
+  canvas.dispatchEvent(mouseMoveEvent);
+  const mouseUpEvent = new MouseEvent("mouseup", {
+    bubbles: true,
+    cancelable: true,
+    view: window,
+    clientX: endX,
+    clientY: endY
+  });
+  canvas.dispatchEvent(mouseUpEvent);
+  lastMentionPos = { x: newX, y: newY };
+}
+
+async function processImageAndUpload(imageTag) {
+  function sendJoystickData(newTagX, newTagY) {
+    fetch("http://localhost:3000/joystick-data", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ x: newTagX, y: newTagY })
+    }).catch(error => {
+      console.error("Error sending joystick data:", error);
+    });
+  }
+
+  function createJoystick() {
+    const containerSize = 100; 
+    const handleSize = 10; 
+    const joystickContainer = document.createElement("div");
+    joystickContainer.id = "joy"
+    joystickContainer.style.position = "fixed";
+    joystickContainer.style.top = "45px";
+    joystickContainer.style.left = "10px";
+    joystickContainer.style.width = containerSize + "px";
+    joystickContainer.style.height = containerSize + "px";
+    joystickContainer.style.border = "2px solid #000";
+    joystickContainer.style.boxSizing = "border-box";
+    joystickContainer.style.zIndex = "10000";
+    joystickContainer.style.background = "rgb(90, 98, 104)";
+    joystickContainer.style.borderRadius = "10px";
+
+    const joystickHandle = document.createElement("div");
+    joystickHandle.style.width = handleSize + "px";
+    joystickHandle.style.height = handleSize + "px";
+    joystickHandle.style.borderRadius = "50%";
+    joystickHandle.style.background = "#fff";
+    joystickHandle.style.position = "absolute";
+    const initialX = (containerSize - handleSize) / 2;
+    const initialY = (containerSize - handleSize) / 2;
+    joystickHandle.style.left = initialX + "px";
+    joystickHandle.style.top = initialY + "px";
+    joystickHandle.style.zIndex = "10000";
+
+    joystickContainer.appendChild(joystickHandle);
+    document.body.appendChild(joystickContainer);
+
+    let offsetX = 0;
+    let offsetY = 0;
+    let currentX = initialX;
+    let currentY = initialY;
+    let dragging = false;
+
+    joystickHandle.addEventListener("pointerdown", function(e) {
+      dragging = true;
+      offsetX = e.clientX - joystickHandle.getBoundingClientRect().left;
+      offsetY = e.clientY - joystickHandle.getBoundingClientRect().top;
+      joystickHandle.setPointerCapture(e.pointerId);
+    });
+
+    document.addEventListener("pointermove", function(e) {
+      if (!dragging) return;
+      const containerRect = joystickContainer.getBoundingClientRect();
+      let newLeft = e.clientX - containerRect.left - offsetX;
+      let newTop = e.clientY - containerRect.top - offsetY;
+      newLeft = Math.max(0, Math.min(newLeft, containerSize - handleSize));
+      newTop = Math.max(0, Math.min(newTop, containerSize - handleSize));
+      currentX = newLeft;
+      currentY = newTop;
+      joystickHandle.style.left = currentX + "px";
+      joystickHandle.style.top = currentY + "px";
+    });
+
+    document.addEventListener("pointerup", function(e) {
+      if (!dragging) return;
+      dragging = false;
+      const canvas = document.querySelector(".upper-canvas");
+      const canvasRect = canvas.getBoundingClientRect();
+      const whiteCenterX = currentX + handleSize / 2;
+      const whiteCenterY = currentY + handleSize / 2;
+      const percentX = whiteCenterX / containerSize;
+      const percentY = whiteCenterY / containerSize;
+      const newTagX = percentX * canvasRect.width;
+      const newTagY = percentY * canvasRect.height;
+      sendJoystickData(newTagX, newTagY);
+    });
+  }
+
+  function initializeLastMentionPos() {
+    const canvas = document.querySelector(".upper-canvas");
+    if (canvas) {
+      const rect = canvas.getBoundingClientRect();
+      lastMentionPos = { x: rect.width / 2, y: rect.height / 2 };
+    }
+  }
+
+  const waitForElement = (selector, maxAttempts = 30, interval = 500) => new Promise((resolve, reject) => {
+    let attempts = 0;
+    const checkElement = () => {
+      const element = document.querySelector(selector);
+      if (element) { resolve(element); return; }
+      attempts++;
+      if (attempts >= maxAttempts) { reject(new Error(selector)); return; }
+      setTimeout(checkElement, interval);
+    };
+    checkElement();
+  });
+  
+  const waitForElementWithText = (selector, text, maxAttempts = 30, interval = 500) => new Promise((resolve, reject) => {
+    let attempts = 0;
+    const checkElements = () => {
+      const elements = document.querySelectorAll(selector);
+      for (const element of elements) {
+        const textElement = element.querySelector(".b-stickers__text");
+        if (textElement && textElement.textContent.trim() === text) { resolve(element); return; }
+      }
+      attempts++;
+      if (attempts >= maxAttempts) { reject(new Error(text)); return; }
+      setTimeout(checkElements, interval);
+    };
+    checkElements();
+  });
+  
+  const waitForButtonWithText = (selector, text, maxAttempts = 30, interval = 500) => new Promise((resolve, reject) => {
+    let attempts = 0;
+    const checkButtons = () => {
+      const buttons = document.querySelectorAll(selector);
+      for (const button of buttons) {
+        if (button.textContent.trim() === text) { resolve(button); return; }
+      }
+      attempts++;
+      if (attempts >= maxAttempts) { reject(new Error(text)); return; }
+      setTimeout(checkButtons, interval);
+    };
+    checkButtons();
+  });
+
+  const cleanTag = imageTag.trim();
+  const userUsernameElement = await waitForElement(".g-user-username");
+  if (userUsernameElement) {
+    const username = userUsernameElement.textContent.trim().replace(/^@/, '');
+    console.log(username, cleanTag)
+    if (username === cleanTag) {
+      console.log("Skipping processing as tag matches current user's username");
+      return Promise.resolve();
+    }
+  }
+  
+  const fileSearchTag = cleanTag.replace(/\./g, "-");
+
+  const findAndLoadImage = async (tag) => {
+    const extensions = [".png", ".jpg", ".jpeg", ".heic"];
+    for (const ext of extensions) {
+      try {
+        const imageUrl = chrome.runtime.getURL(`server/crop/images/${tag}${ext}`);
+        const response = await fetch(imageUrl);
+        if (response.ok) {
+          const blob = await response.blob();
+          return { blob: blob, filename: `${tag}${ext}`, extension: ext.substring(1) };
+        }
+      } catch (error) { console.log(error); }
+    }
+    try {
+      const imageUrl = chrome.runtime.getURL(`server/crop/images/${tag}`);
+      const response = await fetch(imageUrl);
+      if (response.ok) {
+        const blob = await response.blob();
+        const mimeType = blob.type;
+        let extension = "png";
+        if (mimeType.includes("jpeg") || mimeType.includes("jpg")) { extension = "jpg"; }
+        else if (mimeType.includes("png")) { extension = "png"; }
+        else if (mimeType.includes("heic")) { extension = "heic"; }
+        return { blob: blob, filename: `${tag}.${extension}`, extension: extension };
+      }
+    } catch (error) { console.log(error); }
+    return null;
+  };
+  return new Promise(async (resolve, reject) => {
+    try {
+      const button = await waitForElement("#add-story-btn");
+      const imageData = await findAndLoadImage(fileSearchTag);
+      if (!imageData) { throw new Error(fileSearchTag); }
+      let mimeType = "image/png";
+      switch (imageData.extension) {
+        case "jpg":
+        case "jpeg":
+          mimeType = "image/jpeg";
+          break;
+        case "png":
+          mimeType = "image/png";
+          break;
+        case "heic":
+          mimeType = "image/heic";
+          break;
+      }
+      const file = new File([imageData.blob], imageData.filename, { type: mimeType });
+      button.click();
+      const fileInput = await waitForElement('input[type="file"]');
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(file);
+      fileInput.files = dataTransfer.files;
+      const event = new Event("change", { bubbles: true });
+      fileInput.dispatchEvent(event);
+      const mentionButton = await waitForElement(".g-btn.m-with-round-hover.m-light.m-icon.m-icon-only.m-white.m-sm-size.has-tooltip");
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      mentionButton.click();
+      const mentionLink = await waitForElementWithText(".b-stickers__link.d-flex.align-items-center.w-100.m-bg-light", "Mention");
+      mentionLink.click();
+      const textarea = await waitForElement('textarea[placeholder="Mention"]');
+      textarea.value = cleanTag;
+      const inputEvent = new Event("input", { bubbles: true });
+      textarea.dispatchEvent(inputEvent);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      const doneButton = await waitForButtonWithText(".g-btn.m-rounded.m-reset-width", "Done");
+      doneButton.click();
+      initializeLastMentionPos();
+      createJoystick();
+      resolve();
+    } catch (error) {
+      console.error(error);
+      reject(error);
+    }
+  });
+}
+
+
+function postStories() {
+  function checkButtonExists() {
+    const button = document.querySelector('.g-btn.m-rounded.m-reset-width.d-inline-flex');
+    return button !== null;
+  }
+
+  function clickButton() {
+    const button = document.querySelector('.g-btn.m-rounded.m-reset-width.d-inline-flex');
+    if (button) {
+      button.click();
+      return true;
+    }
+    return false;
+  }
+
+  if (checkButtonExists()) {
+    clickButton();
+    
+    const checkDisappearInterval = setInterval(() => {
+      if (!checkButtonExists()) {
+        chrome.runtime.sendMessage({ action: "closeTab" });
+        clearInterval(checkDisappearInterval);
+      }
+    }, 500); 
+    setTimeout(() => {
+      clearInterval(checkDisappearInterval);
+    }, 10000); 
+  }
+  
+  return true;
 }
 
 async function reloadPage() {
@@ -1218,6 +1507,10 @@ function addTimeToPost(textInput, isApart, browserType) {
         var textInput = parseInt(parts[0]);
         newMinutes = parseInt(parts[1]);
         newMinutes = currentTimeInMinutes + newMinutes
+        
+        if (currentTimeInMinutes >= 50) {
+          newHours = newHours + 1
+        }
 
         if (newMinutes >= 60) {
           newMinutes -= 60;
@@ -1788,6 +2081,89 @@ async function checkDataFile() {
       return
     })}
 
+    async function processTags() {
+      const tagsFilePath = 'server/files/tags.txt';
+      try {
+        const tagsResponse = await fetch(chrome.runtime.getURL(tagsFilePath));
+        const tagsText = await tagsResponse.text();
+        const tags = tagsText.split('\n').filter(tag => tag.trim() !== '');
+        
+        let isFirstTab = true;
+        for (const tag of tags) {
+          const tab = await chrome.tabs.create({ url: "https://onlyfans.com/", active: isFirstTab });
+          
+          isFirstTab = false;
+          await new Promise(resolve => {
+            const listener = (tabId, changeInfo) => {
+              if (tabId === tab.id && changeInfo.status === 'complete') {
+                chrome.tabs.onUpdated.removeListener(listener);
+                resolve();
+              }
+            };
+            chrome.tabs.onUpdated.addListener(listener);
+          });
+          
+          await new Promise(resolve => {
+            chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              func: processImageAndUpload,
+              args: [tag]
+            }, () => {
+              resolve();
+            });
+          });
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    if (lastEntry && lastEntry.id === "25" && browserType !== "") {
+      await sendTypeToServer(lastIndex, browserType);
+      processTags().catch(error => console.error(error));
+      return;
+    }
+
+    if (lastEntry && lastEntry.id === "26" && browserType !== "") {
+      await sendTypeToServer(lastIndex, browserType);
+      
+      chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        const tabs = currentWindow.tabs;
+        const currentTabIndex = tabs.findIndex(tab => tab.active);
+        const previousTabId = tabs[currentTabIndex].id;
+        
+        if (currentTabIndex < tabs.length - 1) {
+          const nextTabIndex = currentTabIndex + 1;
+          chrome.tabs.update(tabs[nextTabIndex].id, { active: true }, async () => {
+            await executeScriptIfValid(tabs[currentTabIndex], { 
+              target: { tabId: previousTabId }, 
+              func: postStories 
+            });
+          });
+        } else {
+          chrome.tabs.create({url: 'https://onlyfans.com'}, async (newTab) => {
+            await executeScriptIfValid(tabs[currentTabIndex], { 
+              target: { tabId: previousTabId }, 
+              func: postStories,
+            });
+          });
+        }
+      });
+      return
+    }
+
+    if (lastEntry && lastEntry.id === "27" && browserType !== "") {
+      await sendTypeToServer(lastIndex, browserType);
+      chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+      const activeTab = currentWindow.tabs.find((tab) => tab.active);
+      await executeScriptIfValid(activeTab, {
+        target: { tabId: activeTab.id },
+        func: updateMentionPosition,
+        args: [lastEntry.x, lastEntry.y],
+      });
+      return
+    })}
+    
     if (lastEntry && lastEntry.id === "11" && browserType !== "") {
       await sendTypeToServer(lastIndex, browserType);
 
@@ -2287,7 +2663,7 @@ async function checkDataFile() {
 }
 
 async function setBind(tab, DELAY_GREEN_BUTTON) {
-  if (tab.active && !tab.url.startsWith("chrome://")) {
+  if (!tab.url.startsWith("chrome://")) {
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: function (DELAY_GREEN_BUTTON) {
@@ -2379,6 +2755,14 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           await makeRequest("http://localhost:3000/quickReload", 0);
         }
 
+        async function quickStories() {
+          await makeRequest("http://localhost:3000/quickStories", 0);
+        }
+
+        async function quickStoriesDone() {
+          await makeRequest("http://localhost:3000/quickStoriesDone", 0);
+        }
+
         async function bindFixRequest() {
           await makeRequest("http://localhost:3000/bindFix", 0 );
         }
@@ -2460,12 +2844,12 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
 
         function createFakeMakeButton(container) {
           const fakeMakeBtn = document.createElement("button");
-          fakeMakeBtn.style.position = "absolute";
+          fakeMakeBtn.style.position = "fixed";
           fakeMakeBtn.style.right = "3px";
           fakeMakeBtn.style.width = "8px";
           fakeMakeBtn.style.bottom = "16px";
           fakeMakeBtn.style.height = "85px";
-          fakeMakeBtn.style.background = "grey";
+          fakeMakeBtn.style.background = "rgb(108, 117, 125)";
           fakeMakeBtn.style.border = "none";
           fakeMakeBtn.style.display = "flex";
           fakeMakeBtn.style.justifyContent = "center";
@@ -2476,10 +2860,19 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           fakeMakeBtn.style.zIndex = "99999";
           fakeMakeBtn.id = "fakeMakeButton";
           container.appendChild(fakeMakeBtn);
+
+          fakeMakeBtn.addEventListener("mouseenter", function() {
+            this.style.background = "#e38571"; 
+          });
+          
+          fakeMakeBtn.addEventListener("mouseleave", function() {
+            this.style.background = "rgb(108, 117, 125)"; 
+          });
+
           return fakeMakeBtn;
         }
 
-        function createIndicatorButton(container, color = "#DD6D55") {
+        function createIndicatorButton(container, color) {
           const indicatorButton = document.createElement("button");
           indicatorButton.style.background = color;
           indicatorButton.style.width = "25%";
@@ -2490,7 +2883,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           indicatorButton.style.display = "flex";
           indicatorButton.style.justifyContent = "center";
           indicatorButton.style.alignItems = "center";
-          indicatorButton.style.transition = "background 0.5s ease";
+          indicatorButton.style.transition = "background 0.3s ease";
           indicatorButton.id = "instantPost";
           container.appendChild(indicatorButton);
           return indicatorButton;
@@ -2701,7 +3094,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           Object.assign(container.style, {
               position: "fixed",
               bottom: "10px",
-              left: "15px", 
+              left: "5px", 
               right: "15px", 
               transform: "none", 
               display: "flex",
@@ -2712,7 +3105,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
               fontSize: "20px",
               flexShrink: "0",
               justifyContent: "space-between",
-              zIndex: "9999",
+              zIndex: "10000",
               transition: "all 0.3s"
           });
           container.id = "cont1";
@@ -2730,7 +3123,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             color: "white",
             flexShrink: "0",
             justifyContent: "center",
-            zIndex: "9999",
+            zIndex: "10000",
             transition: "all 0.3s"
           });
           container2.id = "cont2";
@@ -2739,7 +3132,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           Object.assign(containerNew.style, {
             position: "fixed",
             bottom: "70px",
-            left: "15px", 
+            left: "5px", 
             right: "15px", 
             display: "flex",
             flexDirection: "row",
@@ -2748,7 +3141,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             color: "white",
             flexShrink: "0",
             justifyContent: "end",
-            zIndex: "9999",
+            zIndex: "10000",
             transition: "all 0.3s",
           });
           containerNew.id = "cont3";
@@ -2758,7 +3151,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           Object.assign(versionContainer.style, {
             position: "fixed",
             bottom: "0px",
-            left: "15px",
+            left: "7px",
             color: "white",
             fontFamily: "'Josefin Sans', sans-serif",
             fontSize: "10px",
@@ -2766,7 +3159,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.6.1.5';
+            const VERSION = '5.6.2';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
         
@@ -2946,13 +3339,13 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
                 backgroundColor: "rgb(90, 98, 104)",
                 border: "none",
                 borderRadius: "10px",
-                padding: "4px",
+                padding: "7px",
                 display: "flex",
                 justifyContent: "center",
                 alignItems: "center",
                 cursor: "pointer",
                 zIndex: "99999",
-                transition: "all 0.5s",
+                transition: "all 0.3s",
                 outline: "none",
                 ...position
             });
@@ -2976,7 +3369,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
 
           const switchButton = createActionButton(
                 "switch-button",
-                { bottom: "105px", right: "29%" },
+                { bottom: "105px", right: "28%" },
                   `<svg viewBox="0 0 330 330" width="16" height="16">
                   <path fill="white" d="M79.394,250.606C82.323,253.535,86.161,255,90,255c3.839,0,7.678-1.465,10.606-4.394 c5.858-5.857,5.858-15.355,0-21.213L51.213,180h227.574l-49.393,49.394c-5.858,5.857-5.858,15.355,0,21.213 C232.322,253.535,236.161,255,240,255s7.678-1.465,10.606-4.394l75-75c5.858-5.857,5.858-15.355,0-21.213l-75-75 c-5.857-5.857-15.355-5.857-21.213,0c-5.858,5.857-5.858,15.355,0,21.213L278.787,150H51.213l49.393-49.394 c5.858-5.857,5.858-15.355,0-21.213c-5.857-5.857-15.355-5.857-21.213,0l-75,75c-5.858,5.857-5.858,15.355,0,21.213L79.394,250.606z"/>
                   </svg>`,
@@ -2985,7 +3378,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
 
           const clearButton = createActionButton(
             "clear-button",
-            { bottom: "105px", right: "22%" },
+            { bottom: "105px", right: "21%" },
               `<svg viewBox="0 0 1024 1024" width="16" height="16">
               <path fill="white" d="M899.1 869.6l-53-305.6H864c14.4 0 26-11.6 26-26V346c0-14.4-11.6-26-26-26H618V138c0-14.4-11.6-26-26-26H432c-14.4 0-26 11.6-26 26v182H160c-14.4 0-26 11.6-26 26v192c0 14.4 11.6 26 26 26h17.9l-53 305.6c-0.3 1.5-0.4 3-0.4 4.4 0 14.4 11.6 26 26 26h723c1.5 0 3-0.1 4.4-0.4 14.2-2.4 23.7-15.9 21.2-30zM204 390h272V182h72v208h272v104H204V390z m468 440V674c0-4.4-3.6-8-8-8h-48c-4.4 0-8 3.6-8 8v156H416V674c0-4.4-3.6-8-8-8h-48c-4.4 0-8 3.6-8 8v156H202.8l45.1-260H776l45.1 260H672z"/>
               </svg>`,
@@ -2994,20 +3387,84 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
         
           const reloadButton = createActionButton(
               "reload-button",
-                { bottom: "105px", right: "15%" },
+                { bottom: "105px", right: "14%" },
                 `<svg viewBox="0 0 24 24" width="16" height="16">
                 <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M4,13 C4,17.4183 7.58172,21 12,21 C16.4183,21 20,17.4183 20,13 C20,8.58172 16.4183,5 12,5 C10.4407,5 8.98566,5.44609 7.75543,6.21762"/>
                 <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M9.2384,1.89795 L7.49856,5.83917 C7.27552,6.34441 7.50429,6.9348 8.00954,7.15784 L11.9508,8.89768"/>
                 </svg>`,
                 quickReload
           );
-        
+
+          const storiesContainer = document.createElement("div");
+          storiesContainer.id = "stories-container";
+          storiesContainer.style.position = "fixed";
+          storiesContainer.style.bottom = "105px";
+          storiesContainer.style.right = "1%"; 
+          storiesContainer.style.display = "flex";
+          storiesContainer.style.borderRadius = "4px";
+          storiesContainer.style.overflow = "hidden";
+          storiesContainer.style.backgroundColor = "rgba(28, 28, 28, 0.9)";
+          storiesContainer.style.zIndex = "999999"
+          storiesContainer.style.borderRadius =  "10px"
+
+          const storiesButton = createActionButton(
+            "stories-button",
+            { position: "relative", bottom: "auto", right: "auto" }, 
+            `<svg width="16px" height="16px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path fill-rule="evenodd" clip-rule="evenodd" d="M12 18C15.3137 18 18 15.3137 18 12C18 8.68629 15.3137 6 12 6C8.68629 6 6 8.68629 6 12C6 15.3137 8.68629 18 12 18ZM12 16C14.2091 16 16 14.2091 16 12C16 9.79086 14.2091 8 12 8C9.79086 8 8 9.79086 8 12C8 14.2091 9.79086 16 12 16Z" fill="#FFFFFF"/>
+            <path d="M18 5C17.4477 5 17 5.44772 17 6C17 6.55228 17.4477 7 18 7C18.5523 7 19 6.55228 19 6C19 5.44772 18.5523 5 18 5Z" fill="#FFFFFF"/>
+            <path fill-rule="evenodd" clip-rule="evenodd" d="M1.65396 4.27606C1 5.55953 1 7.23969 1 10.6V13.4C1 16.7603 1 18.4405 1.65396 19.7239C2.2292 20.8529 3.14708 21.7708 4.27606 22.346C5.55953 23 7.23969 23 10.6 23H13.4C16.7603 23 18.4405 23 19.7239 22.346C20.8529 21.7708 21.7708 20.8529 22.346 19.7239C23 18.4405 23 16.7603 23 13.4V10.6C23 7.23969 23 5.55953 22.346 4.27606C21.7708 3.14708 20.8529 2.2292 19.7239 1.65396C18.4405 1 16.7603 1 13.4 1H10.6C7.23969 1 5.55953 1 4.27606 1.65396C3.14708 2.2292 2.2292 3.14708 1.65396 4.27606ZM13.4 3H10.6C8.88684 3 7.72225 3.00156 6.82208 3.0751C5.94524 3.14674 5.49684 3.27659 5.18404 3.43597C4.43139 3.81947 3.81947 4.43139 3.43597 5.18404C3.27659 5.49684 3.14674 5.94524 3.0751 6.82208C3.00156 7.72225 3 8.88684 3 10.6V13.4C3 15.1132 3.00156 16.2777 3.0751 17.1779C3.14674 18.0548 3.27659 18.5032 3.43597 18.816C3.81947 19.5686 4.43139 20.1805 5.18404 20.564C5.49684 20.7234 5.94524 20.8533 6.82208 20.9249C7.72225 20.9984 8.88684 21 10.6 21H13.4C15.1132 21 16.2777 20.9984 17.1779 20.9249C18.0548 20.8533 18.5032 20.7234 18.816 20.564C19.5686 20.1805 20.1805 19.5686 20.564 18.816C20.7234 18.5032 20.8533 18.0548 20.9249 17.1779C20.9984 16.2777 21 15.1132 21 13.4V10.6C21 8.88684 20.9984 7.72225 20.9249 6.82208C20.8533 5.94524 20.7234 5.49684 20.564 5.18404C20.1805 4.43139 19.5686 3.81947 18.816 3.43597C18.5032 3.27659 18.0548 3.14674 17.1779 3.0751C16.2777 3.00156 15.1132 3 13.4 3Z" fill="#FFFFFF"/>
+            </svg>`,
+            quickStories
+          );
+
+          const storiesDoneButton = createActionButton(
+            "stories-done-button",
+            { position: "relative", bottom: "auto", right: "auto" },
+            `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M5 14L8.23309 16.4248C8.66178 16.7463 9.26772 16.6728 9.60705 16.2581L18 6" stroke="white" stroke-width="2" stroke-linecap="round"/>
+            </svg>`,
+            quickStoriesDone
+          );
+
+          const bottomOverlay = document.createElement("div");
+          bottomOverlay.id = "bottom-overlay"
+
+          bottomOverlay.style.position = "fixed"; 
+          bottomOverlay.style.bottom = "0"; 
+          bottomOverlay.style.left = "0"; 
+          bottomOverlay.style.width = "100%";
+          bottomOverlay.style.height = "140px";
+          bottomOverlay.style.backgroundColor = "#161618";
+          bottomOverlay.style.zIndex = "9999"; 
+
+          document.body.appendChild(bottomOverlay);
+          bottomOverlay.style.pointerEvents = "none";
+
+          storiesButton.style.position = "relative";
+          storiesDoneButton.style.position = "relative";
+          storiesButton.style.boxShadow = "none";
+          storiesDoneButton.style.boxShadow = "none";
+          storiesButton.style.margin = "0";
+          storiesDoneButton.style.margin = "0";
+          storiesButton.style.borderRadius = "0";
+          storiesDoneButton.style.borderRadius = "0";
+          const separator = document.createElement("div");
+          separator.style.width = "1px";
+          separator.style.backgroundColor = "rgba(255, 255, 255, 0.1)";
+          separator.style.alignSelf = "stretch";
+
+          storiesContainer.appendChild(storiesButton);
+          storiesContainer.appendChild(separator);
+          storiesContainer.appendChild(storiesDoneButton);
+
           document.body.appendChild(versionContainer);
           document.body.appendChild(switchButton);
           document.body.appendChild(clearButton);
-          document.body.appendChild(reloadButton );
+          document.body.appendChild(reloadButton);
           containerNew.appendChild(newButton);
           document.body.appendChild(containerNew);
+          document.body.appendChild(storiesContainer);
           window.buttonsAdded = true;
         }
       },
@@ -3153,35 +3610,8 @@ async function rememberId(tab, prevTab) {
 }
 
 async function pressBind() {
-  let selector =
-    document.querySelector('[at-attr="submit_post"]') ||
-    document.querySelector(
-      "#content > div.l-wrapper > div > div > div > div > div.g-page__header.m-real-sticky.js-sticky-header.m-nowrap > div > button",
-    );
-  if (selector) {
-    const { syncStop = false, singleStop = false } = await new Promise(resolve => {
-      chrome.storage.local.get(['syncStop', 'singleStop'], resolve);
-    });
-    if (!syncStop && !singleStop) {
-
-    selector.click();
-    setTimeout(function () {
-      let buttons = document.querySelectorAll(
-        "button.g-btn.m-flat.m-btn-gaps.m-reset-width",
-      );
-      buttons.forEach(function (button) {
-        if (button.textContent.trim() === "Yes") {
-          button.click();
-        }
-      });
-    }, 500);
-    }
-  }
-}
-
-async function pressBindFix(tab, browserType) {
-
-  async function pressBind() {
+  const mediaWrapperExists = document.querySelector('.b-make-post__media-wrapper');
+  if (mediaWrapperExists) {
     let selector =
       document.querySelector('[at-attr="submit_post"]') ||
       document.querySelector(
@@ -3204,6 +3634,39 @@ async function pressBindFix(tab, browserType) {
           }
         });
       }, 500);
+      }
+    }
+  }
+}
+
+async function pressBindFix(tab, browserType) {
+
+  async function pressBind() {
+    const mediaWrapperExists = document.querySelector('.b-make-post__media-wrapper');
+    if (mediaWrapperExists) {
+      let selector =
+        document.querySelector('[at-attr="submit_post"]') ||
+        document.querySelector(
+          "#content > div.l-wrapper > div > div > div > div > div.g-page__header.m-real-sticky.js-sticky-header.m-nowrap > div > button",
+        );
+      if (selector) {
+        const { syncStop = false, singleStop = false } = await new Promise(resolve => {
+          chrome.storage.local.get(['syncStop', 'singleStop'], resolve);
+        });
+        if (!syncStop && !singleStop) {
+    
+        selector.click();
+        setTimeout(function () {
+          let buttons = document.querySelectorAll(
+            "button.g-btn.m-flat.m-btn-gaps.m-reset-width",
+          );
+          buttons.forEach(function (button) {
+            if (button.textContent.trim() === "Yes") {
+              button.click();
+            }
+          });
+        }, 500);
+        }
       }
     }
   }
@@ -3271,9 +3734,17 @@ async function pressBindFix(tab, browserType) {
                   }
                 });
               });
-              const mediaLink = document
-                .querySelector(".media-file")
-                ?.getAttribute("href");
+
+              function getMediaLink() {
+                const linkElement = document.querySelector('.b-dropzone__preview a');
+                if (linkElement && linkElement.getAttribute('href')) {
+                  return linkElement.getAttribute('href');
+                }
+                return null; 
+              }
+              
+              let mediaLink = getMediaLink();
+
               if (mediaLink) {
                 function simulateDragAndDrop(
                   sourceElement,
@@ -3442,11 +3913,14 @@ async function pressBindFix(tab, browserType) {
                 }
                 await handleImageUpload(mediaLink);
               }
-              innerDiv.textContent = "[OFH] Fixing media issue...";
+              innerDiv.textContent = "[OFH] Fixing media ...";
               await delay(7000);
             } 
             else if (!innerDiv.textContent.includes("[OFH]")){
-              return;
+              return
+            }
+            else {
+              delay(10000);
             }
           }
         }
