@@ -830,7 +830,9 @@ function postStories() {
     
     const checkDisappearInterval = setInterval(() => {
       if (!checkButtonExists()) {
-        chrome.runtime.sendMessage({ action: "closeTab" });
+        setTimeout(() => {
+          chrome.runtime.sendMessage({ action: "closeTab" });
+        }, 2000);
         clearInterval(checkDisappearInterval);
       }
     }, 500); 
@@ -838,7 +840,6 @@ function postStories() {
       clearInterval(checkDisappearInterval);
     }, 10000); 
   }
-  
   return true;
 }
 
@@ -3159,7 +3160,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.6.2';
+            const VERSION = '5.6.2.1';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
         
@@ -3427,20 +3428,52 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             quickStoriesDone
           );
 
-          const bottomOverlay = document.createElement("div");
-          bottomOverlay.id = "bottom-overlay"
+          const leftOffsetPercent = 32;
+          const topOffsetPixels = 45;
 
+          const bottomOverlay = document.createElement("div");
+
+          function updateOverlayColor() {
+            const siteBackgroundColor = getComputedStyle(document.documentElement).getPropertyValue('--bg-color').trim();
+            bottomOverlay.style.backgroundColor = siteBackgroundColor;
+          }
+          bottomOverlay.id = "bottom-overlay"
           bottomOverlay.style.position = "fixed"; 
           bottomOverlay.style.bottom = "0"; 
           bottomOverlay.style.left = "0"; 
           bottomOverlay.style.width = "100%";
           bottomOverlay.style.height = "140px";
-          bottomOverlay.style.backgroundColor = "#161618";
-          bottomOverlay.style.zIndex = "9999"; 
-
+          updateOverlayColor();
+          bottomOverlay.style.zIndex = "9999";
+          
+          bottomOverlay.style.clipPath = `
+            polygon(
+              ${leftOffsetPercent}% 0, 
+              100% 0, 
+              100% 100%, 
+              0 100%, 
+              0 ${topOffsetPixels}px,
+              ${leftOffsetPercent}% ${topOffsetPixels}px
+            )
+          `;
+          
           document.body.appendChild(bottomOverlay);
-          bottomOverlay.style.pointerEvents = "none";
-
+          
+          const rootObserver = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+              if (mutation.type === 'attributes' && 
+                 (mutation.attributeName === 'style' || mutation.attributeName === 'class')) {
+                updateOverlayColor();
+                break; 
+              }
+            }
+          });
+          
+          rootObserver.observe(document.documentElement, { 
+            attributes: true,
+            attributeFilter: ['style', 'class'] 
+          });
+          
           storiesButton.style.position = "relative";
           storiesDoneButton.style.position = "relative";
           storiesButton.style.boxShadow = "none";
@@ -3449,6 +3482,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           storiesDoneButton.style.margin = "0";
           storiesButton.style.borderRadius = "0";
           storiesDoneButton.style.borderRadius = "0";
+
           const separator = document.createElement("div");
           separator.style.width = "1px";
           separator.style.backgroundColor = "rgba(255, 255, 255, 0.1)";
