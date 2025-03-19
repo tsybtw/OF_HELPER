@@ -825,20 +825,12 @@ function postStories() {
     return false;
   }
 
-  if (checkButtonExists()) {
+  if (checkButtonExists()) { 
     clickButton();
-    
-    const checkDisappearInterval = setInterval(() => {
-      if (!checkButtonExists()) {
-        setTimeout(() => {
-          chrome.runtime.sendMessage({ action: "closeTab" });
-        }, 2000);
-        clearInterval(checkDisappearInterval);
-      }
-    }, 500); 
-    setTimeout(() => {
-      clearInterval(checkDisappearInterval);
-    }, 10000); 
+    const joyElement = document.getElementById('joy');
+    if (joyElement) {
+      joyElement.style.display = 'none';
+  }
   }
   return true;
 }
@@ -2084,16 +2076,21 @@ async function checkDataFile() {
 
     async function processTags() {
       const tagsFilePath = 'server/files/tags.txt';
+      let firstCreatedTab = null;
+      
       try {
         const tagsResponse = await fetch(chrome.runtime.getURL(tagsFilePath));
         const tagsText = await tagsResponse.text();
         const tags = tagsText.split('\n').filter(tag => tag.trim() !== '');
         
-        let isFirstTab = true;
-        for (const tag of tags) {
-          const tab = await chrome.tabs.create({ url: "https://onlyfans.com/", active: isFirstTab });
+        for (let i = 0; i < tags.length; i++) {
+          const tag = tags[i];
+          const tab = await chrome.tabs.create({ url: "https://onlyfans.com/", active: true });
           
-          isFirstTab = false;
+          if (i === 0) {
+            firstCreatedTab = tab;
+          }
+          
           await new Promise(resolve => {
             const listener = (tabId, changeInfo) => {
               if (tabId === tab.id && changeInfo.status === 'complete') {
@@ -2114,8 +2111,16 @@ async function checkDataFile() {
             });
           });
         }
+        
+        if (firstCreatedTab) {
+          await chrome.tabs.update(firstCreatedTab.id, { active: true });
+        }
       } catch (error) {
-        console.error(error);
+        console.error('Error in processTags:', error);
+        
+        if (firstCreatedTab) {
+          await chrome.tabs.update(firstCreatedTab.id, { active: true });
+        }
       }
     }
 
@@ -3160,7 +3165,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.6.2.1';
+            const VERSION = '5.6.2.2';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
         
