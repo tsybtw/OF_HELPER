@@ -10,6 +10,22 @@ async function executeScriptIfValid(activeTab, details) {
   }
 }
 
+const protectedTabs = {
+  ids: new Set(),
+
+  add: function(tabId) {
+    const tabIdStr = String(tabId);
+    this.ids.add(tabIdStr);
+    return tabIdStr;
+  },
+  
+  has: function(tabId) {
+    const tabIdStr = String(tabId);
+    const isProtected = this.ids.has(tabIdStr);
+    return isProtected;
+  }
+};
+
 let timerVisibility = true;
 let closedTabIds = new Set();
 let closedTabsCount = 0;
@@ -23,70 +39,70 @@ function checkAndCloseTab(tabId, serializedIntervals) {
   const intervalsArray = Object.entries(serializedIntervals);
   const hasInterval = intervalsArray.some(([key]) => key === tabId.toString());
 
-  const cleanupInterval = (tabId) => {
-    chrome.runtime.sendMessage({
-      type: 'clearInterval',
-      tabId: tabId
-    });
-  };
-  
-  if (hasInterval) {
-    cleanupInterval(tabId); 
-  }
-
-  const editor = document.querySelector(".tiptap.ProseMirror");
-  if (editor?.getAttribute("data-is-empty") === "true") {
-    chrome.runtime.sendMessage({ action: "closeTab", tabId });
-    return;
-  }
-
-  const pressBind = () => {
-    const intervalId = setInterval(async () => {
-      const selector = document.querySelector(
-        '[at-attr="submit_post"]'
-      );
-      
-      if (!selector) {
-        cleanupInterval(tabId);
-        return;
-      }
-
-      if (selector?.disabled === false) {
-        const { syncStop = false, singleStop = false } = await new Promise(resolve => {
-          chrome.storage.local.get(['syncStop', 'singleStop'], resolve);
-        });
-        if (!syncStop && !singleStop) {
-          selector.click();
-        }
-        
-        setTimeout(() => {
-          const confirmButton = Array.from(
-            document.querySelectorAll("button.g-btn")
-          ).find((b) => b.textContent.trim() === "Yes");
-          confirmButton?.click();
-          cleanupInterval(tabId);
-          return
-        }, 500);
-      }
-    }, 5000);
-
-    chrome.runtime.sendMessage({
-      type: 'setInterval',
-      tabId: tabId,
-      intervalId: intervalId
-    });
-  };
-
-  const secondTargetNode = document.querySelector(
-    ".b-reminder-form.m-error",
-  );
-  const innerDiv = secondTargetNode
-    ? secondTargetNode.querySelector("div")
-    : null;
+    const cleanupInterval = (tabId) => {
+      chrome.runtime.sendMessage({
+        type: 'clearInterval',
+        tabId: tabId
+      });
+    };
     
-  if (!document.querySelector(".b-reminder-form.m-error") || (innerDiv && innerDiv.textContent.includes("10"))) {
-    pressBind();
-  }
+    if (hasInterval) {
+      cleanupInterval(tabId); 
+    }
+
+    const editor = document.querySelector(".tiptap.ProseMirror");
+    if (editor?.getAttribute("data-is-empty") === "true") {
+      chrome.runtime.sendMessage({ action: "closeTab", tabId });
+      return;
+    }
+
+    const pressBind = () => {
+      const intervalId = setInterval(async () => {
+        const selector = document.querySelector(
+          '[at-attr="submit_post"]'
+        );
+        
+        if (!selector) {
+          cleanupInterval(tabId);
+          return;
+        }
+
+        if (selector?.disabled === false) {
+          const { syncStop = false, singleStop = false } = await new Promise(resolve => {
+            chrome.storage.local.get(['syncStop', 'singleStop'], resolve);
+          });
+          if (!syncStop && !singleStop) {
+            selector.click();
+          }
+          
+          setTimeout(() => {
+            const confirmButton = Array.from(
+              document.querySelectorAll("button.g-btn")
+            ).find((b) => b.textContent.trim() === "Yes");
+            confirmButton?.click();
+            cleanupInterval(tabId);
+            return
+          }, 500);
+        }
+      }, 5000);
+
+      chrome.runtime.sendMessage({
+        type: 'setInterval',
+        tabId: tabId,
+        intervalId: intervalId
+      });
+    };
+
+    const secondTargetNode = document.querySelector(
+      ".b-reminder-form.m-error",
+    );
+    const innerDiv = secondTargetNode
+      ? secondTargetNode.querySelector("div")
+      : null;
+      
+    if (!document.querySelector(".b-reminder-form.m-error") || (innerDiv && innerDiv.textContent.includes("10"))) {
+      pressBind();
+    }
 }
 
 function updateTabCounterOnActiveTab(isReset) {
@@ -179,7 +195,7 @@ function updateTabCounterOnActiveTab(isReset) {
     if (Date.now() - lastCheckTime < 5000 || processing) return;
     processing = true;
     lastCheckTime = Date.now();
-
+  
     chrome.tabs.query(
       { url: "https://onlyfans.com/*", status: "complete" },
       (tabs) => {
@@ -188,31 +204,37 @@ function updateTabCounterOnActiveTab(isReset) {
           ([activeTab]) => {
             processing = false;
             if (!activeTab || !tabs?.length) return;
-            tabs
+            
+            const tabsToProcess = tabs
               .filter((tab) => tab.id !== activeTab.id)
-              .slice(0, 5)
-              .forEach((tab) => {
-                if (
-                  tab.url === "https://onlyfans.com/posts/create" &&
-                  tabs.length >= 30
-                ) {
-                  chrome.scripting.executeScript({
-                    target: { tabId: tab.id },
-                    func: checkAndCloseTab,
-                    args: [tab.id, Object.fromEntries(intervals)],
-                  });
-                } else if (
-                  tab.url.startsWith("https://onlyfans.com") &&
-                  tab.url !== "https://onlyfans.com/posts/create" &&
-                  tabs.length >= 5
-                ) {
-                  closedTabIds.add(tab.id);
-                  chrome.tabs.remove(tab.id);
-                }
-              });
-          },
+              .slice(0, 5);
+            
+            for (const tab of tabsToProcess) {
+              if (protectedTabs.has(tab.id)) {
+                continue;
+              }
+  
+              if (
+                tab.url === "https://onlyfans.com/posts/create" &&
+                tabs.length >= 30
+              ) {
+                chrome.scripting.executeScript({
+                  target: { tabId: tab.id },
+                  func: checkAndCloseTab,
+                  args: [tab.id, Object.fromEntries(intervals)],
+                });
+              } else if (
+                tab.url.startsWith("https://onlyfans.com") &&
+                tab.url !== "https://onlyfans.com/posts/create" &&
+                tabs.length >= 5
+              ) {
+                closedTabIds.add(tab.id);
+                chrome.tabs.remove(tab.id);
+              }
+            }
+          }
         );
-      },
+      }
     );
   }
 }
@@ -725,9 +747,7 @@ async function processImageAndUpload(imageTag) {
   const userUsernameElement = await waitForElement(".g-user-username");
   if (userUsernameElement) {
     const username = userUsernameElement.textContent.trim().replace(/^@/, '');
-    console.log(username, cleanTag)
     if (username === cleanTag) {
-      console.log("Skipping processing as tag matches current user's username");
       return Promise.resolve();
     }
   }
@@ -2075,55 +2095,57 @@ async function checkDataFile() {
     })}
 
     async function processTags() {
-      const tagsFilePath = 'server/files/tags.txt';
-      let firstCreatedTab = null;
+    const tagsFilePath = 'server/files/tags.txt';
+    let firstCreatedTab = null;
+    
+    try {
+      const tagsResponse = await fetch(chrome.runtime.getURL(tagsFilePath));
+      const tagsText = await tagsResponse.text();
+      const tags = tagsText.split('\n').filter(tag => tag.trim() !== '');
       
-      try {
-        const tagsResponse = await fetch(chrome.runtime.getURL(tagsFilePath));
-        const tagsText = await tagsResponse.text();
-        const tags = tagsText.split('\n').filter(tag => tag.trim() !== '');
+      for (let i = 0; i < tags.length; i++) {
+        const tag = tags[i];
+        const tab = await chrome.tabs.create({ url: "https://onlyfans.com/", active: true });
         
-        for (let i = 0; i < tags.length; i++) {
-          const tag = tags[i];
-          const tab = await chrome.tabs.create({ url: "https://onlyfans.com/", active: true });
-          
-          if (i === 0) {
-            firstCreatedTab = tab;
-          }
-          
-          await new Promise(resolve => {
-            const listener = (tabId, changeInfo) => {
-              if (tabId === tab.id && changeInfo.status === 'complete') {
-                chrome.tabs.onUpdated.removeListener(listener);
-                resolve();
-              }
-            };
-            chrome.tabs.onUpdated.addListener(listener);
-          });
-          
-          await new Promise(resolve => {
-            chrome.scripting.executeScript({
-              target: { tabId: tab.id },
-              func: processImageAndUpload,
-              args: [tag]
-            }, () => {
+        protectedTabs.add(tab.id);
+        
+        if (i === 0) {
+          firstCreatedTab = tab;
+        }
+        
+        await new Promise(resolve => {
+          const listener = (tabId, changeInfo) => {
+            if (tabId === tab.id && changeInfo.status === 'complete') {
+              chrome.tabs.onUpdated.removeListener(listener);
               resolve();
-            });
+            }
+          };
+          chrome.tabs.onUpdated.addListener(listener);
+        });
+        
+        await new Promise(resolve => {
+          chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: processImageAndUpload,
+            args: [tag]
+          }, () => {
+            resolve();
           });
-        }
-        
-        if (firstCreatedTab) {
-          await chrome.tabs.update(firstCreatedTab.id, { active: true });
-        }
-      } catch (error) {
-        console.error('Error in processTags:', error);
-        
-        if (firstCreatedTab) {
-          await chrome.tabs.update(firstCreatedTab.id, { active: true });
-        }
+        });
+      }
+      
+      if (firstCreatedTab) {
+        await chrome.tabs.update(firstCreatedTab.id, { active: true });
+      }
+    } catch (error) {
+      console.error('Error in processTags:', error);
+      
+      if (firstCreatedTab) {
+        await chrome.tabs.update(firstCreatedTab.id, { active: true });
       }
     }
-
+  }
+    
     if (lastEntry && lastEntry.id === "25" && browserType !== "") {
       await sendTypeToServer(lastIndex, browserType);
       processTags().catch(error => console.error(error));
@@ -3165,7 +3187,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.6.2.2';
+            const VERSION = '5.6.2.3';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
         
@@ -4289,7 +4311,6 @@ function clickOnNewTab(tabId, callback) {
       }
 
       if (tab.url.startsWith('chrome://')) {
-          console.log('Skipping chrome:// URL');
           callback?.();
           return;
       }
@@ -4443,13 +4464,11 @@ async function clickAndMove(currentTabId, remainingClicks) {
         });
         
         if (!tabsResponse.ok) {
-          console.log("Tabs request failed")
           throw new Error(`Tabs request failed with status: ${tabsResponse.status}`);
         }
         
         const tabsResult = await tabsResponse.json();
         if (!tabsResult.success) {
-          console.log("Tabs did not open in time")
           throw new Error('Tabs did not open in time');
         }
 
@@ -4473,7 +4492,6 @@ async function clickAndMove(currentTabId, remainingClicks) {
       await resetAllButtonStyles();
     }
   } catch (error) {
-    console.log('Error in clickAndMove:', error);
     await resetAllButtonStyles();
   }
 }
