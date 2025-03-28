@@ -333,7 +333,15 @@ async function searchPosts() {
 
     for (const line of lines) {
       const url = `${baseUrl}${line}${searchUrl}${username}`;
-      window.open(url, "_blank");
+      const newTab = window.open(url, "_blank");
+      const checkTab = setInterval(() => {
+        if (newTab.document.readyState !== 'loading') {
+          clearInterval(checkTab);
+          chrome.runtime.sendMessage({
+            action: "protectTab"
+          });
+        }
+      }, 100);
     }
   }
 }
@@ -355,6 +363,12 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
         }
       } catch (error) {
         console.error("Error:", error);
+      }
+    }
+  if (message.action === "protectTab") {
+      if (sender.tab) {
+        console.log(sender.tab.id)
+        protectedTabs.add(sender.tab.id);
       }
     }
 })
@@ -385,6 +399,7 @@ async function checkModels() {
       let firstActiveDayNumber = firstActiveDay
         ? firstActiveDay.querySelector("span span").textContent
         : "-";
+    
       chrome.runtime.sendMessage({
         action: "checkModelsResult",
         data: { username, currentMonth, firstActiveDayNumber, fanCount },
@@ -400,7 +415,14 @@ async function checkModels() {
   for (const line of lines) {
     const url = `https://onlyfans.com/${line}`;
     const newTab = window.open(url, "_blank");
-
+    const checkTab = setInterval(() => {
+      if (newTab.document.readyState !== 'loading') {
+        clearInterval(checkTab);
+        chrome.runtime.sendMessage({
+          action: "protectTab"
+        });
+      }
+    }, 100);
     const checkDOM = setInterval(() => {
       if (newTab.document.readyState !== "loading") {
         clearInterval(checkDOM);
@@ -3187,7 +3209,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.6.2.3';
+            const VERSION = '5.6.2.4';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
         
