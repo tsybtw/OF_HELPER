@@ -1374,55 +1374,79 @@ async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht) 
       } else {
         imageInserted = true;
       }
+  
+      const waitForTextarea = () => {
+        return new Promise((resolve) => {
+          const check = setInterval(() => {
+            const textarea = document.querySelector(".tiptap.ProseMirror");
+            if (textarea && textarea.isConnected) {
+              clearInterval(check);
+              resolve(textarea);
+            }
+          }, 100);
+        });
+      };
+  
+      const textarea = await waitForTextarea();
 
-      setTimeout(async () => {
-        const textarea = document.querySelector(".tiptap.ProseMirror"); 
-        if (textarea) {
-          if (txt) {
-            textarea.innerHTML = formatText(text);
-            textInserted = true;
-            await sendUpdateRequest();
-          } else {
-            textInserted = true;
-            await sendUpdateRequest();
-          }
-
-          if (exp) {
-            setTimeout(async () => {
-              const button_fix = document.querySelector(
-                ".b-make-post__expire-period-btn",
+      if (txt) {
+        textarea.innerHTML = formatText(text);
+        textInserted = true;
+        await sendUpdateRequest();
+      } else {
+        textInserted = true;
+        await sendUpdateRequest();
+      }
+  
+      if (exp) {
+        const waitForStableButton = () => {
+          return new Promise((resolve) => {
+            setTimeout(() => {
+              const button_fix = document.querySelector(".b-make-post__expire-period-btn");
+              if (button_fix) {
+                resolve(button_fix);
+              }
+            }, 100);
+          });
+        };
+  
+        const button_fix = await waitForStableButton();
+        button_fix.dispatchEvent(clickEvent);
+        
+        const observer = new MutationObserver(async (mutationsList, observer) => {
+          for (let mutation of mutationsList) {
+            if (mutation.type === "childList") {
+              const button2 = document.querySelector(
+                "#ModalPostExpiration___BV_modal_body_ > div.b-tabs__nav.m-nv.m-tab-rounded.mb-0.m-single-current > ul > li:nth-child(2) > button"
               );
-              button_fix.dispatchEvent(clickEvent);
-            }, 500);
-            const observer = new MutationObserver(
-              async (mutationsList, observer) => {
-                for (let mutation of mutationsList) {
-                  if (mutation.type === "childList") {
-                    const button2 = document.querySelector(
-                      "#ModalPostExpiration___BV_modal_body_ > div.b-tabs__nav.m-nv.m-tab-rounded.mb-0.m-single-current > ul > li:nth-child(2) > button",
-                    );
-                    if (button2) {
-                      button2.dispatchEvent(clickEvent);
+              if (button2) {
+                button2.dispatchEvent(clickEvent);
 
+                const waitForConfirmButton = () => {
+                  return new Promise((resolve) => {
+                    const check = setInterval(() => {
                       const button3 = document.querySelector(
-                        "#ModalPostExpiration___BV_modal_footer_ > button:nth-child(2)",
+                        "#ModalPostExpiration___BV_modal_footer_ > button:nth-child(2)"
                       );
                       if (button3) {
-                        button3.dispatchEvent(clickEvent);
+                        clearInterval(check);
+                        resolve(button3);
                       }
-
-                      observer.disconnect();
-                    }
-                  }
-                }
-              },
-            );
-            observer.observe(document.body, { childList: true, subtree: true });
+                    }, 50);
+                  });
+                };
+  
+                const button3 = await waitForConfirmButton();
+                button3.dispatchEvent(clickEvent);
+                observer.disconnect();
+              }
+            }
           }
-        }
-      }, 500);
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+      }
     }
-  }, 200);
+  }, 100); 
 }
 
 function addTimeToPost(textInput, isApart, browserType) {
@@ -3209,7 +3233,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.6.2.4';
+            const VERSION = '5.6.3';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
         
@@ -3724,9 +3748,22 @@ async function pressBind() {
 
 async function pressBindFix(tab, browserType) {
 
+  let savedMediaLink = null;
+
+  async function getMediaLinkBeforeSubmit() {
+    const linkElement = document.querySelector('.media-file.m-default-bg.m-media-el');
+    if (linkElement && linkElement.getAttribute('href')) {
+      return linkElement.getAttribute('href');
+    }
+    return null;
+  }
+
   async function pressBind() {
     const mediaWrapperExists = document.querySelector('.b-make-post__media-wrapper');
     if (mediaWrapperExists) {
+      
+      savedMediaLink = await getMediaLinkBeforeSubmit();
+      
       let selector =
         document.querySelector('[at-attr="submit_post"]') ||
         document.querySelector(
@@ -3803,32 +3840,25 @@ async function pressBindFix(tab, browserType) {
             else if (/(Daily|Internal|Nothing)/.test(innerDiv.textContent)) {
               await delay(20000);
             } 
-            else if (/(attached|issue)/i.test(innerDiv.textContent)) { 
-              let elements = document.querySelectorAll(
-                ".b-dropzone__preview__delete.g-btn.m-rounded.m-reset-width.m-thumb-r-corner-pos.m-btn-remove.m-sm-icon-size.has-tooltip",
-              );
-              let divs = document.querySelectorAll(
-                "#make_post_form > div.b-make-post.m-with-free-options > div > div.b-make-post__main-wrapper > div.b-make-post__media-wrapper > div > div > div > div > div > div",
-              );
-              divs.forEach(function (div) {
-                elements.forEach(function (element) {
-                  if (div.contains(element)) {
-                    element.click();
-                  }
-                });
-              });
+            else if (/(attached|issue)/i.test(innerDiv.textContent)) {
 
-              function getMediaLink() {
-                const linkElement = document.querySelector('.b-dropzone__preview a');
-                if (linkElement && linkElement.getAttribute('href')) {
-                  return linkElement.getAttribute('href');
-                }
-                return null; 
-              }
+              let mediaLink = savedMediaLink;
               
-              let mediaLink = getMediaLink();
-
               if (mediaLink) {
+                let elements = document.querySelectorAll(
+                  ".b-dropzone__preview__delete.g-btn.m-rounded.m-reset-width.m-thumb-r-corner-pos.m-btn-remove.m-sm-icon-size.has-tooltip",
+                );
+                let divs = document.querySelectorAll(
+                  "#make_post_form > div.b-make-post.m-with-free-options > div > div.b-make-post__main-wrapper > div.b-make-post__media-wrapper > div > div > div > div > div > div",
+                );
+                divs.forEach(function (div) {
+                  elements.forEach(function (element) {
+                    if (div.contains(element)) {
+                      element.click();
+                    }
+                  });
+                });
+
                 function simulateDragAndDrop(
                   sourceElement,
                   targetElement,
@@ -3996,7 +4026,11 @@ async function pressBindFix(tab, browserType) {
                 }
                 await handleImageUpload(mediaLink);
               }
-              innerDiv.textContent = "[OFH] Fixing media ...";
+              else {
+                innerDiv.textContent = "[OFH] No saved media link available";
+                return
+              }
+              innerDiv.textContent = "[OFH] Fixing media";
               await delay(7000);
             } 
             else if (!innerDiv.textContent.includes("[OFH]")){
@@ -4007,6 +4041,16 @@ async function pressBindFix(tab, browserType) {
             }
           }
         }
+
+        try {
+          const currentMediaLink = await getMediaLinkBeforeSubmit();
+          if (currentMediaLink) {
+            savedMediaLink = currentMediaLink; 
+          }
+        } catch (e) {
+          console.error("Error saving media link:", e);
+        }
+
         chrome.runtime.sendMessage(
           { action: "checkTab", tabId: tab.id },
           async function (response) {
