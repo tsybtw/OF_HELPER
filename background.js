@@ -1093,12 +1093,7 @@ async function pasteBind() {
 }
 
 async function createBrowser(browserType, index, totalIndex, repeat) {
-  async function fetchWithRetry(
-    resource,
-    options,
-    timeout = 5000,
-    retries = 5,
-  ) {
+  async function fetchWithRetry(resource, options, timeout = 5000, retries = 3) {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeout);
 
@@ -1113,38 +1108,48 @@ async function createBrowser(browserType, index, totalIndex, repeat) {
       } catch (e) {
         if (e.name === "AbortError") {
           console.log(`Fetch timed out. Retrying (${i + 1}/${retries})...`);
-        } else {
-          throw e;
-        }
+          continue;
+        } 
+        throw e;
       }
     }
     throw new Error("Fetch failed after retries");
   }
 
-  let number = parseInt(browserType.replace(/\D/g, ""));
-  if (index == 0 || repeat == true) {
-    fetchWithRetry(
-      "http://localhost:3000/create-browser",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          totalIndex: totalIndex,
-          number: number,
-          repeat: repeat,
-        }),
-      },
-      5000,
-    ).catch((e) => console.error(e));
+  const number = parseInt(browserType.replace(/\D/g, "")) || 0;
+  
+  if (index !== 0 && repeat !== true) {
+    return;
+  }
+  
+  const requestConfig = {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      totalIndex,
+      number,
+      repeat,
+    }),
+  };
+  
+  try {
+    await fetchWithRetry("http://localhost:3000/create-browser", requestConfig, 5000);
+  } catch (error) {
+    console.error("Failed to create browser:", error);
   }
 }
 
 async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht) {
-  async function fetchWithRetry(resource, options, timeout = 5000, retries = 5) {
+  let isUploading = false;
+  let imageInserted = false;
+  let textInserted = false;
+  let isProcessing = false;
+
+  async function fetchWithRetry(resource, options, timeout = 5000, retries = 3) {
     const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeout);
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
 
     for (let i = 0; i < retries; i++) {
       try {
@@ -1152,175 +1157,206 @@ async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht) 
           ...options,
           signal: controller.signal,
         });
-        clearTimeout(id);
+        clearTimeout(timeoutId);
         return response;
       } catch (e) {
-        if (e.name === "AbortError") {
-          console.log(`Fetch timed out. Retrying (${i + 1}/${retries})...`);
-        } else {
-          throw e;
-        }
+        if (i === retries - 1) throw e;
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
-    throw new Error("Fetch failed after retries");
   }
 
   function simulateDragAndDrop(sourceElement, targetElement, file) {
-    const dataTransfer = new DataTransfer();
-
-    dataTransfer.items.add(file);
-    const dragStartEvent = new DragEvent("dragstart", {
-      bubbles: true,
-      cancelable: true,
-      dataTransfer: dataTransfer,
-    });
-    sourceElement.dispatchEvent(dragStartEvent);
-
-    setTimeout(() => {
-      const dragOverEvent = new DragEvent("dragover", {
+    try {
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(file);
+      
+      const dragStartEvent = new DragEvent("dragstart", {
         bubbles: true,
         cancelable: true,
         dataTransfer: dataTransfer,
       });
-      targetElement.dispatchEvent(dragOverEvent);
+      sourceElement.dispatchEvent(dragStartEvent);
 
       setTimeout(() => {
-        const dropEvent = new DragEvent("drop", {
+        const dragOverEvent = new DragEvent("dragover", {
           bubbles: true,
           cancelable: true,
           dataTransfer: dataTransfer,
         });
-        targetElement.dispatchEvent(dropEvent);
+        targetElement.dispatchEvent(dragOverEvent);
 
-        const dragEndEvent = new DragEvent("dragend", {
-          bubbles: true,
-          cancelable: true,
-          dataTransfer: dataTransfer,
-        });
-        sourceElement.dispatchEvent(dragEndEvent);
+        setTimeout(() => {
+          const dropEvent = new DragEvent("drop", {
+            bubbles: true,
+            cancelable: true,
+            dataTransfer: dataTransfer,
+          });
+          targetElement.dispatchEvent(dropEvent);
+
+          const dragEndEvent = new DragEvent("dragend", {
+            bubbles: true,
+            cancelable: true,
+            dataTransfer: dataTransfer,
+          });
+          sourceElement.dispatchEvent(dragEndEvent);
+        }, 100);
       }, 100);
-    }, 100);
+    } catch (error) {}
   }
 
-  let isUploading = false;
-  let imageInserted = false;
-  let textInserted = false;
-
   async function sendUpdateRequest() {
-    if ((imageInserted || !pht) && (textInserted || !txt)) {
-      let number = parseInt(browserType.replace(/\D/g, ""));
-      
-      await fetchWithRetry(
-        "http://localhost:3000/update-browser",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            index: index,
-            number: number,
-          }),
-        },
-        5000,
-      );
+    const shouldSendRequest = (imageInserted || !pht) && (textInserted || !txt);
+    if (!shouldSendRequest) return;
+    
+    const number = parseInt(browserType.replace(/\D/g, "")) || 0;
+    
+    const requestConfig = {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        index: index,
+        number: number,
+      }),
+    };
+    
+    const url = "http://localhost:3000/update-browser";
+    const timeout = 5000;
+    
+    try {
+      await fetchWithRetry(url, requestConfig, timeout);
+    } catch (error) {
+      setTimeout(async () => {
+        try {
+          await fetchWithRetry(url, requestConfig, timeout);
+        } catch (e) {
+          console.error("Failed to update browser after retry:", e);
+        }
+      }, 2000);
     }
   }
 
   async function handleImageUpload(pht) {
-    if (isUploading) return;
-    isUploading = true;
-    
-    if (!pht) {
-      isUploading = false;
-      imageInserted = true;
-      await sendUpdateRequest(); 
+    if (isUploading || !pht) {
+      if (!pht) {
+        imageInserted = true;
+        await sendUpdateRequest();
+      }
       return;
     }
 
-    const fileExtension = imageUrl.split(".").pop().toLowerCase();
-    let fileType = "image/png";
-    let mediaElement;
+    isUploading = true;
+    
+    try {
+      const fileExtension = imageUrl.split(".").pop().toLowerCase();
+      let fileType = "image/png";
+      let mediaElement;
 
-    if (fileExtension === "gif") {
-      fileType = "image/gif";
-      mediaElement = new Image();
-    } else if (fileExtension === "mp4") {
-      fileType = "video/mp4";
-      mediaElement = document.createElement("video");
-    } else {
-      mediaElement = new Image();
-    }
+      if (fileExtension === "gif") {
+        fileType = "image/gif";
+        mediaElement = new Image();
+      } else if (fileExtension === "mp4") {
+        fileType = "video/mp4";
+        mediaElement = document.createElement("video");
+      } else {
+        mediaElement = new Image();
+      }
 
-    mediaElement.src = imageUrl;
+      mediaElement.src = imageUrl;
 
-    mediaElement.onload = mediaElement.onloadedmetadata = async function () {
-      try {
-        const mediaBlob = await fetch(imageUrl).then((res) => res.blob());
-        const file = new File([mediaBlob], `media.${fileExtension}`, {
-          type: fileType,
-        });
-        let mediaInserted = false;
-
-        await new Promise((resolve) => {
-          const observer = new MutationObserver((mutationsList, observer) => {
-            for (let mutation of mutationsList) {
-              if (mutation.type === "childList") {
-                let el = document.querySelector(
-                  ".b-make-post__media-wrapper",
-                );
-                if (el && !mediaInserted) {
-                  mediaInserted = true;
-                  clearInterval(intervalId);
-                  isUploading = false;
-                  resolve();
-                  observer.disconnect();
+      await new Promise((resolve, reject) => {
+        const loadHandler = async () => {
+          try {
+            const mediaBlob = await fetch(imageUrl).then(res => res.blob());
+            const file = new File([mediaBlob], `media.${fileExtension}`, {
+              type: fileType,
+            });
+            
+            let dragAttempts = 0;
+            let mediaInserted = false;
+            
+            const observer = new MutationObserver((mutations) => {
+              for (let mutation of mutations) {
+                if (mutation.type === "childList") {
+                  const mediaWrapper = document.querySelector(".b-make-post__media-wrapper");
+                  if (mediaWrapper && !mediaInserted) {
+                    mediaInserted = true;
+                    resolve();
+                    observer.disconnect();
+                  }
                 }
               }
-            }
-          });
+            });
+            
+            observer.observe(document.body, { childList: true, subtree: true });
+            
+            const tryInsertMedia = async () => {
+              if (mediaInserted || dragAttempts >= 3) {
+                return;
+              }
 
-          observer.observe(document.body, { childList: true, subtree: true });
-
-          let dragAttempts = 0;
-
-          const intervalId = setInterval(function () {
-            let element = document.querySelector(
-              ".tiptap.ProseMirror.b-text-editor.js-text-editor.m-native-custom-scrollbar.m-scrollbar-y.m-scroll-behavior-auto.m-overscroll-behavior-auto",
-            );
-            let el = document.querySelector(".b-make-post__media-wrapper");
-
-            if (element && !el && dragAttempts === 0 && !mediaInserted) {
-              element.focus();
-              simulateDragAndDrop(mediaElement, element, file);
-              mediaInserted = true;
-              dragAttempts++;
-            }
-
-            setTimeout(function () {
-              el = document.querySelector(".b-make-post__media-wrapper");
-              if (el || dragAttempts >= 2) {
+              const editor = document.querySelector(
+                ".tiptap.ProseMirror.b-text-editor.js-text-editor.m-native-custom-scrollbar.m-scrollbar-y.m-scroll-behavior-auto.m-overscroll-behavior-auto"
+              );
+              
+              const mediaWrapper = document.querySelector(".b-make-post__media-wrapper");
+              
+              if (editor && !mediaWrapper) {
+                editor.focus();
+                simulateDragAndDrop(mediaElement, editor, file);
+                dragAttempts++;
+                
+                setTimeout(() => {
+                  const updatedMediaWrapper = document.querySelector(".b-make-post__media-wrapper");
+                  if (updatedMediaWrapper) {
+                    mediaInserted = true;
+                    resolve();
+                    observer.disconnect();
+                  } else if (dragAttempts >= 3) {
+                    resolve();
+                    observer.disconnect();
+                  } else {
+                    setTimeout(tryInsertMedia, 1000);
+                  }
+                }, 500);
+              } else if (mediaWrapper) {
                 mediaInserted = true;
-                clearInterval(intervalId);
-                isUploading = false;
                 resolve();
                 observer.disconnect();
+              } else {
+                setTimeout(tryInsertMedia, 1000);
               }
-            }, 500);
-          }, 200);
-        });
-        
-        imageInserted = true;
-        await sendUpdateRequest();
-      } catch (e) {
-        console.log(e);
-        isUploading = false;
-      }
-    };
+            };
+            
+            tryInsertMedia();
+            
+            setTimeout(() => {
+              observer.disconnect();
+              resolve();
+            }, 30000);
+          } catch (e) {
+            reject(e);
+          }
+        };
 
-    mediaElement.onerror = function () {
+        mediaElement.onload = mediaElement.onloadedmetadata = loadHandler;
+        mediaElement.onerror = (e) => reject(e);
+
+        setTimeout(() => {
+          reject(new Error("Media loading timeout"));
+        }, 20000);
+      }).finally(() => {
+        isUploading = false;
+        imageInserted = true;
+        sendUpdateRequest();
+      });
+    } catch (e) {
       isUploading = false;
-    };
+      imageInserted = true;
+      await sendUpdateRequest();
+    }
   }
 
   const formatText = (text) => {
@@ -1365,31 +1401,54 @@ async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht) 
     cancelable: true,
   });
 
-  var checkButton = setInterval(async function () {
-    const button = document.querySelector(".b-make-post__expire-period-btn");
-    if (button) {
-      clearInterval(checkButton);
+  async function startProcessing() {
+    if (isProcessing) return;
+    isProcessing = true;
+    
+    try {
+      const waitForElement = (selector, maxAttempts = 60, interval = 1000) => {
+        return new Promise((resolve) => {
+          let attempts = 0;
+          
+          const checkElement = () => {
+            const element = document.querySelector(selector);
+            if (element) {
+              resolve(element);
+              return true;
+            }
+            
+            attempts++;
+            if (attempts >= maxAttempts) {
+              resolve(null);
+              return true;
+            }
+            
+            return false;
+          };
+          
+          if (checkElement()) return;
+          
+          const intervalId = setInterval(() => {
+            if (checkElement()) {
+              clearInterval(intervalId);
+            }
+          }, interval);
+        });
+      };
+      
+      const expireButton = await waitForElement(".b-make-post__expire-period-btn");
+      if (!expireButton) {
+        throw new Error("Expire period button not found");
+      }
+      
       if (imageUrl) {
         await handleImageUpload(pht);
       } else {
         imageInserted = true;
       }
-  
-      const waitForTextarea = () => {
-        return new Promise((resolve) => {
-          const check = setInterval(() => {
-            const textarea = document.querySelector(".tiptap.ProseMirror");
-            if (textarea && textarea.isConnected) {
-              clearInterval(check);
-              resolve(textarea);
-            }
-          }, 100);
-        });
-      };
-  
-      const textarea = await waitForTextarea();
-
-      if (txt) {
+      
+      const textarea = await waitForElement(".tiptap.ProseMirror");
+      if (textarea && txt) {
         textarea.innerHTML = formatText(text);
         textInserted = true;
         await sendUpdateRequest();
@@ -1397,59 +1456,44 @@ async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht) 
         textInserted = true;
         await sendUpdateRequest();
       }
-  
+      
       if (exp) {
-        const waitForStableButton = () => {
-          return new Promise((resolve) => {
-            setTimeout(() => {
-              const button_fix = document.querySelector(".b-make-post__expire-period-btn");
-              if (button_fix) {
-                resolve(button_fix);
-              }
-            }, 100);
-          });
-        };
-  
-        const button_fix = await waitForStableButton();
-        button_fix.dispatchEvent(clickEvent);
+        await new Promise(resolve => setTimeout(resolve, 500));
         
-        const observer = new MutationObserver(async (mutationsList, observer) => {
-          for (let mutation of mutationsList) {
-            if (mutation.type === "childList") {
-              const button2 = document.querySelector(
-                "#ModalPostExpiration___BV_modal_body_ > div.b-tabs__nav.m-nv.m-tab-rounded.mb-0.m-single-current > ul > li:nth-child(2) > button"
-              );
-              if (button2) {
-                button2.dispatchEvent(clickEvent);
-
-                const waitForConfirmButton = () => {
-                  return new Promise((resolve) => {
-                    const check = setInterval(() => {
-                      const button3 = document.querySelector(
-                        "#ModalPostExpiration___BV_modal_footer_ > button:nth-child(2)"
-                      );
-                      if (button3) {
-                        clearInterval(check);
-                        resolve(button3);
-                      }
-                    }, 50);
-                  });
-                };
-  
-                const button3 = await waitForConfirmButton();
-                button3.dispatchEvent(clickEvent);
-                observer.disconnect();
-              }
+        const expireButtonAgain = await waitForElement(".b-make-post__expire-period-btn");
+        if (expireButtonAgain) {
+          expireButtonAgain.dispatchEvent(clickEvent);
+          
+          const button2 = await waitForElement(
+            "#ModalPostExpiration___BV_modal_body_ > div.b-tabs__nav.m-nv.m-tab-rounded.mb-0.m-single-current > ul > li:nth-child(2) > button"
+          );
+          
+          if (button2) {
+            button2.dispatchEvent(clickEvent);
+            
+            const confirmButton = await waitForElement(
+              "#ModalPostExpiration___BV_modal_footer_ > button:nth-child(2)"
+            );
+            
+            if (confirmButton) {
+              confirmButton.dispatchEvent(clickEvent);
             }
           }
-        });
-        observer.observe(document.body, { childList: true, subtree: true });
+        }
       }
+    } catch (error) {
+    } finally {
+      isProcessing = false;
     }
-  }, 100); 
+  }
+  
+  setTimeout(() => {
+    startProcessing();
+  }, 1000);
 }
 
 function addTimeToPost(textInput, isApart, browserType) {
+
   try {
     const clickEvent = new Event("click", {
       bubbles: true,
@@ -1507,17 +1551,10 @@ function addTimeToPost(textInput, isApart, browserType) {
       }
 
       const button1 = document.querySelector(
-        ".g-btn.m-with-round-hover.m-icon.m-icon-only.m-gray.m-sm-size.b-make-post__datepicker-btn.has-tooltip",
-      );
-      if (button1) {
-        button1.dispatchEvent(clickEvent);
-      } else {
-        const button10 = document.querySelector(
           ".g-btn.m-with-round-hover.m-icon.m-icon-only.m-gray.m-sm-size.b-make-post__datepicker-btn",
         );
-        button10.dispatchEvent(clickEvent);
-      }
-
+      button1.dispatchEvent(clickEvent);
+      
       let currentDate = new Date();
 
       currentDate.setMinutes(currentDate.getMinutes());
@@ -2003,6 +2040,32 @@ function sendActivityInfo(browser) {
 }
 
 async function checkDataFile() {
+
+  const waitForTabAndExecute = async (tabId, functionToExecute, args) => {
+    return new Promise((resolve) => {
+      function checkAndExecute() {
+        chrome.tabs.get(tabId, async (tab) => {
+          if (chrome.runtime.lastError) {
+            resolve();
+            return;
+          }
+          
+          if (tab.status === "complete") {
+            await executeScriptIfValid(tab, {
+              target: { tabId: tab.id },
+              func: functionToExecute,
+              args: args,
+            });
+            resolve();
+          } else {
+            setTimeout(checkAndExecute, 250);
+          }
+        });
+      }
+      checkAndExecute();
+    });
+  };
+
   const dataFileURL = chrome.runtime.getURL("server/files/data/data.json");
   const result = await chrome.storage.local.get([
     "browser1Checked",
@@ -2408,11 +2471,11 @@ async function checkDataFile() {
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
-        await executeScriptIfValid(activeTab, {
-          target: { tabId: activeTab.id },
-          func: addTextToPost,
-          args: [text, imageUrl, index, browserType, exp, txt, pht],
-        });
+        await waitForTabAndExecute(
+          activeTab.id, 
+          addTextToPost, 
+          [text, imageUrl, index, browserType, exp, txt, pht]
+        );
       });
       return
     }
@@ -2532,8 +2595,10 @@ async function checkDataFile() {
     }
 
     if (lastEntry && lastEntry.id === "20" && browserType !== "") {
+      await new Promise((resolve) =>
+        setTimeout(resolve, 1000),
+      );
       await sendTypeToServer(lastIndex, browserType);
-
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         const previousTab = currentWindow.tabs.find(
@@ -2721,13 +2786,14 @@ async function checkDataFile() {
         isApart = false;
       }
       const text = lastEntry.textInput;
+      
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
-        await executeScriptIfValid(activeTab, {
-          target: { tabId: activeTab.id },
-          func: addTimeToPost,
-          args: [text, isApart, browserType],
-        });
+        await waitForTabAndExecute(
+          activeTab.id, 
+          addTimeToPost, 
+          [text, isApart, browserType]
+        );
       });
     }
     return
