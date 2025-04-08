@@ -1493,7 +1493,7 @@ async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht) 
 }
 
 function addTimeToPost(textInput, isApart, browserType) {
-
+  
   try {
     const clickEvent = new Event("click", {
       bubbles: true,
@@ -1529,6 +1529,43 @@ function addTimeToPost(textInput, isApart, browserType) {
       });
     }
 
+    function checkIfQTimeInPastOrPresent(textInput) {
+      if (!textInput.startsWith('q')) {
+        return false;
+      }
+      
+      const currentDate = new Date();
+      const currentHours = currentDate.getHours();
+      const currentMinutes = currentDate.getMinutes();
+      
+      let hours, minutes, period;
+      const timeString = textInput.substring(1);
+
+      period = timeString.charAt(timeString.length - 1);
+      
+      if (timeString.length === 4) { 
+        hours = parseInt(timeString.substring(0, 1));
+        minutes = parseInt(timeString.substring(1, 3));
+      } else if (timeString.length === 5) { 
+        hours = parseInt(timeString.substring(0, 2));
+        minutes = parseInt(timeString.substring(2, 4));
+      } else {
+        return false; 
+      }
+      
+      let hours24Format = hours;
+      if (period === 'a' && hours === 12) {
+        hours24Format = 0;
+      } else if (period === 's' && hours !== 12) {
+        hours24Format += 12;
+      }
+      
+      const currentTotalMinutes = currentHours * 60 + currentMinutes;
+      const inputTotalMinutes = hours24Format * 60 + minutes;
+      
+      return inputTotalMinutes <= currentTotalMinutes;
+    }
+
     async function continueExecution(textInput) {
       let closeButton = document.querySelector(
         "#make_post_form > div.b-make-post > div > div.b-dropzone__previews.b-make-post__schedule-expire-wrapper.g-sides-gaps > div.b-post-piece.b-dropzone__preview.m-schedule.m-loaded.g-pointer-cursor.m-row > button",
@@ -1544,6 +1581,10 @@ function addTimeToPost(textInput, isApart, browserType) {
 
       if (textInput === "n") {
         textInput = "0";
+      }
+      
+      if (checkIfQTimeInPastOrPresent(textInput)) {
+        return;
       }
 
       if (textInput.length === 1 || textInput.length === 2 || textInput.length === 3 ) {
@@ -3299,7 +3340,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.6.3';
+            const VERSION = '5.6.3.2';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
         
