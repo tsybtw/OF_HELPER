@@ -1,6 +1,5 @@
 const ALL_ACTIONS_MONITOR = 200;
 const DELAY_GREEN_BUTTON = 500;
-const FAKE_SS_DELAY = 100;
 
 console.error = function () {};
 
@@ -258,33 +257,41 @@ function openNewTab() {
 }
 
 async function toggleColors() {
-  const button = document.querySelector('button[at-attr="submit_post"]');
-  if (button) {
+  function waitForElement(selector, callback) {
+    const interval = setInterval(() => {
+      const element = document.querySelector(selector);
+      if (element) {
+        callback(element);
+        clearInterval(interval);
+      }
+    }, 500);
+  }
+
+  waitForElement('button[at-attr="submit_post"]', (button) => {
     button.style.backgroundColor = "rgba(138,150,163,.75)";
     button.style.opacity = ".4";
-  }
-
-  const element = document.querySelector(
-    ".g-btn.m-flat.m-link.m-default-font-weight.m-no-uppercase.m-reset-width.b-dot-item",
-  );
-  if (element) {
-    element.style.opacity = ".4";
-  }
-
-  const anotherElement = document.querySelector(
-    ".g-btn.m-btn-icon.m-reset-width.m-flat.m-with-round-hover.m-size-sm-hover",
-  );
-  if (anotherElement) {
-    anotherElement.style.opacity = ".4";
-  }
-
-  const elements = document.querySelectorAll(
-    ".b-dropzone__preview__delete.g-btn.m-rounded.m-reset-width.m-thumb-r-corner-pos.m-btn-remove.m-sm-icon-size",
-  );
-  elements.forEach((element) => {
-    element.style.opacity = ".4";
-    element.style.background = "rgba(138, 150, 163, .75)";
   });
+
+  waitForElement(".g-btn.m-flat.m-link.m-default-font-weight.m-no-uppercase.m-reset-width.b-dot-item", (element) => {
+    element.style.opacity = ".4";
+  });
+
+  waitForElement(".g-btn.m-btn-icon.m-reset-width.m-flat.m-with-round-hover.m-size-sm-hover", (element) => {
+    element.style.opacity = ".4";
+  });
+
+  const checkDropzoneElements = setInterval(() => {
+    const elements = document.querySelectorAll(
+      ".b-dropzone__preview__delete.g-btn.m-rounded.m-reset-width.m-thumb-r-corner-pos.m-btn-remove.m-sm-icon-size"
+    );
+    if (elements.length >= 2) {
+      elements.forEach((element) => {
+        element.style.opacity = ".4";
+        element.style.background = "rgba(138, 150, 163, .75)";
+      });
+      clearInterval(checkDropzoneElements);
+    }
+  }, 500);
 }
 
 async function stopOn() {
@@ -2636,22 +2643,19 @@ async function checkDataFile() {
     }
 
     if (lastEntry && lastEntry.id === "20" && browserType !== "") {
-      await new Promise((resolve) =>
-        setTimeout(resolve, 1000),
-      );
       await sendTypeToServer(lastIndex, browserType);
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         const previousTab = currentWindow.tabs.find(
           (tab) => tab.index === activeTab.index - 1,
         );
-        await executeScriptIfValid(activeTab, {
-          target: { tabId: activeTab.id },
-          func: rememberId,
-          args: [activeTab, previousTab],
-        });
+        await waitForTabAndExecute(
+          activeTab.id,
+          rememberId,
+          [activeTab, previousTab]
+        );
       });
-      return
+      return;
     }
 
     if (lastEntry && lastEntry.id === "21" && browserType !== "") {
@@ -2720,9 +2724,6 @@ async function checkDataFile() {
                       if (fakeCheckedResult.fakeChecked === true) {
                         allTabs.forEach(async (tab) => {
                           if (tab.index >= activeTab.index) {
-                            await new Promise((resolve) =>
-                              setTimeout(resolve, FAKE_SS_DELAY),
-                            );
                             await executeScriptIfValid(tab, {
                               target: { tabId: tab.id },
                               func: toggleColors,
@@ -3340,7 +3341,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.6.3.2';
+            const VERSION = '5.6.3.3';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
         
