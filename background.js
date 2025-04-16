@@ -338,269 +338,274 @@ async function searchPosts() {
     const baseUrl = "https://onlyfans.com/";
     const searchUrl = "/search/posts?q=";
 
-    for (const line of lines) {
-      const url = `${baseUrl}${line}${searchUrl}${username}`;
-      const newTab = window.open(url, "_blank");
-      const checkTab = setInterval(() => {
-        if (newTab.document.readyState !== 'loading') {
-          clearInterval(checkTab);
-          chrome.runtime.sendMessage({
-            action: "protectTab"
-          });
-        }
-      }, 100);
-    }
+    chrome.runtime.sendMessage({
+      action: "openAndProtectTabs",
+      urls: lines.map(line => `${baseUrl}${line}${searchUrl}${username}`)
+    });
   }
 }
 
 chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
-  if (message.action === 'checkModelsResult') {
+   if (message.action === "protectTab") {
+
+    const openedTabIds = [];
+    
+    message.urls.forEach(url => {
+      chrome.tabs.create({ url: url }, (tab) => {
+
+        protectedTabs.add(tab.id);
+        openedTabIds.push(tab.id);
+        
+        chrome.tabs.onUpdated.addListener(function listener(tabId, changeInfo) {
+          if (tabId === tab.id && changeInfo.status === 'complete') {
+            chrome.tabs.onUpdated.removeListener(listener);
+          
+            chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              function: processTab
+            });
+          }
+        });
+      });
+    });
+
+    sendResponse({ success: true });
+    
+    } else if (message.action === "openAndProtectTabs") {
+      message.urls.forEach(url => {
+        chrome.tabs.create({ url: url }, (tab) => {
+          protectedTabs.add(tab.id);
+        });
+      });
+    }
+})
+
+async function checkModels() {
+  const fileUrl = chrome.runtime.getURL("server/files/tags.txt");
+  const response = await fetch(fileUrl);
+  const text = await response.text();
+  const lines = text.split("\n").filter((line) => line.trim() !== "");
+  
+  const urls = lines.map(line => `https://onlyfans.com/${line}`);
+  chrome.runtime.sendMessage({
+    action: "protectTab",
+    urls: urls
+  });
+}
+
+async function processTab() {
+  async function outputElements() {
+    const usernameElements = document.querySelectorAll(".g-user-username");
+    const username = usernameElements.length >= 2 ? usernameElements[1].textContent : "-";
+    let fanCountElement = document.querySelector('svg[data-icon-name="icon-follow"]');
+    const fanCount = fanCountElement
+      ? fanCountElement.nextElementSibling.textContent.trim()
+      : "closed Fans";
+
+    setTimeout(async () => {
+      const currentMonthElement = document.querySelector(".vdatetime-calendar__current--month");
+      const currentMonth = currentMonthElement ? currentMonthElement.textContent : "-";
+      let firstActiveDay = document.querySelector(
+        ".vdatetime-calendar__month__day:not(.vdatetime-calendar__month__day--disabled)"
+      );
+      let firstActiveDayNumber = firstActiveDay
+        ? firstActiveDay.querySelector("span span").textContent
+        : "-";
+    
+      const data = { username, currentMonth, firstActiveDayNumber, fanCount };
+
       try {
         const response = await fetch("http://localhost:3000/checkModels", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify(message.data)
+          body: JSON.stringify(data)
         });
+        
         if (response.ok) {
           console.log("Data sent successfully to the server");
+          chrome.runtime.sendMessage({ action: "closeTab" });
         } else {
           console.error("Failed to send data to the server");
         }
       } catch (error) {
         console.error("Error:", error);
       }
-    }
-  if (message.action === "protectTab") {
-      if (sender.tab) {
-        console.log(sender.tab.id)
-        protectedTabs.add(sender.tab.id);
-      }
-    }
-})
-
-async function checkModels() {
-  async function outputElements(newTab) {
-    const usernameElements =
-      newTab.document.querySelectorAll(".g-user-username");
-    const username =
-      usernameElements.length >= 2 ? usernameElements[1].textContent : "-";
-    let fanCountElement = newTab.document.querySelector(
-      'svg[data-icon-name="icon-follow"]',
-    );
-    const fanCount = fanCountElement
-      ? fanCountElement.nextElementSibling.textContent.trim()
-      : "closed Fans";
-
-    setTimeout(() => {
-      const currentMonthElement = newTab.document.querySelector(
-        ".vdatetime-calendar__current--month",
-      );
-      const currentMonth = currentMonthElement
-        ? currentMonthElement.textContent
-        : "-";
-      let firstActiveDay = newTab.document.querySelector(
-        ".vdatetime-calendar__month__day:not(.vdatetime-calendar__month__day--disabled)",
-      );
-      let firstActiveDayNumber = firstActiveDay
-        ? firstActiveDay.querySelector("span span").textContent
-        : "-";
-    
-      chrome.runtime.sendMessage({
-        action: "checkModelsResult",
-        data: { username, currentMonth, firstActiveDayNumber, fanCount },
-      });
     }, 1000);
   }
 
-  const fileUrl = chrome.runtime.getURL("server/files/tags.txt");
-  const response = await fetch(fileUrl);
-  const text = await response.text();
-  const lines = text.split("\n").filter((line) => line.trim() !== "");
+  let subscribeButtonClicked = false;
+  let dropdownButtonClicked = false;
 
-  for (const line of lines) {
-    const url = `https://onlyfans.com/${line}`;
-    const newTab = window.open(url, "_blank");
-    const checkTab = setInterval(() => {
-      if (newTab.document.readyState !== 'loading') {
-        clearInterval(checkTab);
-        chrome.runtime.sendMessage({
-          action: "protectTab"
-        });
-      }
-    }, 100);
-    const checkDOM = setInterval(() => {
-      if (newTab.document.readyState !== "loading") {
-        clearInterval(checkDOM);
-
-        let subscribeButtonClicked = false;
-        let dropdownButtonClicked = false;
-
-        const observer = new MutationObserver(
-          async (mutationsList, observer) => {
-            for (let mutation of mutationsList) {
-              if (mutation.type === "childList") {
-                const subscribeButton = newTab.document.querySelector(
-                  ".m-rounded.m-flex.m-space-between.m-lg.g-btn",
-                );
-                const dropdownButton = newTab.document.querySelector(
-                  ".btn.dropdown-toggle.g-btn.m-gray.m-with-round-hover.m-icon.m-icon-only.m-sm-size",
-                );
-
-                if (
-                  subscribeButton &&
-                  !dropdownButtonClicked &&
-                  !dropdownButton &&
-                  !subscribeButtonClicked
-                ) {
-                  subscribeButtonClicked = true;
-                  setTimeout(() => {
-                    subscribeButton.click();
-                    setTimeout(() => {
-                      const newDropdownButton = newTab.document.querySelector(
-                        ".btn.dropdown-toggle.g-btn.m-gray.m-with-round-hover.m-icon.m-icon-only.m-sm-size",
-                      );
-                      if (newDropdownButton) {
-                        newDropdownButton.click();
-                        dropdownButtonClicked = true;
-
-                        setTimeout(() => {
-                          const goToDateLabel = newTab.document.querySelector(
-                            'label[for="filter-go-to-date"]',
-                          );
-                          if (goToDateLabel) {
-                            goToDateLabel.click();
-                          }
-
-                          setTimeout(async () => {
-                            let days = Array.from(
-                              newTab.document.querySelectorAll(
-                                ".vdatetime-calendar__month .vdatetime-calendar__month__day",
-                              ),
-                            );
-                            days = days.filter(
-                              (day) =>
-                                !day.classList.contains(
-                                  "vdatetime-calendar__month__day--disabled",
-                                ),
-                            );
-
-                            while (days.length > 0) {
-                              const previousButton =
-                                newTab.document.querySelector(
-                                  ".vdatetime-calendar__navigation--previous",
-                                );
-                              if (previousButton) {
-                                previousButton.click();
-                                await new Promise((resolve) =>
-                                  setTimeout(resolve, 100),
-                                );
-                              }
-                              days = Array.from(
-                                newTab.document.querySelectorAll(
-                                  ".vdatetime-calendar__month .vdatetime-calendar__month__day",
-                                ),
-                              );
-                              days = days.filter(
-                                (day) =>
-                                  !day.classList.contains(
-                                    "vdatetime-calendar__month__day--disabled",
-                                  ),
-                              );
-                            }
-
-                            const nextButton = newTab.document.querySelector(
-                              ".vdatetime-calendar__navigation--next",
-                            );
-                            if (nextButton) {
-                              nextButton.click();
-                              setTimeout(async () => {
-                                await outputElements(newTab);
-                                newTab.close();
-                                observer.disconnect();
-                              }, 500);
-                            }
-                          }, 500);
-                        }, 3000);
-                      }
-                    }, 9000);
-                  }, 5000);
-                }
-
-                if (dropdownButton && !dropdownButtonClicked) {
-                  dropdownButtonClicked = true;
-                  setTimeout(() => {
-                    dropdownButton.click();
-                    setTimeout(() => {
-                      const goToDateLabel = newTab.document.querySelector(
-                        'label[for="filter-go-to-date"]',
-                      );
-                      if (goToDateLabel) {
-                        goToDateLabel.click();
-                      }
-
-                      setTimeout(async () => {
-                        let days = Array.from(
-                          newTab.document.querySelectorAll(
-                            ".vdatetime-calendar__month .vdatetime-calendar__month__day",
-                          ),
-                        );
-                        days = days.filter(
-                          (day) =>
-                            !day.classList.contains(
-                              "vdatetime-calendar__month__day--disabled",
-                            ),
-                        );
-
-                        while (days.length > 0) {
-                          const previousButton = newTab.document.querySelector(
-                            ".vdatetime-calendar__navigation--previous",
-                          );
-                          if (previousButton) {
-                            previousButton.click();
-                            await new Promise((resolve) =>
-                              setTimeout(resolve, 100),
-                            );
-                          }
-                          days = Array.from(
-                            newTab.document.querySelectorAll(
-                              ".vdatetime-calendar__month .vdatetime-calendar__month__day",
-                            ),
-                          );
-                          days = days.filter(
-                            (day) =>
-                              !day.classList.contains(
-                                "vdatetime-calendar__month__day--disabled",
-                              ),
-                          );
-                        }
-
-                        const nextButton = newTab.document.querySelector(
-                          ".vdatetime-calendar__navigation--next",
-                        );
-                        if (nextButton) {
-                          nextButton.click();
-                          setTimeout(async () => {
-                            await outputElements(newTab);
-                            newTab.close();
-                            observer.disconnect();
-                          }, 500);
-                        }
-                      }, 500);
-                    }, 500);
-                  }, 5000);
-                }
-              }
-            }
-          },
+  const observer = new MutationObserver(async (mutationsList, observer) => {
+    for (let mutation of mutationsList) {
+      if (mutation.type === "childList") {
+        const subscribeButton = document.querySelector(
+          ".m-rounded.m-flex.m-space-between.m-lg.g-btn"
         );
-        observer.observe(newTab.document.body, {
-          childList: true,
-          subtree: true,
-        });
+        const dropdownButton = document.querySelector(
+          ".btn.dropdown-toggle.g-btn.m-gray.m-with-round-hover.m-icon.m-icon-only.m-sm-size"
+        );
+
+        if (
+          subscribeButton &&
+          !dropdownButtonClicked &&
+          !dropdownButton &&
+          !subscribeButtonClicked
+        ) {
+          subscribeButtonClicked = true;
+          setTimeout(() => {
+            subscribeButton.click();
+            setTimeout(() => {
+              const newDropdownButton = document.querySelector(
+                ".btn.dropdown-toggle.g-btn.m-gray.m-with-round-hover.m-icon.m-icon-only.m-sm-size"
+              );
+              if (newDropdownButton) {
+                newDropdownButton.click();
+                dropdownButtonClicked = true;
+
+                setTimeout(() => {
+                  const goToDateLabel = document.querySelector(
+                    'label[for="filter-go-to-date"]'
+                  );
+                  if (goToDateLabel) {
+                    goToDateLabel.click();
+                  }
+
+                  setTimeout(async () => {
+                    let days = Array.from(
+                      document.querySelectorAll(
+                        ".vdatetime-calendar__month .vdatetime-calendar__month__day"
+                      )
+                    );
+                    days = days.filter(
+                      (day) =>
+                        !day.classList.contains(
+                          "vdatetime-calendar__month__day--disabled"
+                        )
+                    );
+
+                    while (days.length > 0) {
+                      const previousButton = document.querySelector(
+                        ".vdatetime-calendar__navigation--previous"
+                      );
+                      if (previousButton) {
+                        previousButton.click();
+                        await new Promise((resolve) =>
+                          setTimeout(resolve, 100)
+                        );
+                      }
+                      days = Array.from(
+                        document.querySelectorAll(
+                          ".vdatetime-calendar__month .vdatetime-calendar__month__day"
+                        )
+                      );
+                      days = days.filter(
+                        (day) =>
+                          !day.classList.contains(
+                            "vdatetime-calendar__month__day--disabled"
+                          )
+                      );
+                    }
+
+                    const nextButton = document.querySelector(
+                      ".vdatetime-calendar__navigation--next"
+                    );
+                    if (nextButton) {
+                      nextButton.click();
+                      setTimeout(async () => {
+                        await outputElements();
+   
+                        observer.disconnect();
+                      }, 500);
+                    }
+                  }, 500);
+                }, 3000);
+              }
+            }, 9000);
+          }, 5000);
+        }
+
+        if (dropdownButton && !dropdownButtonClicked) {
+          dropdownButtonClicked = true;
+          setTimeout(() => {
+            dropdownButton.click();
+            setTimeout(() => {
+              const goToDateLabel = document.querySelector(
+                'label[for="filter-go-to-date"]'
+              );
+              if (goToDateLabel) {
+                goToDateLabel.click();
+              }
+
+              setTimeout(async () => {
+                let days = Array.from(
+                  document.querySelectorAll(
+                    ".vdatetime-calendar__month .vdatetime-calendar__month__day"
+                  )
+                );
+                days = days.filter(
+                  (day) =>
+                    !day.classList.contains(
+                      "vdatetime-calendar__month__day--disabled"
+                    )
+                );
+
+                while (days.length > 0) {
+                  const previousButton = document.querySelector(
+                    ".vdatetime-calendar__navigation--previous"
+                  );
+                  if (previousButton) {
+                    previousButton.click();
+                    await new Promise((resolve) =>
+                      setTimeout(resolve, 100)
+                    );
+                  }
+                  days = Array.from(
+                    document.querySelectorAll(
+                      ".vdatetime-calendar__month .vdatetime-calendar__month__day"
+                    )
+                  );
+                  days = days.filter(
+                    (day) =>
+                      !day.classList.contains(
+                        "vdatetime-calendar__month__day--disabled"
+                      )
+                  );
+                }
+
+                const nextButton = document.querySelector(
+                  ".vdatetime-calendar__navigation--next"
+                );
+                if (nextButton) {
+                  nextButton.click();
+                  setTimeout(async () => {
+                    await outputElements();
+                    
+                    observer.disconnect();
+                  }, 500);
+                }
+              }, 500);
+            }, 500);
+          }, 5000);
+        }
       }
-    }, 100);
+    }
+  });
+
+  if (document.readyState !== "loading") {
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+  } else {
+    document.addEventListener("DOMContentLoaded", () => {
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+      });
+    });
   }
 }
 
@@ -3341,7 +3346,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.6.4';
+            const VERSION = '5.6.4.1';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
         
