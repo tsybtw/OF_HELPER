@@ -3346,9 +3346,28 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.6.4.1';
+            const VERSION = '5.6.4.2';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
+
+            function updateTextColor() {
+              const rootStyles = getComputedStyle(document.documentElement);
+              const bgColor = rootStyles.getPropertyValue('--bg-color').trim();
+              
+              if (bgColor === '#161618') {
+                versionContainer.style.color = 'white';
+              } else if (bgColor === '#fff') {
+                versionContainer.style.color = 'black';
+              }
+            }
+          
+            document.addEventListener('DOMContentLoaded', updateTextColor);
+            
+            const observer = new MutationObserver(updateTextColor);
+            observer.observe(document.documentElement, { 
+              attributes: true, 
+              attributeFilter: ['style'] 
+            });
         
           chrome.storage.local.get(null, function(items) {
             const activeBrowser = Object.keys(items)
