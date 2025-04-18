@@ -14,6 +14,10 @@ function warn(message) {
    console.log('\n\x1b[33m%s\x1b[0m\n', message);
 }
 
+function info(message) {
+    console.log('\n\x1b[36m%s\x1b[0m\n', message);
+ }
+
 function fixNpmPermissions() {
    if (!isWindows) {
        try {
@@ -30,30 +34,94 @@ function fixNpmPermissions() {
 
 function fixMacOSPermissions() {
     if (!isWindows) {
-        console.log('Setting up ffmpeg and crop permissions...');
+        console.log('Setting up permissions for main in parent directory...');
         
         try {
-            execSync('sudo xattr -r -d com.apple.quarantine ffmpeg', { stdio: 'inherit' });
-            console.log('Quarantine removed from ffmpeg successfully');
+            process.chdir('..');
+            console.log(`Changed to parent directory: ${process.cwd()}`);
+
+            try {
+                execSync('sudo xattr -d com.apple.quarantine ./main', { stdio: 'inherit' });
+                console.log('Quarantine removed from main successfully');
+            } catch (error) {
+                info(`Note: ${error.message}. This is normal if the file was not in quarantine.`);
+            }
+     
+            try {
+                execSync('sudo chmod +x main', { stdio: 'inherit' });
+                console.log('Execute permissions set for main successfully');
+            } catch (error) {
+                hasErrors = true;
+                warn(`Failed to set execute permissions for main: ${error}`);
+            }
+
+            process.chdir(currentPath);
+            console.log(`Returned to original directory: ${process.cwd()}`);
         } catch (error) {
             hasErrors = true;
-            warn(`Failed to remove quarantine from ffmpeg: ${error}`);
-        }
- 
-        try {
-            execSync('sudo chmod +x ffmpeg', { stdio: 'inherit' });
-            console.log('Execute permissions set for ffmpeg successfully');
-        } catch (error) {
-            hasErrors = true;
-            warn(`Failed to set execute permissions for ffmpeg: ${error}`);
+            warn(`Error working with parent directory: ${error}`);
+
+            try {
+                process.chdir(currentPath);
+            } catch (e) {
+                warn(`Failed to return to original directory: ${e}`);
+            }
         }
 
+        console.log('Setting up ffmpeg and ffprobe permissions in child directory...');
+
+        try {
+            process.chdir('./ffmpeg'); 
+            console.log(`Changed to child directory: ${process.cwd()}`);
+
+            try {
+                execSync('sudo xattr -r -d com.apple.quarantine ffmpeg', { stdio: 'inherit' });
+                console.log('Quarantine removed from ffmpeg successfully');
+            } catch (error) {
+                info(`Note: ${error.message}. This is normal if the file was not in quarantine.`);
+            }
+     
+            try {
+                execSync('sudo chmod +x ffmpeg', { stdio: 'inherit' });
+                console.log('Execute permissions set for ffmpeg successfully');
+            } catch (error) {
+                hasErrors = true;
+                warn(`Failed to set execute permissions for ffmpeg: ${error}`);
+            }
+
+            try {
+                execSync('sudo xattr -d com.apple.quarantine ./ffprobe', { stdio: 'inherit' });
+                console.log('Quarantine removed from ffprobe successfully');
+            } catch (error) {
+                info(`Note: ${error.message}. This is normal if the file was not in quarantine.`);
+            }
+     
+            try {
+                execSync('sudo chmod +x ffprobe', { stdio: 'inherit' });
+                console.log('Execute permissions set for ffprobe successfully');
+            } catch (error) {
+                hasErrors = true;
+                warn(`Failed to set execute permissions for ffprobe: ${error}`);
+            }
+
+            process.chdir(currentPath);
+            console.log(`Returned to original directory: ${process.cwd()}`);
+        } catch (error) {
+            hasErrors = true;
+            warn(`Error working with child directory: ${error}`);
+
+            try {
+                process.chdir(currentPath);
+            } catch (e) {
+                warn(`Failed to return to original directory: ${e}`);
+            }
+        }
+        console.log('Setting up crop permissions in current directory...');
         try {
             execSync('sudo xattr -d com.apple.quarantine ./crop', { stdio: 'inherit' });
             console.log('Quarantine removed from crop successfully');
         } catch (error) {
-            hasErrors = true;
-            warn(`Failed to remove quarantine from crop: ${error}`);
+            info(`Note: ${error.message}. This is normal if the file was not in quarantine.`);
         }
  
         try {
@@ -64,7 +132,7 @@ function fixMacOSPermissions() {
             warn(`Failed to set execute permissions for crop: ${error}`);
         }
     }
- }
+}
 
 function installDependencies() {
    console.log('Installing dependencies...');

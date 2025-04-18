@@ -1,13 +1,25 @@
-Для установки и запуска на mac os:
+на Mac os: Python, Node js,
+на Windows: Python, Node js, Java, Lightshot/ShareX, Windows Terminal
 
-Правой кнопкой мыши по папке server -> Открыть папку в терминале
+Запуск на Mac os:
 
-xattr -d com.apple.quarantine ./main
+    1. Нажите правой кнопкой мыши по папке server -> Новый терминал по адресу папки
+    2. Выполните команду:
 
-sudo chmod +x main
+    ./main
 
-./main
+Для первого запуска на Windows:
 
-Для установки и запуска на windows: 
+    1. Запустите файл wt.exe в Windows terminal  
+    2. Нажмите на значок ⏷
+    3. В меню слева выберите Defaults.
+    4. Найдите Starting directory:
+        - Уберите галочку "Use parent process directory".
+        - Укажите путь к папке server.
+    5. Нажмите Save.
+    6. Нажмите + (новая вкладка).
+    7. Введите команду: ./main
 
-Дабл клик по main.exe (либо ./main через powerShell)
+Для следующих запусков на Windows:
+
+    Выполняйте только пункты 1 и 7 из инструкции выше.
