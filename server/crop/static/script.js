@@ -302,6 +302,29 @@ function switchAutoDelete(){
     });
 }
 
+function switchAutoSend(){
+    var sendButton = document.getElementsByClassName('button4')[0];
+    sendButton.classList.add('animate');
+    setTimeout(function() {
+        sendButton.classList.remove('animate');
+    }, 200);
+    
+    fetch('/switch-auto-send', { method: 'POST' })
+    .then(response => response.json())
+    .then(data => {
+        var element = document.getElementById('send-status');
+        if (data.message) {
+            element.textContent = data.message;
+            element.classList.add('show');
+            element.style.animation = 'slide-up 0.5s forwards';
+            setTimeout(function() {
+                element.classList.remove('show');
+                element.style.animation = 'none';
+            }, 5000);
+        }
+    });
+}
+
 function toggleAutoDelete() {
     fetch('/toggle_auto_delete', {
         method: 'POST',

@@ -181,7 +181,7 @@ video {
   }
 }
 
-.button1, .button2, .button3, #open-folder-button, #copy-files-button {
+.button1, .button2, .button3, .button4, #open-folder-button, #copy-files-button {
   position: absolute;
   margin-bottom: 10px ;
   cursor: pointer;
@@ -227,23 +227,31 @@ video {
   border: solid black 3px;
 }
 
-.button3 {
+.button3, .button4 {
   display: flex;
   top: 2;
-  left: 121px;
-  width: 30px;
+  left: 87px;
+  width: 50px;
   height: 30px;
   z-index: 5;
-  border-radius: 10px;
+  border-radius: 5px;
   border: solid black;
   text-align: center;
   justify-content: center;
   align-items: center;
-  font-size: 30px;
+  font-size: 16px;
   color: black;
-  font-weight: bold;
   border-width: 2px;
-  
+  transition: all 0.3s;
+  padding: 2px;
+  transition: all 0.5s;
+  will-change: filter;
+}
+
+.button4 {
+  left: 200px;
+  width: 100px;
+  height: 15px;
 }
 
 #button-text {
@@ -308,8 +316,8 @@ video {
   background-color: rgb(194, 209, 252);
 }
 
-.button3:hover {
-  transform: scale(1.05);
+.button3:hover, .button4:hover {
+  filter: brightness(1.3);
 }
 
 ::-webkit-scrollbar {
