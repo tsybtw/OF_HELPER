@@ -3346,7 +3346,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.6.4.2';
+            const VERSION = '5.6.5';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -4749,7 +4749,22 @@ async function resetAllButtonStyles() {
           });
         })
       )).then(() => {
-        chrome.storage.local.set({ isStop: false }, resolve);
+        fetch('http://localhost:8444/send_screenshots', {
+          method: 'POST'
+        })
+        .then(response => {
+          if (!response.ok) {
+            console.log('Send screenshots request failed with status:', response.status);
+          } else {
+            console.log('Send screenshots request successful');
+          }
+        })
+        .catch(error => {
+          console.log('Error sending screenshots request:', error);
+        })
+        .finally(() => {
+          chrome.storage.local.set({ isStop: false }, resolve);
+        });
       });
     });
   });
