@@ -180,7 +180,6 @@ async function copyFiles() {
 }
 
 function sendFiles(receiver_id, client_id, event) {
-
     var copyButton = event.target;
     copyButton.classList.add('animate');
 
@@ -192,6 +191,14 @@ function sendFiles(receiver_id, client_id, event) {
         receiver_id: receiver_id,
         client_id: client_id,
     };
+
+    var statusElement = document.getElementById('send-status');
+    if (statusElement) {
+        statusElement.textContent = "Sending files...";
+        statusElement.classList.add('show');
+        statusElement.style.animation = 'slide-up 0.5s forwards';
+    }
+
     fetch('/sendFiles', {
         method: 'POST',
         headers: {
@@ -201,25 +208,99 @@ function sendFiles(receiver_id, client_id, event) {
     })
     .then(response => response.json())
     .then(data => {
-        var element = document.getElementById('send-status');
-        element.textContent = data.message;
-        element.classList.add('show');
-        element.style.animation = 'slide-up 0.5s forwards';
-        var copyButton = document.getElementById('send-button');
 
-        if (!copyButton.dataset.clickCount || copyButton.dataset.clickCount > 0) {
-            copyButton.style.backgroundColor = '#D0FF6B ';
-            copyButton.dataset.clickCount = 1;
-        } 
-        
-        setTimeout(function() {
-            element.classList.remove('show');
-            element.style.animation = 'none';
-        }, 5000);
+        startStatusCheck(copyButton);
     })
     .catch((error) => {
         console.error('Error:', error);
+        if (statusElement) {
+            statusElement.textContent = "Ошибка: " + error;
+        }
+        copyButton.style.backgroundColor = '#FF6B6B'; 
     });
+}
+
+function startStatusCheck(button) {
+    var statusCheckInterval = setInterval(function() {
+        checkSendStatus(button, function() {
+            clearInterval(statusCheckInterval);
+        });
+    }, 1000);
+
+    setTimeout(function() {
+        clearInterval(statusCheckInterval);
+    }, 30000);
+}
+
+function checkSendStatus(button, callback) {
+    fetch('/get_send_status')
+        .then(response => response.json())
+        .then(data => {
+            var statusElement = document.getElementById('send-status');
+
+            if (data.message && data.success !== null) {
+
+                if (statusElement) {
+                    statusElement.textContent = data.message;
+
+                    setTimeout(function() {
+                        statusElement.classList.remove('show');
+                        statusElement.style.animation = 'none';
+                    }, 5000);
+                }
+
+                if (button) {
+                    button.style.backgroundColor = data.success ? '#D0FF6B' : '#FF6B6B';
+                }
+
+                if (callback) callback();
+            }
+        })
+        .catch(error => {
+            console.error('Error checking status:', error);
+        });
+}
+
+let lastProcessedStatusId = null;
+
+function setupStatusMonitor() {
+
+    setInterval(function() {
+        fetch('/get_send_status')
+            .then(response => response.json())
+            .then(data => {
+
+                const statusId = data.message + "_" + data.success + "_" + new Date().getTime();
+
+                if (data.success !== null && data.message && statusId !== lastProcessedStatusId) {
+                    lastProcessedStatusId = statusId;
+
+                    var button = document.getElementById('send-button');
+                    var statusElement = document.getElementById('send-status');
+
+                    if (statusElement) {
+                        statusElement.textContent = data.message;
+                        statusElement.classList.add('show');
+                        statusElement.style.animation = 'slide-up 0.5s forwards';
+
+                        setTimeout(function() {
+                            statusElement.classList.remove('show');
+                            statusElement.style.animation = 'none';
+
+                            fetch('/get_send_status?clear=true')
+                                .catch(err => console.error('Error clearing status:', err));
+                        }, 5000);
+                    }
+
+                    if (button) {
+                        button.style.backgroundColor = data.success ? '#D0FF6B' : '#FF6B6B';
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error checking status:', error);
+            });
+    }, 2000);
 }
 
 function deleteFiles() {
@@ -308,7 +389,7 @@ function switchAutoSend(){
     setTimeout(function() {
         sendButton.classList.remove('animate');
     }, 200);
-    
+
     fetch('/switch-auto-send', { method: 'POST' })
     .then(response => response.json())
     .then(data => {
@@ -365,7 +446,7 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
     })
     .then(response => response.json())
     .then(data => {
-        
+
         const hintsContainer = document.getElementById('hints-container');
         const allCheckboxes = Array.from(hintsContainer.querySelectorAll('input[type="checkbox"]'));
         const allHintItems = Array.from(hintsContainer.querySelectorAll('.hint-item'));
@@ -458,7 +539,7 @@ function saveHint(chatIdToUse, messageCount, hintType = 'personal') {
         if (data.success) {
             const fullHintKey = data.full_hint_key;
             let hintsContainer = document.getElementById('hints-container');
-            
+
             if (!hintsContainer) {
                 hintsContainer = document.createElement('div');
                 hintsContainer.id = 'hints-container';
@@ -489,7 +570,7 @@ function saveHint(chatIdToUse, messageCount, hintType = 'personal') {
                 else {
                        hintsContainer.innerHTML = ` <div class="hints-wrapper"></div> `;
                 }
-                
+
                 const chatSection = document.querySelector('.chat-section') || document.body;
                 chatSection.appendChild(hintsContainer);
             }
@@ -558,7 +639,7 @@ function saveHint(chatIdToUse, messageCount, hintType = 'personal') {
                     hintsContainer.insertAdjacentHTML('afterbegin', sortHTML);
                 }
             }
-            
+
             const currentMode = localStorage.getItem('sortMode') || 'usage';
             switchSortMode(currentMode);
             newHintInput.value = '';
@@ -573,12 +654,12 @@ function saveHint(chatIdToUse, messageCount, hintType = 'personal') {
     });
 }
 
-
 function processContentLoader(button, messageData, client_id) {
     const data = {
         message_id: messageData.message_id,
         sender_id: messageData.sender_id,
         client_id: client_id,
+        is_all_button: messageData.is_all_button || false
     };
 
     fetch('/process_content_loader', {
@@ -844,7 +925,7 @@ function saveImageToServer(imageData, imagePath) {
         } else {
             element.textContent = 'Error saving image: ' + (data.error || 'unknown error');
         }
-        
+
         element.classList.add('show');
         element.style.animation = 'slide-up 0.5s forwards';
         setTimeout(function() {
@@ -969,34 +1050,30 @@ function recropImage(mediaId, imagePath) {
 
     function initCropArea() {
         setTimeout(() => {
-            
+
             const containerBox = imgContainer.getBoundingClientRect();
             const imageBox = imgClone.getBoundingClientRect();
-            
-            // Корректируем расчет смещения
+
             const offsetX = Math.floor(imageBox.left - containerBox.left);
             const offsetY = Math.floor(imageBox.top - containerBox.top);
-    
-            // Учитываем физические границы изображения
+
             const imgDisplayWidth = Math.floor(imageBox.width);
             const imgDisplayHeight = Math.floor(imageBox.height);
-    
-            // Новые границы с учетом 1px отступа со всех сторон
+
             const minX = offsetX + 1;
             const minY = offsetY + 1;
             const maxX = offsetX + imgDisplayWidth - 1;
             const maxY = offsetY + imgDisplayHeight - 1;
-    
-            // Корректный расчет начальных размеров
+
             const initialWidth = Math.max(1, imgDisplayWidth - 2);
             const initialHeight = Math.max(1, imgDisplayHeight - 2);
-    
+
             if (normalizedCropCoords.width === 1) {
                 cropRect.style.left = minX + 'px';
                 cropRect.style.top = minY + 'px';
                 cropRect.style.width = initialWidth + 'px';
                 cropRect.style.height = initialHeight + 'px';
-    
+
                 normalizedCropCoords = {
                     left: 1 / imgDisplayWidth,
                     top: 1 / imgDisplayHeight,
@@ -1434,7 +1511,7 @@ function replaceMedia(mediaId, mediaPath) {
     navigator.clipboard.read()
         .then(clipboardItems => {
             let foundImage = false;
-            
+
             for (const clipboardItem of clipboardItems) {
                 for (const type of clipboardItem.types) {
                     console.log('Тип контента в буфере:', type);
@@ -1459,7 +1536,7 @@ function replaceMedia(mediaId, mediaPath) {
                     }
                 }
             }
-            
+
             if (!foundImage) {
                 showStatus('No image in buffer...');
             }
@@ -1475,11 +1552,11 @@ function processAndReplaceImage(dataUrl, mediaElement, mediaPath) {
     tempImg.onload = function() {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
-        
+
         let width = tempImg.width;
         let height = tempImg.height;
         const maxSize = 1000;
-        
+
         if (width > maxSize || height > maxSize) {
             const ratio = width / height;
             if (width > height) {
@@ -1490,19 +1567,18 @@ function processAndReplaceImage(dataUrl, mediaElement, mediaPath) {
                 width = maxSize * ratio;
             }
         }
-        
+
         canvas.width = width;
         canvas.height = height;
-        
+
         ctx.drawImage(tempImg, 0, 0, width, height);
-        
+
         const processedDataUrl = canvas.toDataURL('image/png');
-        
+
         replaceElementWithImage(mediaElement, processedDataUrl, mediaPath);
     };
     tempImg.src = dataUrl;
 }
-
 
 function replaceElementWithImage(mediaElement, dataUrl, mediaPath) {
     const container = mediaElement.parentElement;
@@ -1525,20 +1601,20 @@ function replaceElementWithImage(mediaElement, dataUrl, mediaPath) {
 
     const rotateLeftBtn = container.querySelector('.rotate-button.left');
     const rotateRightBtn = container.querySelector('.rotate-button.right');
-    
+
     if (rotateLeftBtn) {
         rotateLeftBtn.setAttribute('onclick', `rotateMedia('${mediaId}', 'left', '${newPath}', 'image')`);
     }
-    
+
     if (rotateRightBtn) {
         rotateRightBtn.setAttribute('onclick', `rotateMedia('${mediaId}', 'right', '${newPath}', 'image')`);
     }
-    
+
     const isVideoElement = mediaElement.tagName.toLowerCase() === 'video';
-    
+
     if (isVideoElement && !container.querySelector('.crop-button')) {
         const controlsContainer = container.querySelector('.media-controls');
-        
+
         if (controlsContainer) {
             const cropButton = document.createElement('span');
             cropButton.className = 'crop-button control-button';
@@ -1551,19 +1627,19 @@ function replaceElementWithImage(mediaElement, dataUrl, mediaPath) {
                     <path d="M8.00007 3L15.3066 15.1776" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
             `;
-            
+
             controlsContainer.insertBefore(cropButton, controlsContainer.firstChild);
         }
     }
-    
+
     const mainContainer = container.closest('.main-container');
     const copyBtn = mainContainer.nextElementSibling;
-    
+
     if (copyBtn && copyBtn.classList.contains('copy-button')) {
         copyBtn.setAttribute('onclick', `copyImageToClipboard('data:image/png;base64,${dataUrl.split(',')[1]}', event)`);
         copyBtn.textContent = 'copy image';
     }
-    
+
     fetch('/replace_media', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1596,6 +1672,16 @@ function showStatus(message) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+
+    setupStatusMonitor();
+
+    if (!document.getElementById('send-status')) {
+
+        var statusElement = document.createElement('div');
+        statusElement.id = 'send-status';
+        statusElement.className = 'status-message';
+        document.body.appendChild(statusElement);
+    }
 
     const setupModal = (config) => {
         const { 
@@ -1640,7 +1726,7 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('sortMode', 'usage');
     }
 
-    const activeNumber = localStorage.getItem('activeButtonNumber') || '1';
+    const activeNumber = localStorage.getItem('activeButtonNumber') || '0';
     updateActiveButton(activeNumber);
 
     const currentMode = localStorage.getItem('sortMode');
