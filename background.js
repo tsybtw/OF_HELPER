@@ -284,12 +284,19 @@ async function toggleColors() {
     const elements = document.querySelectorAll(
       ".b-dropzone__preview__delete.g-btn.m-rounded.m-reset-width.m-thumb-r-corner-pos.m-btn-remove.m-sm-icon-size"
     );
+    
     if (elements.length >= 2) {
-      elements.forEach((element) => {
-        element.style.opacity = ".4";
-        element.style.background = "rgba(138, 150, 163, .75)";
-      });
-      clearInterval(checkDropzoneElements);
+      setTimeout(() => {
+        const updatedElements = document.querySelectorAll(
+          ".b-dropzone__preview__delete.g-btn.m-rounded.m-reset-width.m-thumb-r-corner-pos.m-btn-remove.m-sm-icon-size"
+        );
+        
+        updatedElements.forEach((element) => {
+          element.style.opacity = ".4";
+          element.style.background = "rgba(138, 150, 163, .75)";
+        });
+        clearInterval(checkDropzoneElements);
+      }, 1000); 
     }
   }, 500);
 }
@@ -3346,7 +3353,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.6.5';
+            const VERSION = '5.6.6';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
