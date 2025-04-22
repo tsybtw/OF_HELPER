@@ -1,7 +1,7 @@
 1. Перейдите по ссылке:
 https://github.com/tsybtw/OF_HELPER/releases
 
-Для Mac os:
+Для macOS:
 Скачайте файлы ffmpeg и ffprobe
 
 Для Windows: 
@@ -9,11 +9,11 @@ https://github.com/tsybtw/OF_HELPER/releases
 
 2. Поместите 2 скачанных файла в папку ffmpeg
 
-Для Mac os:
-Нажмите правой кнопкой мышки на папку crop -> Новый терминал по адресу папки
+Для macOS:
+Нажмите правой кнопкой мыши на папку crop -> Новый терминал по адресу папки
 
 Для Windows: 
-Перейдите в папку crop и нажмите на строку пути файла -> Введите cmd и нажмите enter
+Перейдите в папку crop и нажмите на строку пути -> Введите cmd и нажмите Enter
 
 3. Выполните команду:
 node install.js
@@ -34,6 +34,10 @@ https://my.telegram.org/auth
     4. Нажмите Create application.
 
     5. Заполните файл .env:
+
+    Файл может быть скрыт. Находясь в папке crop:
+    На Windows: в настройках проводника включите показ скрытых файлов.
+    на macOS: нажмите комбинацию Shift + Command + точка.
 
     API_ID=API ID (на сайте)
     API_HASH=API Hash (на сайте)
