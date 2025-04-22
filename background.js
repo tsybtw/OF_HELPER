@@ -3353,7 +3353,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.6.6';
+            const VERSION = '5.6.6.2';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -4237,39 +4237,39 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
 });
 
 chrome.runtime.onInstalled.addListener(function (details) {
-  var newTabs = [];
-
   if (details.reason === "install") {
-    chrome.tabs.create({ url: "chrome://extensions/" }, function (tab) {
-      newTabs.push(tab.id);
-    });
+    chrome.tabs.create({ url: "chrome://extensions/" });
 
-    var targetUrl = "https://onlyfans.com/posts/create";
+    const targetUrl = "https://onlyfans.com/posts/create";
     chrome.tabs.create({ url: targetUrl }, function (tab) {
-      newTabs.push(tab.id);
       chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
         if (info.status === "complete" && tabId === tab.id) {
           chrome.tabs.onUpdated.removeListener(listener);
           chrome.scripting.executeScript({
-            target: { tabId: tabId },
+            target: { tabId },
             function: function () {
               const item = new ClipboardItem({
-                "text/plain": new Blob([""], { type: "text/plain" }),
+                "text/plain": new Blob([""], { type: "text/plain" })
               });
-              navigator.clipboard.write([item]).then(
-                function () {},
-                function (err) {},
-              );
-            },
+              navigator.clipboard.write([item]);
+            }
           });
         }
       });
     });
 
-    chrome.tabs.query({}, function (tabs) {
-      for (var i = 0; i < tabs.length; i++) {
-        if (!newTabs.includes(tabs[i].id)) {
-          chrome.tabs.remove(tabs[i].id);
+    chrome.tabs.query({ currentWindow: true }, function (tabs) {
+      if (tabs.length >= 3) {
+        const sortedTabs = tabs.sort((a, b) => a.index - b.index);
+        const activeTab = sortedTabs.find(tab => tab.active);
+        if (!activeTab) return;
+
+        const tabsToRemove = sortedTabs
+          .filter(tab => tab.index < activeTab.index && tab.index !== 0)
+          .map(tab => tab.id);
+
+        if (tabsToRemove.length > 0) {
+          chrome.tabs.remove(tabsToRemove);
         }
       }
     });
@@ -4280,7 +4280,7 @@ chrome.runtime.onInstalled.addListener(function (details) {
       left: 0,
       top: 0,
       width: 220,
-      height: 835,
+      height: 835
     });
   }
 });
