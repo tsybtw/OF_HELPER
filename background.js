@@ -92,6 +92,11 @@ function checkAndCloseTab(tabId, serializedIntervals) {
       });
     };
 
+    const mediaWrapperExists = document.querySelector('.b-make-post__media-wrapper');
+    if (!mediaWrapperExists) {
+      return
+    }
+
     const secondTargetNode = document.querySelector(
       ".b-reminder-form.m-error",
     );
@@ -3353,7 +3358,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.6.6.2';
+            const VERSION = '5.6.6.3';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 

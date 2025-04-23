@@ -655,11 +655,15 @@ function saveHint(chatIdToUse, messageCount, hintType = 'personal') {
 }
 
 function processContentLoader(button, messageData, client_id) {
+    const currentReverseMode = localStorage.getItem('reverseMode') === 'true';
+    const useReverseOrder = messageData.is_all_button ? currentReverseMode : messageData.reverse_order || false;
+    
     const data = {
         message_id: messageData.message_id,
         sender_id: messageData.sender_id,
         client_id: client_id,
-        is_all_button: messageData.is_all_button || false
+        is_all_button: messageData.is_all_button || false,
+        reverse_order: useReverseOrder
     };
 
     fetch('/process_content_loader', {
@@ -674,6 +678,7 @@ function processContentLoader(button, messageData, client_id) {
         if (data.success) {
             updateActiveButton(button.dataset.number);
             localStorage.setItem('activeButtonNumber', button.dataset.number);
+            localStorage.setItem('reverseMode', data.reverse_order ? 'true' : 'false');
         }
     })
     .catch(error => console.error('Error processing message:', error));
