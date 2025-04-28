@@ -662,6 +662,7 @@ function processContentLoader(button, messageData, client_id) {
         message_id: messageData.message_id,
         sender_id: messageData.sender_id,
         client_id: client_id,
+        chat_id_to_use: messageData.chat_id_to_use,
         is_all_button: messageData.is_all_button || false,
         reverse_order: useReverseOrder
     };
