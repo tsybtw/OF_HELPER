@@ -17,11 +17,7 @@
 
     1. Кликните правой кнопкой мыши по папке update → Открыть в Терминале.
 
-    2. Введите команды по порядку:
-
-    xattr -d com.apple.quarantine ./upd1
-    sudo chmod +x upd1
-    ./upd1
+    2. Введите команду: ./upd1
 
   - на Windows: 
 
