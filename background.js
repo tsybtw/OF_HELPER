@@ -118,6 +118,10 @@ function updateTabCounterOnActiveTab(isReset) {
     chrome.tabs.query({ active: true, currentWindow: true }, function (activeTabs) {
       if (activeTabs.length === 0) return;
       const activeTab = activeTabs[0];
+      
+      if (!activeTab.url.startsWith('https://onlyfans.com')) {
+        return;
+      }
  
       chrome.scripting.executeScript({
         target: { tabId: activeTab.id },
@@ -261,15 +265,22 @@ function openNewTab() {
   chrome.runtime.sendMessage({ action: "openNewTab" });
 }
 
-async function toggleColors() {
+async function toggleColors(noDelay = false) {
   function waitForElement(selector, callback) {
-    const interval = setInterval(() => {
+    if (noDelay) {
       const element = document.querySelector(selector);
       if (element) {
         callback(element);
-        clearInterval(interval);
       }
-    }, 500);
+    } else {
+      const interval = setInterval(() => {
+        const element = document.querySelector(selector);
+        if (element) {
+          callback(element);
+          clearInterval(interval);
+        }
+      }, 500);
+    }
   }
 
   waitForElement('button[at-attr="submit_post"]', (button) => {
@@ -285,25 +296,36 @@ async function toggleColors() {
     element.style.opacity = ".4";
   });
 
-  const checkDropzoneElements = setInterval(() => {
+  if (noDelay) {
     const elements = document.querySelectorAll(
       ".b-dropzone__preview__delete.g-btn.m-rounded.m-reset-width.m-thumb-r-corner-pos.m-btn-remove.m-sm-icon-size"
     );
     
-    if (elements.length >= 2) {
-      setTimeout(() => {
-        const updatedElements = document.querySelectorAll(
-          ".b-dropzone__preview__delete.g-btn.m-rounded.m-reset-width.m-thumb-r-corner-pos.m-btn-remove.m-sm-icon-size"
-        );
-        
-        updatedElements.forEach((element) => {
-          element.style.opacity = ".4";
-          element.style.background = "rgba(138, 150, 163, .75)";
-        });
-        clearInterval(checkDropzoneElements);
-      }, 1000); 
-    }
-  }, 500);
+    elements.forEach((element) => {
+      element.style.opacity = ".4";
+      element.style.background = "rgba(138, 150, 163, .75)";
+    });
+  } else {
+    const checkDropzoneElements = setInterval(() => {
+      const elements = document.querySelectorAll(
+        ".b-dropzone__preview__delete.g-btn.m-rounded.m-reset-width.m-thumb-r-corner-pos.m-btn-remove.m-sm-icon-size"
+      );
+      
+      if (elements.length >= 2) {
+        setTimeout(() => {
+          const updatedElements = document.querySelectorAll(
+            ".b-dropzone__preview__delete.g-btn.m-rounded.m-reset-width.m-thumb-r-corner-pos.m-btn-remove.m-sm-icon-size"
+          );
+          
+          updatedElements.forEach((element) => {
+            element.style.opacity = ".4";
+            element.style.background = "rgba(138, 150, 163, .75)";
+          });
+          clearInterval(checkDropzoneElements);
+        }, 1000); 
+      }
+    }, 500);
+  }
 }
 
 async function stopOn() {
@@ -2106,6 +2128,18 @@ function sendActivityInfo(browser) {
 
 async function checkDataFile() {
 
+  try {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const currentTab = tabs[0];
+    
+    if (!currentTab || !currentTab.url || !currentTab.url.startsWith('https://onlyfans.com/')) {
+      return;
+    }
+    
+  } catch (error) {
+    console.error('Error:', error);
+  }
+  
   const waitForTabAndExecute = async (tabId, functionToExecute, args) => {
     return new Promise((resolve) => {
       function checkAndExecute() {
@@ -2647,10 +2681,12 @@ async function checkDataFile() {
         if (activeTab) {
           allTabs.forEach(async (tab) => {
             if (tab.index >= activeTab.index) {
-              await executeScriptIfValid(tab, {
+              chrome.scripting.executeScript({
                 target: { tabId: tab.id },
                 func: toggleColors,
-                args: [tab],
+                args: [true]
+              }, () => {
+                resolve();
               });
             }
           });
@@ -2738,16 +2774,20 @@ async function checkDataFile() {
 
                       const fakeCheckedResult =
                         await chrome.storage.local.get("fakeChecked");
-                      if (fakeCheckedResult.fakeChecked === true) {
-                        allTabs.forEach(async (tab) => {
-                          if (tab.index >= activeTab.index) {
-                            await executeScriptIfValid(tab, {
-                              target: { tabId: tab.id },
-                              func: toggleColors,
-                            });
-                          }
-                        });
-                      }
+
+                        if (fakeCheckedResult.fakeChecked === true) {
+                          allTabs.forEach(async (tab) => {
+                            if (tab.index >= activeTab.index) {
+                              chrome.scripting.executeScript({
+                                target: { tabId: tab.id },
+                                func: toggleColors,
+                                args: [false]
+                              }, () => {
+                                resolve();
+                              });
+                            }
+                          });
+                        }
                     }
                   },
                 );
@@ -2862,7 +2902,8 @@ async function checkDataFile() {
 }
 
 async function setBind(tab, DELAY_GREEN_BUTTON) {
-  if (!tab.url.startsWith("chrome://")) {
+  
+  if (tab.url.startsWith("https://onlyfans.com")) {
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: function (DELAY_GREEN_BUTTON) {
@@ -3358,7 +3399,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.6.6.5';
+            const VERSION = '5.6.6.6';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -3724,6 +3765,8 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
   }
 }
 
+const processedTabs = new Set();
+
 chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
 
   function handleTabOpen() {
@@ -3822,6 +3865,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
   }
 
   if (request.action === "clickAndMove") {
+    processedTabs.clear();
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
       const currentTabId = tabs[0].id;
       getNumberOfTabsToClick(currentTabId, function (numberOfTabsToClick) {
@@ -4523,6 +4567,11 @@ function clickOnNewTab(tabId, callback) {
       if (tab.url.startsWith('chrome://')) {
           callback?.();
           return;
+      }
+
+      if (processedTabs.has(tabId)) {
+        callback?.();
+        return;
       }
       
       chrome.scripting.executeScript({
