@@ -2715,7 +2715,7 @@ async function checkDataFile() {
       await sendTypeToServer(lastIndex, browserType);
 
       chrome.storage.local.get(
-        ["savedTabId", "deleteTabId"],
+        ["savedTabId", "deleteTabId", "autoRestartEnabled"],
         async function (result) {
           if (result.savedTabId) {
             chrome.tabs.update(
@@ -2770,6 +2770,18 @@ async function checkDataFile() {
                           target: { tabId: activeTab.id },
                           func: clearPosts,
                         });
+                      } else if (result.autoRestartEnabled) {
+                        setTimeout(() => {
+                          chrome.scripting.executeScript({
+                            target: { tabId: activeTab.id },
+                            func: () => {
+                              const autoButton = document.getElementById("autopost-button");
+                              if (autoButton) {
+                                chrome.runtime.sendMessage({ action: "clickAndMove" });
+                              }
+                            }
+                          });
+                        }, 1000);
                       }
 
                       const fakeCheckedResult =
@@ -3551,45 +3563,162 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             await fakeRequest();
           });
 
-          const newButton = document.createElement("button");
-          newButton.id = "autopost-button";
-          Object.assign(newButton.style, {
-           backgroundColor: "rgb(221, 109, 85)",
-           color: "white",
-           border: "none",
-           cursor: "pointer",
-           zIndex: "9999",
-           fontFamily: "'Josefin Sans', sans-serif",
-           borderRadius: "10px",
-           width: "calc((100% - 8px) / 3)",
-           height: "30px",
-           margin: "0px 0px 0px 2px",
-           display: "flex",
-           justifyContent: "center",
-           alignItems: "center"
+          // Create auto-restart arrow button
+          const arrowButton = document.createElement("div");
+          arrowButton.id = "auto-restart-arrow";
+          arrowButton.setAttribute("title", "Auto-restart posting cycle");
+          Object.assign(arrowButton.style, {
+            position: "relative",
+            width: "30px",
+            height: "30px",
+            margin: "0 2px 0 0",
+            cursor: "pointer",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            borderRadius: "5px",
+            backgroundColor: "rgb(221, 109, 85)",
+            overflow: "hidden",
+            transition: "background-color 0.5s ease, transform 0.15s ease",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.12)"
+          });
+
+          // Create the arrow SVG
+          const svgArrow = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+          svgArrow.setAttribute("width", "14");
+          svgArrow.setAttribute("height", "14");
+          svgArrow.setAttribute("viewBox", "0 0 24 24");
+          svgArrow.setAttribute("fill", "none");
+          svgArrow.style.zIndex = "2";
+          svgArrow.style.position = "relative";
+          
+          const arrowPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          arrowPath.setAttribute("d", "M14 5l7 7-7 7M3 12h18");
+          arrowPath.setAttribute("stroke", "#dddddd");
+          arrowPath.setAttribute("stroke-width", "3");
+          arrowPath.setAttribute("stroke-linecap", "round");
+          arrowPath.setAttribute("stroke-linejoin", "round");
+          arrowPath.id = "arrow-path";
+          arrowPath.style.transition = "stroke 0.3s ease";
+          arrowPath.style.zIndex = "2";
+          
+          svgArrow.appendChild(arrowPath);
+          arrowButton.appendChild(svgArrow);
+          
+          // Create fill element with gradient for smooth transition animation
+          const fillElement = document.createElement("div");
+          fillElement.id = "fill-animation";
+          Object.assign(fillElement.style, {
+            position: "absolute",
+            top: "0",
+            left: "0",
+            width: "100%",
+            height: "100%",
+            backgroundImage: "linear-gradient(to right, rgb(45, 155, 55) 0%, rgb(45, 155, 55) 50%, rgb(221, 109, 85) 50%, rgb(221, 109, 85) 100%)",
+            backgroundSize: "200% 100%",
+            backgroundPosition: "100%", // Start at right (red visible)
+            transition: "background-position 0.5s cubic-bezier(0.22, 1, 0.36, 1)",
+            zIndex: "1",
+            pointerEvents: "none"
+          });
+          arrowButton.appendChild(fillElement);
+          
+          // Create auto button (separate)
+          const autoButton = document.createElement("button");
+          autoButton.id = "autopost-button";
+          Object.assign(autoButton.style, {
+            backgroundColor: "rgb(221, 109, 85)",
+            color: "white",
+            border: "none",
+            cursor: "pointer",
+            zIndex: "9999",
+            fontFamily: "'Josefin Sans', sans-serif",
+            borderRadius: "10px",
+            width: "calc(((100% - 8px) / 3) - 34px)",
+            height: "30px",
+            padding: "0",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            transition: "background-color 0.3s ease"
+          });
+          autoButton.textContent = "auto";
+          
+          // Function to toggle auto-restart with new animation
+          const toggleAutoRestart = () => {
+            chrome.storage.local.get('autoRestartEnabled', (result) => {
+              const enabled = !result.autoRestartEnabled;
+              chrome.storage.local.set({ autoRestartEnabled: enabled });
+
+              if (enabled) {
+                // Turn ON - Slide to show green (0% position)
+                fillElement.style.backgroundPosition = "0%";
+                arrowPath.setAttribute("stroke", "#ffffff");
+                
+                // Add subtle pulse animation
+                arrowButton.style.transform = "scale(1.1)";
+                setTimeout(() => {
+                  arrowButton.style.transform = "scale(1)";
+                }, 150);
+              } else {
+                // Turn OFF - Slide to show red (100% position)
+                fillElement.style.backgroundPosition = "100%";
+                arrowPath.setAttribute("stroke", "#dddddd");
+                
+                // Add subtle pulse animation
+                arrowButton.style.transform = "scale(1.1)";
+                setTimeout(() => {
+                  arrowButton.style.transform = "scale(1)";
+                }, 150);
+              }
+            });
+          };
+          
+          // Add hover effect for auto button
+          autoButton.addEventListener("mouseover", function() {
+            autoButton.style.backgroundColor = "#e38571";
           });
           
-          const newButtonText = document.createElement("span");
-          newButtonText.textContent = "auto";
-          Object.assign(newButtonText.style, {
-           transition: "all 0.5s ease",
+          autoButton.addEventListener("mouseout", function() {
+            autoButton.style.backgroundColor = "rgb(221, 109, 85)";
           });
           
-          newButton.appendChild(newButtonText);
-          newButton.addEventListener("click", function () {
-           chrome.runtime.sendMessage({ action: "clickAndMove" });
+          // Add event listeners for both buttons
+          autoButton.addEventListener("click", function() {
+            chrome.runtime.sendMessage({ action: "clickAndMove" });
+          });
+          
+          arrowButton.addEventListener("click", toggleAutoRestart);
+          
+          // Initialize arrow button state based on stored value
+          chrome.storage.local.get("autoRestartEnabled", (result) => {
+            if (result.autoRestartEnabled) {
+              // Active state: green visible (0% position)
+              fillElement.style.backgroundPosition = "0%";
+              arrowPath.setAttribute("stroke", "#ffffff");
+            } else {
+              // Inactive state: red visible (100% position)
+              fillElement.style.backgroundPosition = "100%";
+              arrowPath.setAttribute("stroke", "#dddddd");
+            }
+          });
+          
+          // Add hover effect for arrow button
+          arrowButton.addEventListener("mouseover", function() {
+            if (fillElement.style.backgroundPosition === "100%") {
+              arrowButton.style.backgroundColor = "#e38571";
+            }
+          });
+          
+          arrowButton.addEventListener("mouseout", function() {
+            if (fillElement.style.backgroundPosition === "100%") {
+              arrowButton.style.backgroundColor = "rgb(221, 109, 85)";
+            }
           });
 
-          newButton.onmouseover = function () {
-            this.style.background = "#e38571";
-            this.style.transition = "all 0.5s ease";
-          };
-
-          newButton.onmouseout = function () {
-            this.style.background = "rgb(221, 109, 85)";
-            this.style.transition = "all 0.5s ease";
-          };
-
+          // Add buttons to container
+          containerNew.appendChild(arrowButton);
+          containerNew.appendChild(autoButton);
 
           function createActionButton(id, position, svgContent, clickHandler) {
             const button = document.createElement("button");
@@ -3754,7 +3883,6 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           document.body.appendChild(switchButton);
           document.body.appendChild(clearButton);
           document.body.appendChild(reloadButton);
-          containerNew.appendChild(newButton);
           document.body.appendChild(containerNew);
           document.body.appendChild(storiesContainer);
           window.buttonsAdded = true;
@@ -3867,11 +3995,13 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
   if (request.action === "clickAndMove") {
     processedTabs.clear();
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      const currentTabId = tabs[0].id;
-      getNumberOfTabsToClick(currentTabId, function (numberOfTabsToClick) {
-        tabsToClick = numberOfTabsToClick;
-        clickAndMove(currentTabId, tabsToClick);
-      });
+      if (tabs && tabs.length > 0) {
+        const currentTabId = tabs[0].id;
+        getNumberOfTabsToClick(currentTabId, function (numberOfTabsToClick) {
+          tabsToClick = numberOfTabsToClick;
+          clickAndMove(currentTabId, tabsToClick);
+        });
+      }
     });
   }
 
@@ -4824,7 +4954,7 @@ async function resetAllButtonStyles() {
           console.log('Error sending screenshots request:', error);
         })
         .finally(() => {
-          chrome.storage.local.set({ isStop: false }, resolve);
+                    chrome.storage.local.set({ isStop: false }, resolve);
         });
       });
     });
