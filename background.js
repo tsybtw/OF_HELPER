@@ -3411,7 +3411,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.6.6.6';
+            const VERSION = '5.6.7.1';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -3513,7 +3513,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
 
           addSplitButton(
             container,
-            "next tab & post",
+            "next tab post",
             "post",
             async () => {
               await bindFixRequest();
@@ -3540,7 +3540,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             },
             "stop-button",
             true, 
-            "0px 2px 0px 2px",
+            "0px 4px 0px 4px",
             "calc(((100% - 8px) / 3) + 0.01px)",
           );
 
@@ -3563,15 +3563,13 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             await fakeRequest();
           });
 
-          // Create auto-restart arrow button
           const arrowButton = document.createElement("div");
           arrowButton.id = "auto-restart-arrow";
-          arrowButton.setAttribute("title", "Auto-restart posting cycle");
           Object.assign(arrowButton.style, {
             position: "relative",
             width: "30px",
             height: "30px",
-            margin: "0 2px 0 0",
+            margin: "0 2px 0 2px",
             cursor: "pointer",
             display: "flex",
             justifyContent: "center",
@@ -3583,7 +3581,6 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             boxShadow: "0 1px 3px rgba(0,0,0,0.12)"
           });
 
-          // Create the arrow SVG
           const svgArrow = document.createElementNS("http://www.w3.org/2000/svg", "svg");
           svgArrow.setAttribute("width", "14");
           svgArrow.setAttribute("height", "14");
@@ -3605,7 +3602,6 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           svgArrow.appendChild(arrowPath);
           arrowButton.appendChild(svgArrow);
           
-          // Create fill element with gradient for smooth transition animation
           const fillElement = document.createElement("div");
           fillElement.id = "fill-animation";
           Object.assign(fillElement.style, {
@@ -3616,14 +3612,13 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             height: "100%",
             backgroundImage: "linear-gradient(to right, rgb(45, 155, 55) 0%, rgb(45, 155, 55) 50%, rgb(221, 109, 85) 50%, rgb(221, 109, 85) 100%)",
             backgroundSize: "200% 100%",
-            backgroundPosition: "100%", // Start at right (red visible)
+            backgroundPosition: "100%",
             transition: "background-position 0.5s cubic-bezier(0.22, 1, 0.36, 1)",
             zIndex: "1",
             pointerEvents: "none"
           });
           arrowButton.appendChild(fillElement);
           
-          // Create auto button (separate)
           const autoButton = document.createElement("button");
           autoButton.id = "autopost-button";
           Object.assign(autoButton.style, {
@@ -3644,28 +3639,23 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
           autoButton.textContent = "auto";
           
-          // Function to toggle auto-restart with new animation
           const toggleAutoRestart = () => {
             chrome.storage.local.get('autoRestartEnabled', (result) => {
               const enabled = !result.autoRestartEnabled;
               chrome.storage.local.set({ autoRestartEnabled: enabled });
 
               if (enabled) {
-                // Turn ON - Slide to show green (0% position)
                 fillElement.style.backgroundPosition = "0%";
                 arrowPath.setAttribute("stroke", "#ffffff");
                 
-                // Add subtle pulse animation
                 arrowButton.style.transform = "scale(1.1)";
                 setTimeout(() => {
                   arrowButton.style.transform = "scale(1)";
                 }, 150);
               } else {
-                // Turn OFF - Slide to show red (100% position)
                 fillElement.style.backgroundPosition = "100%";
                 arrowPath.setAttribute("stroke", "#dddddd");
                 
-                // Add subtle pulse animation
                 arrowButton.style.transform = "scale(1.1)";
                 setTimeout(() => {
                   arrowButton.style.transform = "scale(1)";
@@ -3674,7 +3664,6 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             });
           };
           
-          // Add hover effect for auto button
           autoButton.addEventListener("mouseover", function() {
             autoButton.style.backgroundColor = "#e38571";
           });
@@ -3683,27 +3672,22 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             autoButton.style.backgroundColor = "rgb(221, 109, 85)";
           });
           
-          // Add event listeners for both buttons
           autoButton.addEventListener("click", function() {
             chrome.runtime.sendMessage({ action: "clickAndMove" });
           });
           
           arrowButton.addEventListener("click", toggleAutoRestart);
           
-          // Initialize arrow button state based on stored value
           chrome.storage.local.get("autoRestartEnabled", (result) => {
             if (result.autoRestartEnabled) {
-              // Active state: green visible (0% position)
               fillElement.style.backgroundPosition = "0%";
               arrowPath.setAttribute("stroke", "#ffffff");
             } else {
-              // Inactive state: red visible (100% position)
               fillElement.style.backgroundPosition = "100%";
               arrowPath.setAttribute("stroke", "#dddddd");
             }
           });
           
-          // Add hover effect for arrow button
           arrowButton.addEventListener("mouseover", function() {
             if (fillElement.style.backgroundPosition === "100%") {
               arrowButton.style.backgroundColor = "#e38571";
@@ -3716,7 +3700,6 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             }
           });
 
-          // Add buttons to container
           containerNew.appendChild(arrowButton);
           containerNew.appendChild(autoButton);
 
@@ -3757,7 +3740,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
 
           const switchButton = createActionButton(
                 "switch-button",
-                { bottom: "105px", right: "28%" },
+                { bottom: "105px", right: "calc(((100% - 8px) / 3) - 24px)" },
                   `<svg viewBox="0 0 330 330" width="16" height="16">
                   <path fill="white" d="M79.394,250.606C82.323,253.535,86.161,255,90,255c3.839,0,7.678-1.465,10.606-4.394 c5.858-5.857,5.858-15.355,0-21.213L51.213,180h227.574l-49.393,49.394c-5.858,5.857-5.858,15.355,0,21.213 C232.322,253.535,236.161,255,240,255s7.678-1.465,10.606-4.394l75-75c5.858-5.857,5.858-15.355,0-21.213l-75-75 c-5.857-5.857-15.355-5.857-21.213,0c-5.858,5.857-5.858,15.355,0,21.213L278.787,150H51.213l49.393-49.394 c5.858-5.857,5.858-15.355,0-21.213c-5.857-5.857-15.355-5.857-21.213,0l-75,75c-5.858,5.857-5.858,15.355,0,21.213L79.394,250.606z"/>
                   </svg>`,
@@ -3766,7 +3749,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
 
           const clearButton = createActionButton(
             "clear-button",
-            { bottom: "105px", right: "21%" },
+            { bottom: "105px", right: "calc(((100% - 8px) / 3 * 4 / 5) - 24px)" },
               `<svg viewBox="0 0 1024 1024" width="16" height="16">
               <path fill="white" d="M899.1 869.6l-53-305.6H864c14.4 0 26-11.6 26-26V346c0-14.4-11.6-26-26-26H618V138c0-14.4-11.6-26-26-26H432c-14.4 0-26 11.6-26 26v182H160c-14.4 0-26 11.6-26 26v192c0 14.4 11.6 26 26 26h17.9l-53 305.6c-0.3 1.5-0.4 3-0.4 4.4 0 14.4 11.6 26 26 26h723c1.5 0 3-0.1 4.4-0.4 14.2-2.4 23.7-15.9 21.2-30zM204 390h272V182h72v208h272v104H204V390z m468 440V674c0-4.4-3.6-8-8-8h-48c-4.4 0-8 3.6-8 8v156H416V674c0-4.4-3.6-8-8-8h-48c-4.4 0-8 3.6-8 8v156H202.8l45.1-260H776l45.1 260H672z"/>
               </svg>`,
@@ -3775,7 +3758,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
         
           const reloadButton = createActionButton(
               "reload-button",
-                { bottom: "105px", right: "14%" },
+                { bottom: "105px", right: "calc(((100% - 8px) / 3 * 3 / 5) - 24px)" },
                 `<svg viewBox="0 0 24 24" width="16" height="16">
                 <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M4,13 C4,17.4183 7.58172,21 12,21 C16.4183,21 20,17.4183 20,13 C20,8.58172 16.4183,5 12,5 C10.4407,5 8.98566,5.44609 7.75543,6.21762"/>
                 <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M9.2384,1.89795 L7.49856,5.83917 C7.27552,6.34441 7.50429,6.9348 8.00954,7.15784 L11.9508,8.89768"/>
