@@ -3,6 +3,44 @@ const DELAY_GREEN_BUTTON = 500;
 
 console.error = function () {};
 
+chrome.storage.onChanged.addListener((changes, namespace) => {
+  if (namespace === 'local' && changes.autoRestartEnabled) {
+    const enabled = changes.autoRestartEnabled.newValue;
+    chrome.tabs.query({}, (tabs) => {
+      tabs.forEach(tab => {
+        if (tab.url && tab.url.includes("onlyfans.com")) {
+          chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: (newState) => {
+              const fillElement = document.getElementById("fill-animation");
+              const arrowPath = document.getElementById("arrow-path");
+              const arrowButton = document.getElementById("auto-restart-arrow");
+              if (fillElement && arrowPath && arrowButton) {
+                if (newState) {
+                  fillElement.style.backgroundPosition = "0%";
+                  arrowPath.setAttribute("stroke", "#ffffff");
+                  arrowButton.style.transform = "scale(1.1)";
+                  setTimeout(() => {
+                    arrowButton.style.transform = "scale(1)";
+                  }, 150);
+                } else {
+                  fillElement.style.backgroundPosition = "100%";
+                  arrowPath.setAttribute("stroke", "#dddddd");
+                  arrowButton.style.transform = "scale(1.1)";
+                  setTimeout(() => {
+                    arrowButton.style.transform = "scale(1)";
+                  }, 150);
+                }
+              }
+            },
+            args: [enabled]
+          });
+        }
+      });
+    });
+  }
+});
+
 async function executeScriptIfValid(activeTab, details) {
   if (activeTab && !activeTab.url.startsWith("chrome://")) {
     await chrome.scripting.executeScript(details);
@@ -258,6 +296,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         intervals.delete(message.tabId);
       }
       break;
+  }
+
+  if (message.action === "toggleAutoRestartState") {
+    chrome.storage.local.get('autoRestartEnabled', (result) => {
+      const enabled = !result.autoRestartEnabled;
+      chrome.storage.local.set({ autoRestartEnabled: enabled });
+    });
+    return true;
   }
 });
 
@@ -2770,7 +2816,7 @@ async function checkDataFile() {
                           target: { tabId: activeTab.id },
                           func: clearPosts,
                         });
-                      } else if (result.autoRestartEnabled) {
+                      } else if (result.autoRestartEnabled && !lastEntry.skipAutoRestart) {  // Check skipAutoRestart parameter
                         setTimeout(() => {
                           chrome.scripting.executeScript({
                             target: { tabId: activeTab.id },
@@ -3411,7 +3457,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.6.7.1';
+            const VERSION = '5.6.7.2';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -3640,41 +3686,8 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           autoButton.textContent = "auto";
           
           const toggleAutoRestart = () => {
-            chrome.storage.local.get('autoRestartEnabled', (result) => {
-              const enabled = !result.autoRestartEnabled;
-              chrome.storage.local.set({ autoRestartEnabled: enabled });
-
-              if (enabled) {
-                fillElement.style.backgroundPosition = "0%";
-                arrowPath.setAttribute("stroke", "#ffffff");
-                
-                arrowButton.style.transform = "scale(1.1)";
-                setTimeout(() => {
-                  arrowButton.style.transform = "scale(1)";
-                }, 150);
-              } else {
-                fillElement.style.backgroundPosition = "100%";
-                arrowPath.setAttribute("stroke", "#dddddd");
-                
-                arrowButton.style.transform = "scale(1.1)";
-                setTimeout(() => {
-                  arrowButton.style.transform = "scale(1)";
-                }, 150);
-              }
-            });
+            chrome.runtime.sendMessage({ action: "toggleAutoRestartState" });
           };
-          
-          autoButton.addEventListener("mouseover", function() {
-            autoButton.style.backgroundColor = "#e38571";
-          });
-          
-          autoButton.addEventListener("mouseout", function() {
-            autoButton.style.backgroundColor = "rgb(221, 109, 85)";
-          });
-          
-          autoButton.addEventListener("click", function() {
-            chrome.runtime.sendMessage({ action: "clickAndMove" });
-          });
           
           arrowButton.addEventListener("click", toggleAutoRestart);
           
@@ -3687,19 +3700,43 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
               arrowPath.setAttribute("stroke", "#dddddd");
             }
           });
-          
-          arrowButton.addEventListener("mouseover", function() {
-            if (fillElement.style.backgroundPosition === "100%") {
-              arrowButton.style.backgroundColor = "#e38571";
-            }
-          });
-          
-          arrowButton.addEventListener("mouseout", function() {
-            if (fillElement.style.backgroundPosition === "100%") {
-              arrowButton.style.backgroundColor = "rgb(221, 109, 85)";
+
+          // Add storage change listener to update UI when state changes
+          chrome.storage.onChanged.addListener((changes, namespace) => {
+            if (namespace === 'local' && changes.autoRestartEnabled) {
+              const enabled = changes.autoRestartEnabled.newValue;
+              if (fillElement && arrowPath && arrowButton) {
+                if (enabled) {
+                  fillElement.style.backgroundPosition = "0%";
+                  arrowPath.setAttribute("stroke", "#ffffff");
+                  arrowButton.style.transform = "scale(1.1)";
+                  setTimeout(() => {
+                    arrowButton.style.transform = "scale(1)";
+                  }, 150);
+                } else {
+                  fillElement.style.backgroundPosition = "100%";
+                  arrowPath.setAttribute("stroke", "#dddddd");
+                  arrowButton.style.transform = "scale(1.1)";
+                  setTimeout(() => {
+                    arrowButton.style.transform = "scale(1)";
+                  }, 150);
+                }
+              }
             }
           });
 
+          autoButton.addEventListener("mouseover", function() {
+            autoButton.style.backgroundColor = "#e38571";
+          });
+          
+          autoButton.addEventListener("mouseout", function() {
+            autoButton.style.backgroundColor = "rgb(221, 109, 85)";
+          });
+          
+          autoButton.addEventListener("click", function() {
+            chrome.runtime.sendMessage({ action: "clickAndMove" });
+          });
+          
           containerNew.appendChild(arrowButton);
           containerNew.appendChild(autoButton);
 
@@ -3722,6 +3759,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             });
             button.id = id;
             button.innerHTML = svgContent;
+        
         
             function handleMouseOver() {
                 button.style.backgroundColor = "#e38571";
@@ -4967,3 +5005,42 @@ function getNumberOfTabsToClick(currentTabId, callback) {
     }
   });
 }
+
+chrome.storage.onChanged.addListener((changes, namespace) => {
+  if (namespace === 'local' && changes.autoRestartEnabled) {
+    const enabled = changes.autoRestartEnabled.newValue;
+    chrome.tabs.query({}, (tabs) => {
+      tabs.forEach(tab => {
+        if (tab.url && tab.url.includes("onlyfans.com")) {
+          chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: (newState) => {
+              const fillElement = document.getElementById("fill-animation");
+              const arrowPath = document.getElementById("arrow-path");
+              const arrowButton = document.getElementById("auto-restart-arrow");
+
+              if (fillElement && arrowPath && arrowButton) {
+                if (newState) {
+                  fillElement.style.backgroundPosition = "0%";
+                  arrowPath.setAttribute("stroke", "#ffffff");
+                  arrowButton.style.transform = "scale(1.1)";
+                  setTimeout(() => {
+                    arrowButton.style.transform = "scale(1)";
+                  }, 150);
+                } else {
+                  fillElement.style.backgroundPosition = "100%";
+                  arrowPath.setAttribute("stroke", "#dddddd");
+                  arrowButton.style.transform = "scale(1.1)";
+                  setTimeout(() => {
+                    arrowButton.style.transform = "scale(1)";
+                  }, 150);
+                }
+              }
+            },
+            args: [enabled]
+          });
+        }
+      });
+    });
+  }
+});
