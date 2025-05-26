@@ -1,3 +1,4 @@
+const TAB_COUNT = 30
 const ALL_ACTIONS_MONITOR = 200;
 const DELAY_GREEN_BUTTON = 500;
 
@@ -262,7 +263,7 @@ function updateTabCounterOnActiveTab(isReset) {
   
               if (
                 tab.url === "https://onlyfans.com/posts/create" &&
-                tabs.length >= 30
+                tabs.length >= TAB_COUNT
               ) {
                 chrome.scripting.executeScript({
                   target: { tabId: tab.id },
@@ -2719,7 +2720,7 @@ async function checkDataFile() {
 
     if (lastEntry && lastEntry.id === "104" && browserType !== "") {
       await sendTypeToServer(lastIndex, browserType);
-
+      
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const allTabs = currentWindow.tabs;
         const activeTab = allTabs.find((tab) => tab.active);
@@ -2731,8 +2732,6 @@ async function checkDataFile() {
                 target: { tabId: tab.id },
                 func: toggleColors,
                 args: [true]
-              }, () => {
-                resolve();
               });
             }
           });
@@ -2806,7 +2805,7 @@ async function checkDataFile() {
                         await new Promise((resolve) =>
                           setTimeout(resolve, 2000),
                         );
-  
+
                         const tabIdsToClose = tabsToClose.map((tab) => tab.id);
                         if (tabIdsToClose.length > 0) {
                           chrome.tabs.remove(tabIdsToClose);
@@ -2816,7 +2815,7 @@ async function checkDataFile() {
                           target: { tabId: activeTab.id },
                           func: clearPosts,
                         });
-                      } else if (result.autoRestartEnabled && !lastEntry.skipAutoRestart) {  // Check skipAutoRestart parameter
+                      } else if (result.autoRestartEnabled && !lastEntry.skipAutoRestart) {
                         setTimeout(() => {
                           chrome.scripting.executeScript({
                             target: { tabId: activeTab.id },
@@ -2833,19 +2832,17 @@ async function checkDataFile() {
                       const fakeCheckedResult =
                         await chrome.storage.local.get("fakeChecked");
 
-                        if (fakeCheckedResult.fakeChecked === true) {
-                          allTabs.forEach(async (tab) => {
-                            if (tab.index >= activeTab.index) {
-                              chrome.scripting.executeScript({
-                                target: { tabId: tab.id },
-                                func: toggleColors,
-                                args: [false]
-                              }, () => {
-                                resolve();
-                              });
-                            }
-                          });
-                        }
+                      if (fakeCheckedResult.fakeChecked === true) {
+                        allTabs.forEach(async (tab) => {
+                          if (tab.index >= activeTab.index) {
+                            chrome.scripting.executeScript({
+                              target: { tabId: tab.id },
+                              func: toggleColors,
+                              args: [false]
+                            });
+                          }
+                        });
+                      }
                     }
                   },
                 );
@@ -3457,7 +3454,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.6.7.2';
+            const VERSION = '5.6.7.3';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
