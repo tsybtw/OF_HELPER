@@ -599,8 +599,8 @@ function saveHint(chatIdToUse, messageCount, hintType = 'personal') {
                                     <path fill="#ced8ed" d="M25 55L15 55 10 17 24 17 25 55z"></path>
                                     <path fill="#b5c4e0" d="M11,17v2a3,3 0,0,0 3,3H38L37,55H47l5-38Z"></path>
                                     <path fill="#8d6c9f" d="M16 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 16 10zM11 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 11 10zM21 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 21 10zM26 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 26 10zM31 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 31 10zM36 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 36 10zM41 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 41 10zM46 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 46 10zM51 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 51 10z"></path>
-                                <path fill="#8d6c9f" d="M53,6H9A3,3 0 0 0 6 9v6a3,3 0 0 0 3 3c0,.27 4.89 36.22 4.89 36.22A3 3 0 0 0 15 60H47a3,3 0 0 0 1.11 -5.78l2.28 -17.3a1 1 0 0 0 .06 -.47L52.92 18H53a3,3 0 0 0 3 -3V9A3,3 0 0 0 53 6ZM24.59 18l5 5 -4.78 4.78a1 1 0 1 0 1.41 1.41L31 24.41 37.59 31 31 37.59l-7.29 -7.29h0l-5.82 -5.82a1 1 0 0 0 -1.41 1.41L21.59 31l-7.72 7.72L12.33 27.08 21.41 18Zm16 0 3.33 3.33a1 1 0 0 0 1.41 -1.41L43.41 18h7.17L39 29.59 32.41 23l5 -5Zm-11 21L23 45.59l-5.11 -5.11a1 1 0 0 0 -1.41 1.41L21.59 47l-5.86 5.86L14.2 41.22l8.8 -8.8Zm7.25 4.42L32.41 39 39 32.41l5.14 5.14a1 1 0 0 0 1.41 -1.41L40.41 31 47 24.41l2.67 2.67 -1.19 9L38.3 46.28h0L31 53.59 24.41 47 31 40.41l4.42 4.42a1 1 0 0 0 1.41 -1.41ZM23 48.41 28.59 54H17.41Zm16 0L44.59 54H33.41ZM40.41 47 48 39.37 46.27 52.86ZM50 24.58 48.41 23l2.06 -2.06Zm-19 -3L27.41 18h7.17Zm-19.47 -.64L13.59 23 12 24.58Zm3.47 .64L11.41 18h7.17ZM47 58H15a1,1 0 0 1 0 -2H47a1,1 0 0 1 0 2Zm7 -43a1,1 0 0 1 -1 1H9a1,1 0 0 1 -1 -1V9A1,1 0 0 1 9 8H53a1,1 0 0 1 1 1Z"></path>
-                            </svg>
+                                    <path fill="#8d6c9f" d="M53,6H9A3,3 0 0 0 6 9v6a3,3 0 0 0 3 3c0,.27 4.89 36.22 4.89 36.22A3 3 0 0 0 15 60H47a3,3 0 0 0 1.11 -5.78l2.28 -17.3a1 1 0 0 0 .06 -.47L52.92 18H53a3,3 0 0 0 3 -3V9A3,3 0 0 0 53 6ZM24.59 18l5 5 -4.78 4.78a1 1 0 1 0 1.41 1.41L31 24.41 37.59 31 31 37.59l-7.29 -7.29h0l-5.82 -5.82a1 1 0 0 0 -1.41 1.41L21.59 31l-7.72 7.72L12.33 27.08 21.41 18Zm16 0 3.33 3.33a1 1 0 0 0 1.41 -1.41L43.41 18h7.17L39 29.59 32.41 23l5 -5Zm-11 21L23 45.59l-5.11 -5.11a1 1 0 0 0 -1.41 1.41L21.59 47l-5.86 5.86L14.2 41.22l8.8 -8.8Zm7.25 4.42L32.41 39 39 32.41l5.14 5.14a1 1 0 0 0 1.41 -1.41L40.41 31 47 24.41l2.67 2.67 -1.19 9L38.3 46.28h0L31 53.59 24.41 47 31 40.41l4.42 4.42a1 1 0 0 0 1.41 -1.41ZM23 48.41 28.59 54H17.41Zm16 0L44.59 54H33.41ZM40.41 47 48 39.37 46.27 52.86ZM50 24.58 48.41 23l2.06 -2.06Zm-19 -3L27.41 18h7.17Zm-19.47 -.64L13.59 23 12 24.58Zm3.47 .64L11.41 18h7.17ZM47 58H15a1,1 0 0 1 0 -2H47a1,1 0 0 1 0 2Zm7 -43a1,1 0 0 1 -1 1H9a1,1 0 0 1 -1 -1V9A1,1 0 0 1 9 8H53a1,1 0 0 1 1 1Z"></path>
+                                </svg>
                     </button>
                 </div>
             `;
@@ -1520,7 +1520,6 @@ function replaceMedia(mediaId, mediaPath) {
 
             for (const clipboardItem of clipboardItems) {
                 for (const type of clipboardItem.types) {
-                    console.log('Тип контента в буфере:', type);
                     if (type.startsWith('image/')) {
                         foundImage = true;
                         clipboardItem.getType(type)
@@ -1546,7 +1545,7 @@ function replaceMedia(mediaId, mediaPath) {
             if (!foundImage) {
                 showStatus('No image in buffer...');
             }
-        })
+        })          
         .catch(error => {
             console.error('Buffer access error...', error);
             showStatus('Buffer access error...');
@@ -1750,3 +1749,185 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     catch {}
  });
+
+ async function deleteMedia(mediaId, mediaPath, messageIndex) {
+    if (!confirm('Are you sure you want to delete this media?')) {
+        return;
+    }
+
+    messageIndex = parseInt(messageIndex);
+
+    try {
+        const chatIdRaw = document.getElementById('chat-id').textContent;
+        const chatId = chatIdRaw.replace(/"/g, '').trim();
+        
+        if (!mediaId || !mediaPath || isNaN(messageIndex)) {
+            console.error('Missing parameters:', { mediaId, mediaPath, messageIndex });
+            return;
+        }
+
+        const response = await fetch('/delete-media', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                media_id: mediaId,
+                media_path: mediaPath,
+                message_index: messageIndex,
+                chat_id: chatId,
+                confirmed: true
+            })
+        });
+
+        const data = await response.json();
+        
+        if (data.success) {
+            const mediaContainer = document.getElementById(mediaId)?.closest('.main-container');
+            if (mediaContainer) {
+                const copyButtons = mediaContainer.querySelectorAll('.copy-button');
+                copyButtons.forEach(btn => btn.remove());
+                let next = mediaContainer.nextElementSibling;
+                while (next && next.classList.contains('copy-button')) {
+                    let toRemove = next;
+                    next = next.nextElementSibling;
+                    toRemove.remove();
+                }
+                mediaContainer.remove();
+            }
+            const textBlock = document.getElementById(`text-block-${messageIndex}`);
+            if (textBlock) {
+                textBlock.remove();
+            }
+            const lenMessagesDiv = document.querySelector('.len-messages');
+            let newNumber = null;
+            if (lenMessagesDiv) {
+                const parts = lenMessagesDiv.textContent.split('/');
+                const currentCount = parseInt(parts[0]);
+                const totalCount = parseInt(parts[1]);
+                lenMessagesDiv.textContent = `${currentCount - 1} / ${totalCount - 1}`;
+                newNumber = currentCount - 1;
+            }
+
+            const allContainers = document.querySelectorAll('.main-container');
+            
+            allContainers.forEach((container, index) => {
+                const imageNumber = container.querySelector('.image-number');
+                if (imageNumber) {
+                    imageNumber.textContent = index;
+                }
+
+                const mediaElement = container.querySelector('img, video');
+                if (mediaElement) {
+                    const mediaId = mediaElement.id;
+
+                    const deleteButton = container.querySelector('.delete-button');
+                    let mediaPath = '';
+                    if (deleteButton) {
+                        const onclickAttr = deleteButton.getAttribute('onclick');
+                        const match = onclickAttr.match(/deleteMedia\('.*?', '(.*?)',/);
+                        if (match) {
+                            mediaPath = match[1];
+                        }
+                    }
+                    
+                    if (mediaPath) {
+                        if (deleteButton) {
+                            const newOnclick = `deleteMedia('${mediaId}', '${mediaPath}', ${index})`;
+                            deleteButton.setAttribute('onclick', newOnclick);
+                        }
+
+                        const rotateLeftButton = container.querySelector('.rotate-button.left');
+                        if (rotateLeftButton) {
+                            rotateLeftButton.setAttribute('onclick', `rotateMedia('${mediaId}', 'left', '${mediaPath}', '${mediaElement.tagName.toLowerCase()}')`);
+                        }
+                        const rotateRightButton = container.querySelector('.rotate-button.right');
+                        if (rotateRightButton) {
+                            rotateRightButton.setAttribute('onclick', `rotateMedia('${mediaId}', 'right', '${mediaPath}', '${mediaElement.tagName.toLowerCase()}')`);
+                        }
+
+                        const replaceButton = container.querySelector('.replace-button');
+                        if (replaceButton) {
+                            replaceButton.setAttribute('onclick', `replaceMedia('${mediaId}', '${mediaPath}')`);
+                        }
+
+                        const cropButton = container.querySelector('.crop-button');
+                        if (cropButton && mediaElement.tagName.toLowerCase() === 'img') {
+                            cropButton.setAttribute('onclick', `recropImage('${mediaId}', '${mediaPath}')`);
+                        }
+                    } else {
+                        console.error('Failed to extract mediaPath for container:', index);
+                    }
+                }
+            });
+
+            if (newNumber !== null) {
+                const hintsContainer = document.getElementById('hints-container');
+                if (hintsContainer) {
+                    let nowFlag = true;
+                    const hintsDataScript = document.getElementById('hints-data');
+                    if (hintsDataScript) {
+                        try {
+                            const hintsData = JSON.parse(hintsDataScript.textContent);
+                            const chatIdKey = Object.keys(hintsData).find(k => k.trim() === chatId);
+                            if (chatIdKey && hintsData[chatIdKey] && typeof hintsData[chatIdKey].now !== 'undefined') {
+                                nowFlag = hintsData[chatIdKey].now;
+                            }
+                        } catch {}
+                    }
+                    const hintLabels = hintsContainer.querySelectorAll('.hint-label');
+                    hintLabels.forEach(label => {
+                        const parts = label.textContent.split(' ');
+                        if (parts.length >= 2 && /^\d+$/.test(parts[1])) {
+                            const old_number = parseInt(parts[1]);
+                            let new_number = old_number;
+                            if (nowFlag === true) {
+                                new_number = old_number - 1;
+                            } else if (nowFlag === false) {
+                                new_number = old_number - 2;
+                            }
+                            parts[1] = String(new_number);
+                            label.textContent = parts.join(' ');
+                        }
+                    });
+                }
+            }
+        } else {
+            console.error('Failed to delete media:', data.error);
+        }
+    } catch (error) {
+        console.error('Error deleting media:', error);
+    }
+}
+
+function createHintItem(hint, isChecked, chatId, hintType) {
+    const div = document.createElement('div');
+    div.className = `hint-item ${hintType === 'general' ? 'general-hint' : ''} ${isChecked ? 'active' : ''}`;
+    
+    div.innerHTML = `
+        <div class="hint-wrapper">
+            <input type="checkbox" 
+                id="checkbox-${hintType}-${hint}" 
+                ${isChecked ? 'checked' : ''} 
+                onchange="updateHintCheckbox('${chatId}', '${hint}', 'update', '${hintType}')"
+                class="hint-checkbox">
+            <label for="checkbox-${hintType}-${hint}" class="hint-label ${hintType === 'general' ? 'general' : ''}">${hint}</label>
+            <button 
+                class="hint-delete-btn" 
+                onclick="deleteHint('${chatId}', '${hint}', '${hintType}')"
+                aria-label="Delete ${hintType} hint">
+                <svg xmlns="http://www.w3.org/2000/svg" x="0px" y="0px" width="32" height="32" viewBox="0 0 64 64">
+                    <rect width="48" height="10" x="7" y="7" fill="#f9e3ae" rx="2" ry="2"></rect>
+                    <rect width="36" height="4" x="13" y="55" fill="#f9e3ae" rx="2" ry="2"></rect>
+                    <path fill="#c2cde7" d="M47 55L15 55 10 17 52 17 47 55z"></path>
+                    <path fill="#ced8ed" d="M25 55L15 55 10 17 24 17 25 55z"></path>
+                    <path fill="#b5c4e0" d="M11,17v2a3,3 0,0,0 3,3H38L37,55H47l5-38Z"></path>
+                    <path fill="#8d6c9f" d="M16 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 16 10zM11 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 11 10zM21 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 21 10zM26 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 26 10zM31 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 31 10zM36 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 36 10zM41 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 41 10zM46 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 46 10zM51 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 51 10z"></path>
+                    <path fill="#8d6c9f" d="M53,6H9A3,3 0 0 0 6 9v6a3,3 0 0 0 3 3c0,.27 4.89 36.22 4.89 36.22A3 3 0 0 0 15 60H47a3,3 0 0 0 1.11 -5.78l2.28 -17.3a1 1 0 0 0 .06 -.47L52.92 18H53a3,3 0 0 0 3 -3V9A3,3 0 0 0 53 6ZM24.59 18l5 5 -4.78 4.78a1 1 0 1 0 1.41 1.41L31 24.41 37.59 31 31 37.59l-7.29 -7.29h0l-5.82 -5.82a1 1 0 0 0 -1.41 1.41L21.59 31l-7.72 7.72L12.33 27.08 21.41 18Zm16 0 3.33 3.33a1 1 0 0 0 1.41 -1.41L43.41 18h7.17L39 29.59 32.41 23l5 -5Zm-11 21L23 45.59l-5.11 -5.11a1 1 0 0 0 -1.41 1.41L21.59 47l-5.86 5.86L14.2 41.22l8.8 -8.8Zm7.25 4.42L32.41 39 39 32.41l5.14 5.14a1 1 0 0 0 1.41 -1.41L40.41 31 47 24.41l2.67 2.67 -1.19 9L38.3 46.28h0L31 53.59 24.41 47 31 40.41l4.42 4.42a1 1 0 0 0 1.41 -1.41ZM23 48.41 28.59 54H17.41Zm16 0L44.59 54H33.41ZM40.41 47 48 39.37 46.27 52.86ZM50 24.58 48.41 23l2.06 -2.06Zm-19 -3L27.41 18h7.17Zm-19.47 -.64L13.59 23 12 24.58Zm3.47 .64L11.41 18h7.17ZM47 58H15a1,1 0 0 1 0 -2H47a1,1 0 0 1 0 2Zm7 -43a1,1 0 0 1 -1 1H9a1,1 0 0 1 -1 -1V9A1,1 0 0 1 9 8H53a1,1 0 0 1 1 1Z"></path>
+                </svg>
+            </button>
+        </div>
+    `;
+    
+    return div;
+}
