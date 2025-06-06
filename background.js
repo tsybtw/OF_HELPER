@@ -89,10 +89,10 @@ function checkAndCloseTab(tabId, serializedIntervals) {
     }
 
     const editor = document.querySelector(".tiptap.ProseMirror");
-    if (editor?.getAttribute("data-is-empty") === "true") {
+    if (editor?.getAttribute("data-is-empty") === "true" || !editor) {
       chrome.runtime.sendMessage({ action: "closeTab", tabId });
       return;
-    }
+    } 
 
     const pressBind = () => {
       const intervalId = setInterval(async () => {
@@ -2863,7 +2863,7 @@ async function checkDataFile() {
       chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
           const currentTabId = tabs[0].id;
           chrome.tabs.query({ url: "https://onlyfans.com/*" }, function(matchingTabs) {
-              if (matchingTabs.length > 2) {
+              if (matchingTabs.length > 1) {
                   const firstMatchingTab = matchingTabs[0];
                   if (currentTabId !== firstMatchingTab.id) {
                       chrome.tabs.update(firstMatchingTab.id, { active: true }, () => {
@@ -3454,7 +3454,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.6.7.4';
+            const VERSION = '5.6.7.5';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
