@@ -2826,7 +2826,7 @@ async function checkDataFile() {
                               }
                             }
                           });
-                        }, 1000);
+                        }, 2000);
                       }
 
                       const fakeCheckedResult =
@@ -3454,7 +3454,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.6.7.6';
+            const VERSION = '5.7';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -4438,22 +4438,7 @@ chrome.runtime.onInstalled.addListener(function (details) {
     chrome.tabs.create({ url: "chrome://extensions/" });
 
     const targetUrl = "https://onlyfans.com/posts/create";
-    chrome.tabs.create({ url: targetUrl }, function (tab) {
-      chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
-        if (info.status === "complete" && tabId === tab.id) {
-          chrome.tabs.onUpdated.removeListener(listener);
-          chrome.scripting.executeScript({
-            target: { tabId },
-            function: function () {
-              const item = new ClipboardItem({
-                "text/plain": new Blob([""], { type: "text/plain" })
-              });
-              navigator.clipboard.write([item]);
-            }
-          });
-        }
-      });
-    });
+    chrome.tabs.create({ url: targetUrl });
 
     chrome.tabs.query({ currentWindow: true }, function (tabs) {
       if (tabs.length >= 3) {
