@@ -446,64 +446,78 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
     })
     .then(response => response.json())
     .then(data => {
-
         const hintsContainer = document.getElementById('hints-container');
         const allCheckboxes = Array.from(hintsContainer.querySelectorAll('input[type="checkbox"]'));
         const allHintItems = Array.from(hintsContainer.querySelectorAll('.hint-item'));
         const checkboxId = `checkbox-${hintType}-${hintKey}`;
 
         if (action === 'delete') {
-            const indexToRemove = allCheckboxes.findIndex(cb => cb.id === checkboxId);
+            const indexToRemove = allHintItems.findIndex(item => item.querySelector('input').id === checkboxId);
             if (indexToRemove !== -1) {
                 allHintItems[indexToRemove].remove();
             }
-            const remainingKeys = hintsContainer.querySelectorAll('.hint-item');
-            if (remainingKeys.length === 0) {
+
+            const remainingItems = hintsContainer.querySelectorAll('.hint-item');
+            if (remainingItems.length === 0) {
                 hintsContainer.remove();
                 return;
             }
 
+            // Get the first remaining checkbox and make it active
             const newActiveCheckbox = hintsContainer.querySelector('input[type="checkbox"]');
-            const newActiveItem = newActiveCheckbox.closest('.hint-item');
+            if (newActiveCheckbox) {
+                const newActiveItem = newActiveCheckbox.closest('.hint-item');
+                allCheckboxes.forEach(cb => cb.checked = false);
+                allHintItems.forEach(item => item.classList.remove('active'));
+                newActiveCheckbox.checked = true;
+                newActiveItem.classList.add('active');
+                
+                // Определяем тип подсказки из класса элемента
+                const isGeneralHint = newActiveItem.classList.contains('general-hint');
+                const newHintType = isGeneralHint ? 'general' : 'personal';
+                
+                // Update the checkbox in the file with correct hint type
+                const newHintKey = newActiveCheckbox.id.split('-').pop();
+                fetch('/update_hints', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        chat_id: chatId,
+                        hint_key: newHintKey,
+                        action: 'update',
+                        hint_type: newHintType
+                    })
+                });
+            }
 
-            allCheckboxes.forEach(cb => cb.checked = false);
-            allHintItems.forEach(item => item.classList.remove('active'));
-
-            newActiveCheckbox.checked = true;
-            newActiveItem.classList.add('active');
-            const hintsWrapper =  document.querySelector('.hints-wrapper');
-            if (hintsContainer) {
+            const hintsWrapper = document.querySelector('.hints-wrapper');
+            if (hintsWrapper) {
                 const remainingItems = hintsWrapper.children.length;
                 if (remainingItems === 0) {
                     hintsContainer.remove();
                 } else if (remainingItems < 2) {
                     const sortButtons = hintsContainer.querySelector('.sort-buttons');
-                    sortButtons?.remove();
+                    if (sortButtons) {
+                        sortButtons.remove();
+                    }
                 }
             }
-
-        } else {
-
+        } else if (action === 'update') {
             allCheckboxes.forEach(checkbox => {
                 checkbox.checked = false;
                 checkbox.closest('.hint-item').classList.remove('active');
             });
 
-            const currentMode = localStorage.getItem('sortMode') || 'usage';
-            switchSortMode(currentMode);
-
-            hintsContainer.querySelectorAll('.hint-item').forEach(item => {
-                item.classList.remove('active');
-                item.querySelector('input').checked = false;
-            });
-
-            const targetCheckboxId = `checkbox-${hintType}-${hintKey}`;
-            const targetCheckbox = allCheckboxes.find(cb => cb.id === targetCheckboxId);
-
+            const targetCheckbox = allCheckboxes.find(cb => cb.id === checkboxId);
             if (targetCheckbox) {
                 targetCheckbox.checked = true;
                 targetCheckbox.closest('.hint-item').classList.add('active');
             }
+
+            const currentMode = localStorage.getItem('sortMode') || 'usage';
+            switchSortMode(currentMode);
         }
     })
     .catch(error => console.error('Error:', error));
@@ -513,12 +527,12 @@ function deleteHint(chatId, hintKey, hintType = 'personal') {
     updateHintCheckbox(chatId, hintKey, 'delete', hintType);
 }
 
-function saveHint(chatIdToUse, messageCount, hintType = 'personal') {
+function saveHint(chatId, messageCount, hintType = 'personal') {
     const newHintInput = document.getElementById(hintType === 'personal' ? 'hint-input' : 'general-hint-input');
     const newHintKey = newHintInput.value.trim();
 
     if (!newHintKey) {
-        alert('Пожалуйста, введите ключ');
+        alert('Введите ключ');
         return;
     }
 
@@ -528,7 +542,7 @@ function saveHint(chatIdToUse, messageCount, hintType = 'personal') {
             'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-            chat_id: chatIdToUse,
+            chat_id: chatId,
             hint_key: newHintKey,
             message_count: messageCount,
             hint_type: hintType
@@ -539,118 +553,110 @@ function saveHint(chatIdToUse, messageCount, hintType = 'personal') {
         if (data.success) {
             const fullHintKey = data.full_hint_key;
             let hintsContainer = document.getElementById('hints-container');
-
+            
             if (!hintsContainer) {
+                let chatSection = document.querySelector('.chat-section');
+                if (!chatSection) {
+                    chatSection = document.createElement('div');
+                    chatSection.className = 'chat-section';
+                    document.body.appendChild(chatSection);
+                }
                 hintsContainer = document.createElement('div');
                 hintsContainer.id = 'hints-container';
-                const hintItems = document.querySelectorAll('.hint-item');
-                if (hintItems.length > 1) { 
+                hintsContainer.className = 'hints-container';
                 hintsContainer.innerHTML = `
-                  <div class="sort-buttons">
-                            <button onclick="switchSortMode('usage')" class="sort-btn active">
-                                <svg width="24" height="24" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="#000000" class="bi bi-sort-numeric-down-alt">
-                                    <g id="SVGRepo_iconCarrier">
-                                        <path fill-rule="evenodd" d="M11.36 7.098c-1.137 0-1.708-.657-1.762-1.278h1.004c.058.223.343.45.773.45.824 0 1.164-.829 1.133-1.856h-.059c-.148.39-.57.742-1.261.742-.91 0-1.72-.613-1.72-1.758 0-1.148.848-1.836 1.973-1.836 1.09 0 2.063.637 2.063 2.688 0 1.867-.723 2.848-2.145 2.848zm.062-2.735c.504 0 .933-.336.933-.972 0-.633-.398-1.008-.94-1.008-.52 0-.927.375-.927 1 0 .64.418.98.934.98z"/>
-                                        <path d="M12.438 8.668V14H11.39V9.684h-.051l-1.211.859v-.969l1.262-.906h1.046zM4.5 2.5a.5.5 0 0 0-1 0v9.793l-1.146-1.147a.5.5 0 0 0-.708.708l2 1.999.007.007a.497.497 0 0 0 .7-.006l2-2a.5.5 0 0 0-.707-.708L4.5 12.293V2.5z"/>
-                                    </g>
-                                </svg>
-                            </button>
-                            <button onclick="switchSortMode('time')" class="sort-btn">
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="#000000" stroke-width="0.00024">
-                                    <g id="SVGRepo_iconCarrier">
-                                        <path fill-rule="evenodd" clip-rule="evenodd" d="M1.25 7C1.25 6.58579 1.58579 6.25 2 6.25H10C10.4142 6.25 10.75 6.58579 10.75 7C10.75 7.41421 10.4142 7.75 10 7.75H2C1.58579 7.75 1.25 7.41421 1.25 7ZM17 7.75C14.6528 7.75 12.75 9.65279 12.75 12C12.75 14.3472 14.6528 16.25 17 16.25C19.3472 16.25 21.25 14.3472 21.25 12C21.25 9.65279 19.3472 7.75 17 7.75ZM11.25 12C11.25 8.82436 13.8244 6.25 17 6.25C20.1756 6.25 22.75 8.82436 22.75 12C22.75 15.1756 20.1756 17.75 17 17.75C13.8244 17.75 11.25 15.1756 11.25 12ZM17 9.25C17.4142 9.25 17.75 9.58579 17.75 10V11.5664L18.5668 12.5088C18.838 12.8218 18.8042 13.2955 18.4912 13.5668C18.1782 13.838 17.7045 13.8042 17.4332 13.4912L16.4332 12.3374C16.3151 12.201 16.25 12.0266 16.25 11.8462V10C16.25 9.58579 16.5858 9.25 17 9.25ZM1.25 12C1.25 11.5858 1.58579 11.25 2 11.25H8C8.41421 11.25 8.75 11.5858 8.75 12C8.75 12.4142 8.41421 12.75 8 12.75H2C1.58579 12.75 1.25 12.4142 1.25 12ZM1.25 17C1.25 16.5858 1.58579 16.25 2 16.25H10C10.4142 16.25 10.75 16.5858 10.75 17C10.75 17.4142 10.4142 17.75 10 17.75H2C1.58579 17.75 1.25 17.4142 1.25 17Z" fill="#000000"/>
-                                    </g>
-                                </svg>
-                            </button>
-                        </div>
+                    <div class="sort-buttons">
+                        <button onclick="switchSortMode('usage')" class="sort-btn active">
+                            <svg width="24" height="24" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="#000000" class="bi bi-sort-numeric-down-alt">
+                                <g id="SVGRepo_iconCarrier">
+                                    <path fill-rule="evenodd" d="M11.36 7.098c-1.137 0-1.708-.657-1.762-1.278h1.004c.058.223.343.45.773.45.824 0 1.164-.829 1.133-1.856h-.059c-.148.39-.57.742-1.261.742-.91 0-1.72-.613-1.72-1.758 0-1.148.848-1.836 1.973-1.836 1.09 0 2.063.637 2.063 2.688 0 1.867-.723 2.848-2.145 2.848zm.062-2.735c.504 0 .933-.336.933-.972 0-.633-.398-1.008-.94-1.008-.52 0-.927.375-.927 1 0 .64.418.98.934.98z"/>
+                                    <path d="M12.438 8.668V14H11.39V9.684h-.051l-1.211.859v-.969l1.262-.906h1.046zM4.5 2.5a.5.5 0 0 0-1 0v9.793l-1.146-1.147a.5.5 0 0 0-.708.708l2 1.999.007.007a.497.497 0 0 0 .7-.006l2-2a.5.5 0 0 0-.707-.708L4.5 12.293V2.5z"/>
+                                </g>
+                            </svg>
+                        </button>
+                        <button onclick="switchSortMode('time')" class="sort-btn">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="#000000" stroke-width="0.00024">
+                                <g id="SVGRepo_iconCarrier">
+                                    <path fill-rule="evenodd" clip-rule="evenodd" d="M1.25 7C1.25 6.58579 1.58579 6.25 2 6.25H10C10.4142 6.25 10.75 6.58579 10.75 7C10.75 7.41421 10.4142 7.75 10 7.75H2C1.58579 7.75 1.25 7.41421 1.25 7ZM17 7.75C14.6528 7.75 12.75 9.65279 12.75 12C12.75 14.3472 14.6528 16.25 17 16.25C19.3472 16.25 21.25 14.3472 21.25 12C21.25 9.65279 19.3472 7.75 17 7.75ZM11.25 12C11.25 8.82436 13.8244 6.25 17 6.25C20.1756 6.25 22.75 8.82436 22.75 12C22.75 15.1756 20.1756 17.75 17 17.75C13.8244 17.75 11.25 15.1756 11.25 12ZM17 9.25C17.4142 9.25 17.75 9.58579 17.75 10V11.5664L18.5668 12.5088C18.838 12.8218 18.8042 13.2955 18.4912 13.5668C18.1782 13.838 17.7045 13.8042 17.4332 13.4912L16.4332 12.3374C16.3151 12.201 16.25 12.0266 16.25 11.8462V10C16.25 9.58579 16.5858 9.25 17 9.25ZM1.25 12C1.25 11.5858 1.58579 11.25 2 11.25H8C8.41421 11.25 8.75 11.5858 8.75 12C8.75 12.4142 8.41421 12.75 8 12.75H2C1.58579 12.75 1.25 12.4142 1.25 12ZM1.25 17C1.25 16.5858 1.58579 16.25 2 16.25H10C10.4142 16.25 10.75 16.5858 10.75 17C10.75 17.4142 10.4142 17.75 10 17.75H2C1.58579 17.75 1.25 17.4142 1.25 17Z" fill="#000000"/>
+                                </g>
+                            </svg>
+                        </button>
                     </div>
                     <div class="hints-wrapper"></div>
                 `;
-                }
-                else {
-                       hintsContainer.innerHTML = ` <div class="hints-wrapper"></div> `;
-                }
-
-                const chatSection = document.querySelector('.chat-section') || document.body;
                 chatSection.appendChild(hintsContainer);
             }
 
             const hintsWrapper = hintsContainer.querySelector('.hints-wrapper');
-            const checkboxId = `checkbox-${hintType}-${fullHintKey}`;
+            if (!hintsWrapper) {
+                console.error('Hints wrapper not found');
+                return;
+            }
 
+            const checkboxId = `checkbox-${hintType}-${fullHintKey}`;
             const newHintItem = document.createElement('div');
-            newHintItem.className = `hint-item ${hintType === 'general' ? 'general-hint' : ''}`;
+            newHintItem.className = `hint-item ${hintType === 'general' ? 'general-hint' : ''} active`;
             newHintItem.innerHTML = `
                 <div class="hint-wrapper">
                     <input type="checkbox" 
                         id="${checkboxId}" 
-                        onchange="updateHintCheckbox('${chatIdToUse}', '${fullHintKey}', 'update', '${hintType}')"
+                        onchange="updateHintCheckbox('${chatId}', '${fullHintKey}', 'update', '${hintType}')"
                         class="hint-checkbox"
                         checked>
                     <label for="${checkboxId}" 
                         class="hint-label ${hintType === 'general' ? 'general' : ''}">${fullHintKey}</label>
                     <button class="hint-delete-btn" 
-                        onclick="deleteHint('${chatIdToUse}', '${fullHintKey}', '${hintType}')"
-                        aria-label="Delete hint">
+                        onclick="deleteHint('${chatId}', '${fullHintKey}', '${hintType}')"
+                        aria-label="Delete ${hintType} hint">
                         <svg xmlns="http://www.w3.org/2000/svg" x="0px" y="0px" width="32" height="32" viewBox="0 0 64 64">
-                                    <rect width="48" height="10" x="7" y="7" fill="#f9e3ae" rx="2" ry="2"></rect>
-                                    <rect width="36" height="4" x="13" y="55" fill="#f9e3ae" rx="2" ry="2"></rect>
-                                    <path fill="#c2cde7" d="M47 55L15 55 10 17 52 17 47 55z"></path>
-                                    <path fill="#ced8ed" d="M25 55L15 55 10 17 24 17 25 55z"></path>
-                                    <path fill="#b5c4e0" d="M11,17v2a3,3 0,0,0 3,3H38L37,55H47l5-38Z"></path>
-                                    <path fill="#8d6c9f" d="M16 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 16 10zM11 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 11 10zM21 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 21 10zM26 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 26 10zM31 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 31 10zM36 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 36 10zM41 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 41 10zM46 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 46 10zM51 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 51 10z"></path>
-                                    <path fill="#8d6c9f" d="M53,6H9A3,3 0 0 0 6 9v6a3,3 0 0 0 3 3c0,.27 4.89 36.22 4.89 36.22A3 3 0 0 0 15 60H47a3,3 0 0 0 1.11 -5.78l2.28 -17.3a1 1 0 0 0 .06 -.47L52.92 18H53a3,3 0 0 0 3 -3V9A3,3 0 0 0 53 6ZM24.59 18l5 5 -4.78 4.78a1 1 0 1 0 1.41 1.41L31 24.41 37.59 31 31 37.59l-7.29 -7.29h0l-5.82 -5.82a1 1 0 0 0 -1.41 1.41L21.59 31l-7.72 7.72L12.33 27.08 21.41 18Zm16 0 3.33 3.33a1 1 0 0 0 1.41 -1.41L43.41 18h7.17L39 29.59 32.41 23l5 -5Zm-11 21L23 45.59l-5.11 -5.11a1 1 0 0 0 -1.41 1.41L21.59 47l-5.86 5.86L14.2 41.22l8.8 -8.8Zm7.25 4.42L32.41 39 39 32.41l5.14 5.14a1 1 0 0 0 1.41 -1.41L40.41 31 47 24.41l2.67 2.67 -1.19 9L38.3 46.28h0L31 53.59 24.41 47 31 40.41l4.42 4.42a1 1 0 0 0 1.41 -1.41ZM23 48.41 28.59 54H17.41Zm16 0L44.59 54H33.41ZM40.41 47 48 39.37 46.27 52.86ZM50 24.58 48.41 23l2.06 -2.06Zm-19 -3L27.41 18h7.17Zm-19.47 -.64L13.59 23 12 24.58Zm3.47 .64L11.41 18h7.17ZM47 58H15a1,1 0 0 1 0 -2H47a1,1 0 0 1 0 2Zm7 -43a1,1 0 0 1 -1 1H9a1,1 0 0 1 -1 -1V9A1,1 0 0 1 9 8H53a1,1 0 0 1 1 1Z"></path>
-                                </svg>
+                            <rect width="48" height="10" x="7" y="7" fill="#f9e3ae" rx="2" ry="2"></rect>
+                            <rect width="36" height="4" x="13" y="55" fill="#f9e3ae" rx="2" ry="2"></rect>
+                            <path fill="#c2cde7" d="M47 55L15 55 10 17 52 17 47 55z"></path>
+                            <path fill="#ced8ed" d="M25 55L15 55 10 17 24 17 25 55z"></path>
+                            <path fill="#b5c4e0" d="M11,17v2a3,3 0,0,0 3,3H38L37,55H47l5-38Z"></path>
+                            <path fill="#8d6c9f" d="M16 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 16 10zM11 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 11 10zM21 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 21 10zM26 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 26 10zM31 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 31 10zM36 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 36 10zM41 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 41 10zM46 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 46 10zM51 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 51 10z"></path>
+                            <path fill="#8d6c9f" d="M53,6H9A3,3 0,0,0 6,9v6a3,3 0,0,0 3,3c0,.27 4.89 36.22 4.89 36.22A3 3 0,0,0 15,60H47a3,3 0,0,0 1.11-5.78l2.28-17.3a1 1 0,0,0 .06-.47L52.92 18H53a3,3 0,0,0 3-3V9A3,3 0,0,0 53,6ZM24.59 18l5 5-4.78 4.78a1 1 0,1,0 1.41 1.41L31 24.41 37.59 31 31 37.59l-7.29-7.29h0l-5.82-5.82a1 1 0,0,0-1.41 1.41L21.59 31l-7.72 7.72L12.33 27.08 21.41 18Zm16 0 3.33 3.33a1 1 0,0,0 1.41-1.41L43.41 18h7.17L39 29.59 32.41 23l5-5Zm-11 21L23 45.59l-5.11-5.11a1 1 0,0,0-1.41 1.41L21.59 47l-5.86 5.86L14.2 41.22l8.8-8.8Zm7.25 4.42L32.41 39 39 32.41l5.14 5.14a1 1 0,0,0 1.41-1.41L40.41 31 47 24.41l2.67 2.67-1.19 9L38.3 46.28h0L31 53.59 24.41 47 31 40.41l4.42 4.42a1 1 0,0,0 1.41-1.41ZM23 48.41 28.59 54H17.41Zm16 0L44.59 54H33.41ZM40.41 47 48 39.37 46.27 52.86ZM50 24.58 48.41 23l2.06-2.06Zm-19-3L27.41 18h7.17Zm-19.47-.64L13.59 23 12 24.58Zm3.47 .64L11.41 18h7.17ZM47 58H15a1,1 0,0,1 0-2H47a1,1 0,0,1 0 2Zm7-43a1,1 0,0,1-1 1H9a1,1 0,0,1-1-1V9A1,1 0,0,1 9 8H53a1,1 0,0,1 1 1Z"></path>
+                        </svg>
                     </button>
                 </div>
             `;
 
-            hintsWrapper.querySelectorAll('.hint-item').forEach(item => {
-                item.classList.remove('active');
-                item.querySelector('input').checked = false;
-            });
-
-            newHintItem.classList.add('active');
-            newHintItem.querySelector('input').checked = true;
-            hintsWrapper.appendChild(newHintItem);
-            const hintItems = document.querySelectorAll('.hint-item');
-            if (hintItems.length > 1) {
-                const sortButtons = hintsContainer.querySelector('.sort-buttons');
-                if (!sortButtons) {
-                    const sortHTML = `
-                  <div class="sort-buttons">
-                            <button onclick="switchSortMode('usage')" class="sort-btn active">
-                                <svg width="24" height="24" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="#000000" class="bi bi-sort-numeric-down-alt">
-                                    <g id="SVGRepo_iconCarrier">
-                                        <path fill-rule="evenodd" d="M11.36 7.098c-1.137 0-1.708-.657-1.762-1.278h1.004c.058.223.343.45.773.45.824 0 1.164-.829 1.133-1.856h-.059c-.148.39-.57.742-1.261.742-.91 0-1.72-.613-1.72-1.758 0-1.148.848-1.836 1.973-1.836 1.09 0 2.063.637 2.063 2.688 0 1.867-.723 2.848-2.145 2.848zm.062-2.735c.504 0 .933-.336.933-.972 0-.633-.398-1.008-.94-1.008-.52 0-.927.375-.927 1 0 .64.418.98.934.98z"/>
-                                        <path d="M12.438 8.668V14H11.39V9.684h-.051l-1.211.859v-.969l1.262-.906h1.046zM4.5 2.5a.5.5 0 0 0-1 0v9.793l-1.146-1.147a.5.5 0 0 0-.708.708l2 1.999.007.007a.497.497 0 0 0 .7-.006l2-2a.5.5 0 0 0-.707-.708L4.5 12.293V2.5z"/>
-                                    </g>
-                                </svg>
-                            </button>
-                            <button onclick="switchSortMode('time')" class="sort-btn">
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="#000000" stroke-width="0.00024">
-                                    <g id="SVGRepo_iconCarrier">
-                                        <path fill-rule="evenodd" clip-rule="evenodd" d="M1.25 7C1.25 6.58579 1.58579 6.25 2 6.25H10C10.4142 6.25 10.75 6.58579 10.75 7C10.75 7.41421 10.4142 7.75 10 7.75H2C1.58579 7.75 1.25 7.41421 1.25 7ZM17 7.75C14.6528 7.75 12.75 9.65279 12.75 12C12.75 14.3472 14.6528 16.25 17 16.25C19.3472 16.25 21.25 14.3472 21.25 12C21.25 9.65279 19.3472 7.75 17 7.75ZM11.25 12C11.25 8.82436 13.8244 6.25 17 6.25C20.1756 6.25 22.75 8.82436 22.75 12C22.75 15.1756 20.1756 17.75 17 17.75C13.8244 17.75 11.25 15.1756 11.25 12ZM17 9.25C17.4142 9.25 17.75 9.58579 17.75 10V11.5664L18.5668 12.5088C18.838 12.8218 18.8042 13.2955 18.4912 13.5668C18.1782 13.838 17.7045 13.8042 17.4332 13.4912L16.4332 12.3374C16.3151 12.201 16.25 12.0266 16.25 11.8462V10C16.25 9.58579 16.5858 9.25 17 9.25ZM1.25 12C1.25 11.5858 1.58579 11.25 2 11.25H8C8.41421 11.25 8.75 11.5858 8.75 12C8.75 12.4142 8.41421 12.75 8 12.75H2C1.58579 12.75 1.25 12.4142 1.25 12ZM1.25 17C1.25 16.5858 1.58579 16.25 2 16.25H10C10.4142 16.25 10.75 16.5858 10.75 17C10.75 17.4142 10.4142 17.75 10 17.75H2C1.58579 17.75 1.25 17.4142 1.25 17Z" fill="#000000"/>
-                                    </g>
-                                </svg>
-                            </button>
-                        </div>
-                    `;
-                    hintsContainer.insertAdjacentHTML('afterbegin', sortHTML);
-                }
+            if (hintsWrapper.children.length === 0) {
+                hintsWrapper.appendChild(newHintItem);
+            } else {
+                
+                const existingCheckboxes = hintsWrapper.querySelectorAll('input[type="checkbox"]');
+                existingCheckboxes.forEach(checkbox => {
+                    checkbox.checked = false;
+                    checkbox.closest('.hint-item').classList.remove('active');
+                });
+                hintsWrapper.appendChild(newHintItem);
             }
+
+            fetch('/update_hints', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    chat_id: chatId,
+                    hint_key: fullHintKey,
+                    action: 'update',
+                    hint_type: hintType
+                })
+            });
 
             const currentMode = localStorage.getItem('sortMode') || 'usage';
             switchSortMode(currentMode);
             newHintInput.value = '';
-        }
-        else {
-            alert(data.message || 'Неизвестная ошибка');
+            document.getElementById(hintType === 'personal' ? 'hint-modal' : 'hint-modal-general').classList.add('hidden');
+        } else {
+            alert(data.message || 'Ошибка при добавлении ключа');
         }
     })
     .catch(error => {
         console.error('Ошибка:', error);
-        alert('Произошла ошибка при добавлении ключа');
+        alert('Произошла ошибка при добавлении ключа.');
     });
 }
 
@@ -726,7 +732,7 @@ function extract_leading_number(s) {
 }
 
 function sort_hints_by_time(hints) {
-
+    
     let checkedHint = Array.from(hints).find(hint => 
         hint.classList.contains('active') || 
         hint.querySelector('input[type="checkbox"]').checked
@@ -797,6 +803,7 @@ function sort_hints_by_time(hints) {
 }
 
 function sort_hints_by_usage(hints) {
+
     const hintsData = JSON.parse(document.getElementById('hints-data').textContent);
     const chatId = JSON.parse(document.getElementById('chat-id').textContent);
     const chatData = hintsData[chatId] || {};
@@ -877,7 +884,7 @@ function sort_hints_by_usage(hints) {
 }
 
 function switchSortMode(newMode) {
-
+    
     if (!localStorage.getItem('sortMode')) {
         localStorage.setItem('sortMode', 'usage');
     }
@@ -1677,11 +1684,9 @@ function showStatus(message) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-
     setupStatusMonitor();
 
     if (!document.getElementById('send-status')) {
-
         var statusElement = document.createElement('div');
         statusElement.id = 'send-status';
         statusElement.className = 'status-message';
@@ -1748,9 +1753,9 @@ document.addEventListener('DOMContentLoaded', () => {
         hintsWrapper.replaceChildren(...sortedHints);
     }
     catch {}
- });
+});
 
- async function deleteMedia(mediaId, mediaPath, messageIndex) {
+async function deleteMedia(mediaId, mediaPath, messageIndex) {
     if (!confirm('Are you sure you want to delete this media?')) {
         return;
     }
@@ -1912,8 +1917,7 @@ function createHintItem(hint, isChecked, chatId, hintType) {
                 onchange="updateHintCheckbox('${chatId}', '${hint}', 'update', '${hintType}')"
                 class="hint-checkbox">
             <label for="checkbox-${hintType}-${hint}" class="hint-label ${hintType === 'general' ? 'general' : ''}">${hint}</label>
-            <button 
-                class="hint-delete-btn" 
+            <button class="hint-delete-btn" 
                 onclick="deleteHint('${chatId}', '${hint}', '${hintType}')"
                 aria-label="Delete ${hintType} hint">
                 <svg xmlns="http://www.w3.org/2000/svg" x="0px" y="0px" width="32" height="32" viewBox="0 0 64 64">
@@ -1923,7 +1927,7 @@ function createHintItem(hint, isChecked, chatId, hintType) {
                     <path fill="#ced8ed" d="M25 55L15 55 10 17 24 17 25 55z"></path>
                     <path fill="#b5c4e0" d="M11,17v2a3,3 0,0,0 3,3H38L37,55H47l5-38Z"></path>
                     <path fill="#8d6c9f" d="M16 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 16 10zM11 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 11 10zM21 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 21 10zM26 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 26 10zM31 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 31 10zM36 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 36 10zM41 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 41 10zM46 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 46 10zM51 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 51 10z"></path>
-                    <path fill="#8d6c9f" d="M53,6H9A3,3 0 0 0 6 9v6a3,3 0 0 0 3 3c0,.27 4.89 36.22 4.89 36.22A3 3 0 0 0 15 60H47a3,3 0 0 0 1.11 -5.78l2.28 -17.3a1 1 0 0 0 .06 -.47L52.92 18H53a3,3 0 0 0 3 -3V9A3,3 0 0 0 53 6ZM24.59 18l5 5 -4.78 4.78a1 1 0 1 0 1.41 1.41L31 24.41 37.59 31 31 37.59l-7.29 -7.29h0l-5.82 -5.82a1 1 0 0 0 -1.41 1.41L21.59 31l-7.72 7.72L12.33 27.08 21.41 18Zm16 0 3.33 3.33a1 1 0 0 0 1.41 -1.41L43.41 18h7.17L39 29.59 32.41 23l5 -5Zm-11 21L23 45.59l-5.11 -5.11a1 1 0 0 0 -1.41 1.41L21.59 47l-5.86 5.86L14.2 41.22l8.8 -8.8Zm7.25 4.42L32.41 39 39 32.41l5.14 5.14a1 1 0 0 0 1.41 -1.41L40.41 31 47 24.41l2.67 2.67 -1.19 9L38.3 46.28h0L31 53.59 24.41 47 31 40.41l4.42 4.42a1 1 0 0 0 1.41 -1.41ZM23 48.41 28.59 54H17.41Zm16 0L44.59 54H33.41ZM40.41 47 48 39.37 46.27 52.86ZM50 24.58 48.41 23l2.06 -2.06Zm-19 -3L27.41 18h7.17Zm-19.47 -.64L13.59 23 12 24.58Zm3.47 .64L11.41 18h7.17ZM47 58H15a1,1 0 0 1 0 -2H47a1,1 0 0 1 0 2Zm7 -43a1,1 0 0 1 -1 1H9a1,1 0 0 1 -1 -1V9A1,1 0 0 1 9 8H53a1,1 0 0 1 1 1Z"></path>
+                    <path fill="#8d6c9f" d="M53,6H9A3,3 0,0,0 6,9v6a3,3 0,0,0 3,3c0,.27 4.89 36.22 4.89 36.22A3 3 0,0,0 15,60H47a3,3 0,0,0 1.11-5.78l2.28-17.3a1 1 0,0,0 .06-.47L52.92 18H53a3,3 0,0,0 3-3V9A3,3 0,0,0 53,6ZM24.59 18l5 5-4.78 4.78a1 1 0,1,0 1.41 1.41L31 24.41 37.59 31 31 37.59l-7.29-7.29h0l-5.82-5.82a1 1 0,0,0-1.41 1.41L21.59 31l-7.72 7.72L12.33 27.08 21.41 18Zm16 0 3.33 3.33a1 1 0,0,0 1.41-1.41L43.41 18h7.17L39 29.59 32.41 23l5-5Zm-11 21L23 45.59l-5.11-5.11a1 1 0,0,0-1.41 1.41L21.59 47l-5.86 5.86L14.2 41.22l8.8-8.8Zm7.25 4.42L32.41 39 39 32.41l5.14 5.14a1 1 0,0,0 1.41-1.41L40.41 31 47 24.41l2.67 2.67-1.19 9L38.3 46.28h0L31 53.59 24.41 47 31 40.41l4.42 4.42a1 1 0,0,0 1.41-1.41ZM23 48.41 28.59 54H17.41Zm16 0L44.59 54H33.41ZM40.41 47 48 39.37 46.27 52.86ZM50 24.58 48.41 23l2.06-2.06Zm-19-3L27.41 18h7.17Zm-19.47-.64L13.59 23 12 24.58Zm3.47 .64L11.41 18h7.17ZM47 58H15a1,1 0,0,1 0-2H47a1,1 0,0,1 0 2Zm7-43a1,1 0,0,1-1 1H9a1,1 0,0,1-1-1V9A1,1 0,0,1 9 8H53a1,1 0,0,1 1 1Z"></path>
                 </svg>
             </button>
         </div>
