@@ -46,23 +46,167 @@ video {
   padding: 15px 5px;
   text-align: center;
   text-decoration: none;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 20px;
-  margin: 5px 2px 20px;
+  margin: 0px 2px 0px;
   cursor: pointer;
   border-radius: 10px;
   width: 300px;
-  transition: all 1s;
-  margin-top: 0px;
+  height: 35px;
+  transition: all 0.3s;
+  position: relative;
+  overflow: hidden;
 }
 
 .copy-button:hover {
-  background-color: rgb(255, 255, 255) !important;
+  background-color: #f5d84d;
+}
+
+.copy-button:active {
+  background-color: #e6c84d;
+}
+
+.copy-button.tag-button {
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  width: 75px;
+  height: 65px;
+  margin-left: -4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0 10px 10px 0;
+  border-left: 2px solid rgba(0,0,0,0.1);
+  background-color: #fbdf56;
+  transition: background-color 0.3s ease-in-out;
+  cursor: pointer;
+}
+
+.copy-button.tag-button:hover {
+  background-color: #ead147;
+}
+
+.copy-button.tag-button::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  background-color: #9fd897;
+  pointer-events: none;
+  clip-path: polygon(50% 50%, 50% 50%, 50% 50%);
+}
+
+.copy-button.tag-button.holding::before {
+  animation: clockFill 1s linear forwards;
+  animation-iteration-count: 1;
+  animation-direction: normal;
+}
+
+.copy-button.tag-button.completed {
+  background-color: #9fd897;
+}
+
+.copy-button.tag-button.completed::before {
+  opacity: 0;
+}
+
+@keyframes clockFill {
+  0%       { clip-path: polygon(50% 50%, 50% 50%, 50% 50%); }
+  5.882%   { clip-path: polygon(50% 50%, 50% 0%,   75% 0%,   50% 50%); }
+  11.765%  { clip-path: polygon(50% 50%, 50% 0%,   100% 0%,  100% 25%, 50% 50%); }
+  17.647%  { clip-path: polygon(50% 50%, 50% 0%,   100% 0%,  100% 50%, 75% 50%, 50% 50%); }
+  23.529%  { clip-path: polygon(50% 50%, 50% 0%,   100% 0%,  100% 75%, 100% 100%,50% 50%); }
+  29.412%  { clip-path: polygon(50% 50%, 50% 0%,   100% 0%,  100% 100%,75% 100%,50% 50%); }
+  35.294%  { clip-path: polygon(50% 50%, 50% 0%,   100% 0%,  100% 100%,50% 100%,50% 50%); }
+  41.176%  { clip-path: polygon(50% 50%, 50% 0%,   100% 0%,  100% 100%,25% 100%,50% 50%); }
+  47.059%  { clip-path: polygon(50% 50%, 50% 0%,   100% 0%,  100% 100%,0%  100%,50% 50%); }
+  52.941%  { clip-path: polygon(50% 50%, 50% 0%,   100% 0%,  100% 100%,0%  100%,0%  75%,50% 50%); }
+  58.824%  { clip-path: polygon(50% 50%, 50% 0%,   100% 0%,  100% 100%,0%  100%,0%  50%,50% 50%); }
+  64.706%  { clip-path: polygon(50% 50%, 50% 0%,   100% 0%,  100% 100%,0%  100%,0%  25%,50% 50%); }
+  70.588%  { clip-path: polygon(50% 50%, 50% 0%,   100% 0%,  100% 100%,0%  100%,0%   0%); }
+  76.471%  { clip-path: polygon(50% 50%, 50% 0%,   100% 0%,  100% 100%,0%  100%,0%   0%,25% 0%); }
+  82.353%  { clip-path: polygon(50% 50%, 50% 0%,   100% 0%,  100% 100%,0%  100%,0%   0%,50% 0%); }
+  88.235%  { clip-path: polygon(50% 50%, 50% 0%,   100% 0%,  100% 100%,0%  100%,0%   0%,75% 0%); }
+  94.118%  { clip-path: polygon(50% 50%, 50% 0%,   100% 0%,  100% 100%,0%  100%,0%   0%,100% 0%); }
+  100%     { clip-path: inset(0); }
+}
+
+.copy-button.tag-button.animate {
+  animation: buttonClickAnimation 0.2s;
+}
+
+@keyframes buttonClickAnimation {
+  0% { transform: scale(1); }
+  50% { transform: scale(0.8); }
+  100% { transform: scale(1); }
 }
 
 .copy-button.img {
   margin: 5px 2px 5px;
   background-color: rgb(107, 143, 255);
+  width: 300px;
+  height: 35px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.3s ease;
+}
+
+.copy-button.img:hover {
+  background-color: rgb(89, 119, 213);
+}
+
+.copy-button.img.active {
+  background-color:  rgb(194, 209, 252);
+  transition: background-color 0.3s ease;
+}
+
+.copy-button.img.animate {
+  animation: buttonClickAnimation 0.2s;
+}
+
+.button-container {
+  display: inline-flex;
+  align-items: stretch;
+  margin: 0px 2px 5px;  
+  width: 310px;
+  height: 65px;
+}
+
+.text-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 15px 5px;
+  background-color: #fbdf56;
+  color: rgb(0, 0, 0);
+  font-weight: bold;
+  font-size: 20px;
+  border: none;
+  border-radius: 10px 0 0 10px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  font-family: 'Varela Round', sans-serif;
+  border-right: 2px solid rgba(0, 0, 0, 0.1);
+  box-sizing: border-box;
+  height: 65px;
+  width: 245px;
+  text-align: center;
+  transition: background-color 0.3s ease;
+}
+
+.text-button:hover {
+  background-color: #ead147;
+}
+
+.text-button.active {
+  background-color:  #9fd897;
+  transition: background-color 0.3s ease;
 }
 
 .image-number {
@@ -284,7 +428,7 @@ video {
 }
 
 .button1:hover {
-  background-color: #c9f5d6;
+  background-color: #9fd897;
   color: rgb(0, 0, 0);
 }
 
@@ -991,4 +1135,11 @@ input[type="checkbox"] {
 .message-separator::after {
   right: 0;
   background: linear-gradient(to left, rgba(251, 133, 86, 0), rgba(251, 133, 86, 1));
+}
+
+.copy-button.tag-button span {
+  position: relative;
+  z-index: 2;
+  color: black;
+  font-weight: bold;
 }

@@ -10,20 +10,94 @@ function copyToClipboard(text, event) {
 
     var copyButton = event.target;
     copyButton.classList.add('animate');
-
-    if (!copyButton.dataset.clickCount || copyButton.dataset.clickCount % 2 === 0) {
-        copyButton.style.backgroundColor = '#fbdf56';
-        copyButton.dataset.clickCount = 1;
-    } else {
-        copyButton.style.backgroundColor = '#D26BFF';
-        copyButton.dataset.clickCount++;
-    }
+    copyButton.classList.add('active');
 
     setTimeout(function() {
         copyButton.classList.remove('animate');
     }, 200);
+
+    setTimeout(function() {
+        copyButton.classList.remove('active');
+    }, 2000);
 }
 
+function copyTagToClipboard(tag, event) {
+    if (tag) {
+        console.log("Copying single tag: ", tag);
+        var dummy = document.createElement("textarea");
+        document.body.appendChild(dummy);
+        dummy.value = tag;
+        dummy.select();
+        document.execCommand("copy");
+        document.body.removeChild(dummy);
+    } else {
+        console.log("Copying all tags.");
+        var allTags = new Set();
+        document.querySelectorAll('.text-button').forEach(button => {
+            const tagMatch = button.textContent.match(/@(\w+)/);
+            if (tagMatch) {
+                allTags.add(tagMatch[1]);
+            }
+        });
+
+        var dummy = document.createElement("textarea");
+        document.body.appendChild(dummy);
+        dummy.value = Array.from(allTags).join(' '); 
+        dummy.select();
+        document.execCommand("copy");
+        document.body.removeChild(dummy);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const tagButtons = document.querySelectorAll('.copy-button.tag-button');
+  
+    tagButtons.forEach(button => {
+      button.removeAttribute('onclick');
+      let hasCopied = false;
+  
+      button.addEventListener('click', e => {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }, true);
+  
+      button.addEventListener('pointerdown', e => {
+        if (e.pointerType !== 'mouse' || e.button !== 0) return;
+        e.preventDefault();
+        hasCopied = false;
+        button.classList.add('holding');
+      });
+  
+      button.addEventListener('pointerup', e => {
+        if (e.pointerType !== 'mouse' || e.button !== 0) return;
+        if (!hasCopied) {
+          hasCopied = true;
+          button.classList.remove('holding');
+          button.classList.add('animate');
+          button.classList.add('completed');
+          const m = button.previousElementSibling.textContent.match(/@(\w+)/);
+          if (m) copyTagToClipboard(m[1], e);
+          setTimeout(() => button.classList.remove('animate'), 300);
+          setTimeout(() => button.classList.remove('completed'), 2000);
+        }
+      });
+  
+      button.addEventListener('animationend', e => {
+        if (e.animationName === 'clockFill') {
+          hasCopied = true;
+          button.classList.remove('holding');
+          button.classList.add('completed');
+          copyTagToClipboard(null, e);
+          setTimeout(() => button.classList.remove('completed'), 2000);
+        }
+      });
+  
+      button.addEventListener('pointercancel', () => {
+        button.classList.remove('holding','animate','completed');
+      });
+    });
+  });
+  
 let rotationStates = {};
 
 async function rotateMedia(mediaId, direction, filePath, mediaType) {
@@ -88,17 +162,15 @@ function copyImageToClipboard(imgBase64, event) {
 
             var copyButton = event.target;
             copyButton.classList.add('animate');
-            if (!copyButton.dataset.clickCount || copyButton.dataset.clickCount % 2 === 0) {
-                copyButton.style.backgroundColor = '#6B8FFF';
-                copyButton.dataset.clickCount = 1;
-            } else {
-                copyButton.style.backgroundColor = '#6BFF96';
-                copyButton.dataset.clickCount++;
-            }
+            copyButton.classList.add('active');
 
             setTimeout(function() {
                 copyButton.classList.remove('animate');
             }, 200);
+
+            setTimeout(function() {
+                copyButton.classList.remove('active');
+            }, 2000);
         });
     };
     img.src = imgBase64;
@@ -106,28 +178,25 @@ function copyImageToClipboard(imgBase64, event) {
 
 async function copyVideoToClipboard(videoPath, event) {
     try {
-
         var copyButton = event.target;
         copyButton.classList.add('animate');
-        if (!copyButton.dataset.clickCount || copyButton.dataset.clickCount % 2 === 0) {
-            copyButton.style.backgroundColor = '#6B8FFF';
-            copyButton.dataset.clickCount = 1;
-        } else {
-            copyButton.style.backgroundColor = '#6BFF96';
-            copyButton.dataset.clickCount++;
-        }
+        copyButton.classList.add('active');
 
-        setTimeout(function () {
+        setTimeout(function() {
             copyButton.classList.remove('animate');
         }, 200);
 
+        setTimeout(function() {
+            copyButton.classList.remove('active');
+        }, 2000);
+
         await fetch('/copy-video', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ path: videoPath }),
-                });
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ path: videoPath }),
+        });
     } catch (err) {
         console.error('Could not copy video: ', err);
     }
@@ -732,7 +801,7 @@ function extract_leading_number(s) {
 }
 
 function sort_hints_by_time(hints) {
-    
+
     let checkedHint = Array.from(hints).find(hint => 
         hint.classList.contains('active') || 
         hint.querySelector('input[type="checkbox"]').checked
@@ -884,7 +953,7 @@ function sort_hints_by_usage(hints) {
 }
 
 function switchSortMode(newMode) {
-    
+
     if (!localStorage.getItem('sortMode')) {
         localStorage.setItem('sortMode', 'usage');
     }
