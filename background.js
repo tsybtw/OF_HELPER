@@ -817,6 +817,24 @@ async function processImageAndUpload(imageTag) {
     }
   }
 
+  function waitForAnyElement(selectors, maxAttempts = 30, interval = 500) {
+    return new Promise((resolve, reject) => {
+      let attempts = 0;
+      const check = () => {
+        for (const selector of selectors) {
+          const el = typeof selector === 'string'
+            ? document.querySelector(selector)
+            : selector();
+          if (el) return resolve(el);
+        }
+        attempts++;
+        if (attempts >= maxAttempts) return reject(new Error('Elements not found'));
+        setTimeout(check, interval);
+      };
+      check();
+    });
+  }
+
   const waitForElement = (selector, maxAttempts = 30, interval = 500) => new Promise((resolve, reject) => {
     let attempts = 0;
     const checkElement = () => {
@@ -922,7 +940,15 @@ async function processImageAndUpload(imageTag) {
       fileInput.files = dataTransfer.files;
       const event = new Event("change", { bubbles: true });
       fileInput.dispatchEvent(event);
-      const mentionButton = await waitForElement(".g-btn.m-with-round-hover.m-light.m-icon.m-icon-only.m-white.m-sm-size.has-tooltip");
+    
+      let mentionButton = await waitForAnyElement([
+        ".g-btn.m-with-round-hover.m-light.m-icon.m-icon-only.m-white.m-sm-size.has-tooltip",
+        () => {
+          const btns = document.querySelectorAll(".g-btn.m-with-round-hover.m-light.m-icon.m-icon-only.m-white.m-sm-size");
+          return btns.length > 3 ? btns[3] : null;
+        }
+      ]);
+      
       await new Promise(resolve => setTimeout(resolve, 3000));
       mentionButton.click();
       const mentionLink = await waitForElementWithText(".b-stickers__link.d-flex.align-items-center.w-100.m-bg-light", "Mention");
@@ -3454,7 +3480,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.7.0.2';
+            const VERSION = '5.7.0.3';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 

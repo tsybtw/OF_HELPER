@@ -36,7 +36,7 @@ function copyTagToClipboard(tag, event) {
         document.querySelectorAll('.text-button').forEach(button => {
             const tagMatch = button.textContent.match(/@(\w+)/);
             if (tagMatch) {
-                allTags.add(tagMatch[1]);
+                allTags.add('@' + tagMatch[1]);
             }
         });
 
