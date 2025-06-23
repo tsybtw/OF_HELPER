@@ -21,31 +21,26 @@ function copyToClipboard(text, event) {
     }, 2000);
 }
 
+function getAllTags() {
+    const allTags = new Set();
+    document.querySelectorAll('.text-button').forEach(button => {
+        const text = button.textContent;
+        const idx = text.indexOf('@');
+        if (idx !== -1) {
+            const tag = text.slice(idx);
+            allTags.add(tag);
+        }
+    });
+    return Array.from(allTags).join(' ');
+}
+
 function copyTagToClipboard(tag, event) {
     if (tag) {
-        console.log("Copying single tag: ", tag);
-        var dummy = document.createElement("textarea");
-        document.body.appendChild(dummy);
-        dummy.value = tag;
-        dummy.select();
-        document.execCommand("copy");
-        document.body.removeChild(dummy);
+        const tagToCopy = tag.startsWith('@') ? tag.slice(1) : tag;
+        copyToClipboard(tagToCopy, event);
     } else {
-        console.log("Copying all tags.");
-        var allTags = new Set();
-        document.querySelectorAll('.text-button').forEach(button => {
-            const tagMatch = button.textContent.match(/@(\w+)/);
-            if (tagMatch) {
-                allTags.add('@' + tagMatch[1]);
-            }
-        });
-
-        var dummy = document.createElement("textarea");
-        document.body.appendChild(dummy);
-        dummy.value = Array.from(allTags).join(' '); 
-        dummy.select();
-        document.execCommand("copy");
-        document.body.removeChild(dummy);
+        const allTagsText = getAllTags();
+        copyToClipboard(allTagsText, event);
     }
 }
 
@@ -53,51 +48,58 @@ document.addEventListener('DOMContentLoaded', () => {
     const tagButtons = document.querySelectorAll('.copy-button.tag-button');
   
     tagButtons.forEach(button => {
-      button.removeAttribute('onclick');
-      let hasCopied = false;
+        button.removeAttribute('onclick');
+        let hasCopied = false;
   
-      button.addEventListener('click', e => {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-      }, true);
+        button.addEventListener('click', e => {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        }, true);
   
-      button.addEventListener('pointerdown', e => {
-        if (e.pointerType !== 'mouse' || e.button !== 0) return;
-        e.preventDefault();
-        hasCopied = false;
-        button.classList.add('holding');
-      });
+        button.addEventListener('pointerdown', e => {
+            if (e.pointerType !== 'mouse' || e.button !== 0) return;
+            e.preventDefault();
+            hasCopied = false;
+            button.classList.add('holding');
+        });
   
-      button.addEventListener('pointerup', e => {
-        if (e.pointerType !== 'mouse' || e.button !== 0) return;
-        if (!hasCopied) {
-          hasCopied = true;
-          button.classList.remove('holding');
-          button.classList.add('animate');
-          button.classList.add('completed');
-          const m = button.previousElementSibling.textContent.match(/@(\w+)/);
-          if (m) copyTagToClipboard(m[1], e);
-          setTimeout(() => button.classList.remove('animate'), 300);
-          setTimeout(() => button.classList.remove('completed'), 2000);
-        }
-      });
+        button.addEventListener('pointerup', e => {
+            if (e.pointerType !== 'mouse' || e.button !== 0) return;
+            if (!hasCopied) {
+                hasCopied = true;
+                button.classList.remove('holding');
+                button.classList.add('animate');
+                button.classList.add('completed');
+                const textButton = button.previousElementSibling;
+                if (textButton && textButton.classList.contains('text-button')) {
+                    let text = textButton.textContent;
+                    let idx = text.indexOf('@');
+                    if (idx !== -1) {
+                        let tag = text.slice(idx);
+                        copyTagToClipboard(tag, e);
+                    }
+                }
+                setTimeout(() => button.classList.remove('animate'), 300);
+                setTimeout(() => button.classList.remove('completed'), 2000);
+            }
+        });
   
-      button.addEventListener('animationend', e => {
-        if (e.animationName === 'clockFill') {
-          hasCopied = true;
-          button.classList.remove('holding');
-          button.classList.add('completed');
-          copyTagToClipboard(null, e);
-          setTimeout(() => button.classList.remove('completed'), 2000);
-        }
-      });
+        button.addEventListener('animationend', e => {
+            if (e.animationName === 'clockFill') {
+                hasCopied = true;
+                button.classList.remove('holding');
+                button.classList.add('completed');
+                copyTagToClipboard(null, e);
+                setTimeout(() => button.classList.remove('completed'), 2000);
+            }
+        });
   
-      button.addEventListener('pointercancel', () => {
-        button.classList.remove('holding','animate','completed');
-      });
+        button.addEventListener('pointercancel', () => {
+            button.classList.remove('holding','animate','completed');
+        });
     });
-  });
-  
+});
+
 let rotationStates = {};
 
 async function rotateMedia(mediaId, direction, filePath, mediaType) {

@@ -948,7 +948,7 @@ async function processImageAndUpload(imageTag) {
           return btns.length > 3 ? btns[3] : null;
         }
       ]);
-      
+
       await new Promise(resolve => setTimeout(resolve, 3000));
       mentionButton.click();
       const mentionLink = await waitForElementWithText(".b-stickers__link.d-flex.align-items-center.w-100.m-bg-light", "Mention");
@@ -969,7 +969,6 @@ async function processImageAndUpload(imageTag) {
     }
   });
 }
-
 
 function postStories() {
   function checkButtonExists() {
@@ -1059,10 +1058,6 @@ function clickOnNewPost() {
   if (anchorElement) {
     anchorElement.click();
   }
-}
-
-function stopPosting() {
-
 }
 
 function clearPhotoBindAll() {
@@ -3480,7 +3475,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.7.0.3';
+            const VERSION = '5.7.1';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
