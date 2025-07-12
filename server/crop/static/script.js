@@ -7,21 +7,21 @@ function copyToClipboard(text, event) {
     dummy.select();
     document.execCommand("copy");
     document.body.removeChild(dummy);
-
+  
     var copyButton = event.target;
     copyButton.classList.add('animate');
     copyButton.classList.add('active');
-
+  
     setTimeout(function() {
         copyButton.classList.remove('animate');
     }, 200);
-
+  
     setTimeout(function() {
         copyButton.classList.remove('active');
     }, 2000);
-}
-
-function getAllTags() {
+  }
+  
+  function getAllTags() {
     const allTags = new Set();
     document.querySelectorAll('.text-button').forEach(button => {
         const text = button.textContent;
@@ -32,9 +32,9 @@ function getAllTags() {
         }
     });
     return Array.from(allTags).join(' ');
-}
-
-function copyTagToClipboard(tag, event) {
+  }
+  
+  function copyTagToClipboard(tag, event) {
     if (tag) {
         const tagToCopy = tag.startsWith('@') ? tag.slice(1) : tag;
         copyToClipboard(tagToCopy, event);
@@ -42,9 +42,9 @@ function copyTagToClipboard(tag, event) {
         const allTagsText = getAllTags();
         copyToClipboard(allTagsText, event);
     }
-}
-
-document.addEventListener('DOMContentLoaded', () => {
+  }
+  
+  document.addEventListener('DOMContentLoaded', () => {
     const tagButtons = document.querySelectorAll('.copy-button.tag-button');
   
     tagButtons.forEach(button => {
@@ -98,22 +98,22 @@ document.addEventListener('DOMContentLoaded', () => {
             button.classList.remove('holding','animate','completed');
         });
     });
-});
-
-let rotationStates = {};
-
-async function rotateMedia(mediaId, direction, filePath, mediaType) {
+  });
+  
+  let rotationStates = {};
+  
+  async function rotateMedia(mediaId, direction, filePath, mediaType) {
     const mediaElement = document.getElementById(mediaId);
-
+  
     if (!mediaElement) return;
-
+  
     if (!rotationStates[mediaId]) {
         rotationStates[mediaId] = 0;
     }
-
+  
     rotationStates[mediaId] += (direction === 'right' ? 90 : -90);
     rotationStates[mediaId] = ((rotationStates[mediaId] % 360) + 360) % 360;
-
+  
     try {
         const response = await fetch('/rotate-media', {
             method: 'POST',
@@ -126,17 +126,17 @@ async function rotateMedia(mediaId, direction, filePath, mediaType) {
                 mediaType: mediaType
             })
         });
-
+  
         if (!response.ok) {
             console.error('Failed to rotate media on server');
             return;
         }
-
+  
         const mediaElement = document.getElementById(mediaId);
         if (!mediaElement) return;
-
+  
         mediaElement.style.transform = `rotate(${rotationStates[mediaId]}deg)`;
-
+  
         if (rotationStates[mediaId] % 180 === 0) {
             mediaElement.style.maxWidth = '310px';
             mediaElement.style.maxHeight = '';
@@ -144,13 +144,13 @@ async function rotateMedia(mediaId, direction, filePath, mediaType) {
             mediaElement.style.maxWidth = '';
             mediaElement.style.maxHeight = '310px';
         }
-
+  
     } catch (error) {
         console.error('Error rotating media:', error);
     }
-}
-
-function copyImageToClipboard(imgBase64, event) {
+  }
+  
+  function copyImageToClipboard(imgBase64, event) {
     var img = new Image();
     img.onload = function() {
         var canvas = document.createElement('canvas');
@@ -161,37 +161,37 @@ function copyImageToClipboard(imgBase64, event) {
         canvas.toBlob(function(blob) {
             var item = new ClipboardItem({ 'image/png': blob });
             navigator.clipboard.write([item]);
-
+  
             var copyButton = event.target;
             copyButton.classList.add('animate');
             copyButton.classList.add('active');
-
+  
             setTimeout(function() {
                 copyButton.classList.remove('animate');
             }, 200);
-
+  
             setTimeout(function() {
                 copyButton.classList.remove('active');
             }, 2000);
         });
     };
     img.src = imgBase64;
-}
-
-async function copyVideoToClipboard(videoPath, event) {
+  }
+  
+  async function copyVideoToClipboard(videoPath, event) {
     try {
         var copyButton = event.target;
         copyButton.classList.add('animate');
         copyButton.classList.add('active');
-
+  
         setTimeout(function() {
             copyButton.classList.remove('animate');
         }, 200);
-
+  
         setTimeout(function() {
             copyButton.classList.remove('active');
         }, 2000);
-
+  
         await fetch('/copy-video', {
             method: 'POST',
             headers: {
@@ -202,15 +202,15 @@ async function copyVideoToClipboard(videoPath, event) {
     } catch (err) {
         console.error('Could not copy video: ', err);
     }
-}
-
-async function openFolder() {
+  }
+  
+  async function openFolder() {
     var copyButton = document.getElementById('open-folder-button');
     copyButton.classList.add('animate');
     setTimeout(function() {
         copyButton.classList.remove('animate');
     }, 200);
-
+  
     fetch('/open-folder', { method: 'POST' })
     .then(response => response.json())
     .then(data => {
@@ -225,15 +225,15 @@ async function openFolder() {
         }, 5000);
     }
     });
-}
-
-async function copyFiles() {
+  }
+  
+  async function copyFiles() {
     var copyButton = document.getElementById('copy-files-button');
     copyButton.classList.add('animate');
     setTimeout(function() {
         copyButton.classList.remove('animate');
     }, 200);
-
+  
     fetch('/copy-files', { method: 'POST' })
     .then(response => response.json())
     .then(data => {
@@ -248,28 +248,28 @@ async function copyFiles() {
         }, 5000);
     }
     });
-}
-
-function sendFiles(receiver_id, client_id, event) {
+  }
+  
+  function sendFiles(receiver_id, client_id, event) {
     var copyButton = event.target;
     copyButton.classList.add('animate');
-
+  
     setTimeout(function() {
         copyButton.classList.remove('animate');
     }, 200);
-
+  
     var data = {
         receiver_id: receiver_id,
         client_id: client_id,
     };
-
+  
     var statusElement = document.getElementById('send-status');
     if (statusElement) {
         statusElement.textContent = "Sending files...";
         statusElement.classList.add('show');
         statusElement.style.animation = 'slide-up 0.5s forwards';
     }
-
+  
     fetch('/sendFiles', {
         method: 'POST',
         headers: {
@@ -279,7 +279,7 @@ function sendFiles(receiver_id, client_id, event) {
     })
     .then(response => response.json())
     .then(data => {
-
+  
         startStatusCheck(copyButton);
     })
     .catch((error) => {
@@ -289,80 +289,80 @@ function sendFiles(receiver_id, client_id, event) {
         }
         copyButton.style.backgroundColor = '#FF6B6B'; 
     });
-}
-
-function startStatusCheck(button) {
+  }
+  
+  function startStatusCheck(button) {
     var statusCheckInterval = setInterval(function() {
         checkSendStatus(button, function() {
             clearInterval(statusCheckInterval);
         });
     }, 1000);
-
+  
     setTimeout(function() {
         clearInterval(statusCheckInterval);
     }, 30000);
-}
-
-function checkSendStatus(button, callback) {
+  }
+  
+  function checkSendStatus(button, callback) {
     fetch('/get_send_status')
         .then(response => response.json())
         .then(data => {
             var statusElement = document.getElementById('send-status');
-
+  
             if (data.message && data.success !== null) {
-
+  
                 if (statusElement) {
                     statusElement.textContent = data.message;
-
+  
                     setTimeout(function() {
                         statusElement.classList.remove('show');
                         statusElement.style.animation = 'none';
                     }, 5000);
                 }
-
+  
                 if (button) {
                     button.style.backgroundColor = data.success ? '#D0FF6B' : '#FF6B6B';
                 }
-
+  
                 if (callback) callback();
             }
         })
         .catch(error => {
             console.error('Error checking status:', error);
         });
-}
-
-let lastProcessedStatusId = null;
-
-function setupStatusMonitor() {
-
+  }
+  
+  let lastProcessedStatusId = null;
+  
+  function setupStatusMonitor() {
+  
     setInterval(function() {
         fetch('/get_send_status')
             .then(response => response.json())
             .then(data => {
-
+  
                 const statusId = data.message + "_" + data.success + "_" + new Date().getTime();
-
+  
                 if (data.success !== null && data.message && statusId !== lastProcessedStatusId) {
                     lastProcessedStatusId = statusId;
-
+  
                     var button = document.getElementById('send-button');
                     var statusElement = document.getElementById('send-status');
-
+  
                     if (statusElement) {
                         statusElement.textContent = data.message;
                         statusElement.classList.add('show');
                         statusElement.style.animation = 'slide-up 0.5s forwards';
-
+  
                         setTimeout(function() {
                             statusElement.classList.remove('show');
                             statusElement.style.animation = 'none';
-
+  
                             fetch('/get_send_status?clear=true')
                                 .catch(err => console.error('Error clearing status:', err));
                         }, 5000);
                     }
-
+  
                     if (button) {
                         button.style.backgroundColor = data.success ? '#D0FF6B' : '#FF6B6B';
                     }
@@ -372,15 +372,15 @@ function setupStatusMonitor() {
                 console.error('Error checking status:', error);
             });
     }, 2000);
-}
-
-function deleteFiles() {
+  }
+  
+  function deleteFiles() {
     var copyButton = document.getElementsByClassName('button2')[0];
     copyButton.classList.add('animate');
     setTimeout(function() {
         copyButton.classList.remove('animate');
     }, 200);
-
+  
     fetch('/delete-files', { method: 'POST' })
     .then(response => response.json())
     .then(data => {
@@ -395,16 +395,16 @@ function deleteFiles() {
         }, 5000);
     }
     });
-}
-
-function deleteOneFile() {
-
+  }
+  
+  function deleteOneFile() {
+  
     var copyButton = document.getElementsByClassName('button1')[0];;
     copyButton.classList.add('animate');
     setTimeout(function() {
         copyButton.classList.remove('animate');
     }, 200);
-
+  
     fetch('/delete-files-one', { method: 'POST' })
     .then(response => response.json())
     .then(data => {
@@ -419,9 +419,9 @@ function deleteOneFile() {
         }, 5000);
     }
     });
-}
-
-function checkFiles(nickname) {
+  }
+  
+  function checkFiles(nickname) {
     fetch('/check-files')
     .then(response => response.json())
     .then(data => {
@@ -430,9 +430,9 @@ function checkFiles(nickname) {
         document.getElementById('file-count').textContent = data.count;
         document.getElementById('file-size').textContent = data.size;
     });
-}
-
-function switchAutoDelete(){
+  }
+  
+  function switchAutoDelete(){
     var copyButton = document.getElementsByClassName('button3')[0];
     copyButton.classList.add('animate');
     setTimeout(function() {
@@ -452,15 +452,15 @@ function switchAutoDelete(){
         }, 5000);
     }
     });
-}
-
-function switchAutoSend(){
+  }
+  
+  function switchAutoSend(){
     var sendButton = document.getElementsByClassName('button4')[0];
     sendButton.classList.add('animate');
     setTimeout(function() {
         sendButton.classList.remove('animate');
     }, 200);
-
+  
     fetch('/switch-auto-send', { method: 'POST' })
     .then(response => response.json())
     .then(data => {
@@ -475,9 +475,9 @@ function switchAutoSend(){
             }, 5000);
         }
     });
-}
-
-function toggleAutoDelete() {
+  }
+  
+  function toggleAutoDelete() {
     fetch('/toggle_auto_delete', {
         method: 'POST',
         headers: {
@@ -500,9 +500,9 @@ function toggleAutoDelete() {
     }
     })
     .catch(error => console.error('Error:', error));
-}
-
-function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'personal') {
+  }
+  
+  function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'personal') {
     fetch('/update_hints', {
         method: 'POST',
         headers: {
@@ -521,19 +521,19 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
         const allCheckboxes = Array.from(hintsContainer.querySelectorAll('input[type="checkbox"]'));
         const allHintItems = Array.from(hintsContainer.querySelectorAll('.hint-item'));
         const checkboxId = `checkbox-${hintType}-${hintKey}`;
-
+  
         if (action === 'delete') {
             const indexToRemove = allHintItems.findIndex(item => item.querySelector('input').id === checkboxId);
             if (indexToRemove !== -1) {
                 allHintItems[indexToRemove].remove();
             }
-
+  
             const remainingItems = hintsContainer.querySelectorAll('.hint-item');
             if (remainingItems.length === 0) {
                 hintsContainer.remove();
                 return;
             }
-
+  
             // Get the first remaining checkbox and make it active
             const newActiveCheckbox = hintsContainer.querySelector('input[type="checkbox"]');
             if (newActiveCheckbox) {
@@ -542,11 +542,11 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
                 allHintItems.forEach(item => item.classList.remove('active'));
                 newActiveCheckbox.checked = true;
                 newActiveItem.classList.add('active');
-                
+  
                 // Определяем тип подсказки из класса элемента
                 const isGeneralHint = newActiveItem.classList.contains('general-hint');
                 const newHintType = isGeneralHint ? 'general' : 'personal';
-                
+  
                 // Update the checkbox in the file with correct hint type
                 const newHintKey = newActiveCheckbox.id.split('-').pop();
                 fetch('/update_hints', {
@@ -562,7 +562,7 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
                     })
                 });
             }
-
+  
             const hintsWrapper = document.querySelector('.hints-wrapper');
             if (hintsWrapper) {
                 const remainingItems = hintsWrapper.children.length;
@@ -580,33 +580,33 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
                 checkbox.checked = false;
                 checkbox.closest('.hint-item').classList.remove('active');
             });
-
+  
             const targetCheckbox = allCheckboxes.find(cb => cb.id === checkboxId);
             if (targetCheckbox) {
                 targetCheckbox.checked = true;
                 targetCheckbox.closest('.hint-item').classList.add('active');
             }
-
+  
             const currentMode = localStorage.getItem('sortMode') || 'usage';
             switchSortMode(currentMode);
         }
     })
     .catch(error => console.error('Error:', error));
-}
-
-function deleteHint(chatId, hintKey, hintType = 'personal') {
+  }
+  
+  function deleteHint(chatId, hintKey, hintType = 'personal') {
     updateHintCheckbox(chatId, hintKey, 'delete', hintType);
-}
-
-function saveHint(chatId, messageCount, hintType = 'personal') {
+  }
+  
+  function saveHint(chatId, messageCount, hintType = 'personal') {
     const newHintInput = document.getElementById(hintType === 'personal' ? 'hint-input' : 'general-hint-input');
     const newHintKey = newHintInput.value.trim();
-
+  
     if (!newHintKey) {
         alert('Введите ключ');
         return;
     }
-
+  
     fetch('/add-hint', {
         method: 'POST',
         headers: {
@@ -624,7 +624,7 @@ function saveHint(chatId, messageCount, hintType = 'personal') {
         if (data.success) {
             const fullHintKey = data.full_hint_key;
             let hintsContainer = document.getElementById('hints-container');
-            
+  
             if (!hintsContainer) {
                 let chatSection = document.querySelector('.chat-section');
                 if (!chatSection) {
@@ -657,13 +657,13 @@ function saveHint(chatId, messageCount, hintType = 'personal') {
                 `;
                 chatSection.appendChild(hintsContainer);
             }
-
+  
             const hintsWrapper = hintsContainer.querySelector('.hints-wrapper');
             if (!hintsWrapper) {
                 console.error('Hints wrapper not found');
                 return;
             }
-
+  
             const checkboxId = `checkbox-${hintType}-${fullHintKey}`;
             const newHintItem = document.createElement('div');
             newHintItem.className = `hint-item ${hintType === 'general' ? 'general-hint' : ''} active`;
@@ -691,11 +691,11 @@ function saveHint(chatId, messageCount, hintType = 'personal') {
                     </button>
                 </div>
             `;
-
+  
             if (hintsWrapper.children.length === 0) {
                 hintsWrapper.appendChild(newHintItem);
             } else {
-                
+  
                 const existingCheckboxes = hintsWrapper.querySelectorAll('input[type="checkbox"]');
                 existingCheckboxes.forEach(checkbox => {
                     checkbox.checked = false;
@@ -703,7 +703,7 @@ function saveHint(chatId, messageCount, hintType = 'personal') {
                 });
                 hintsWrapper.appendChild(newHintItem);
             }
-
+  
             fetch('/update_hints', {
                 method: 'POST',
                 headers: {
@@ -716,7 +716,7 @@ function saveHint(chatId, messageCount, hintType = 'personal') {
                     hint_type: hintType
                 })
             });
-
+  
             const currentMode = localStorage.getItem('sortMode') || 'usage';
             switchSortMode(currentMode);
             newHintInput.value = '';
@@ -729,12 +729,12 @@ function saveHint(chatId, messageCount, hintType = 'personal') {
         console.error('Ошибка:', error);
         alert('Произошла ошибка при добавлении ключа.');
     });
-}
-
-function processContentLoader(button, messageData, client_id) {
+  }
+  
+  function processContentLoader(button, messageData, client_id) {
     const currentReverseMode = localStorage.getItem('reverseMode') === 'true';
     const useReverseOrder = messageData.is_all_button ? currentReverseMode : messageData.reverse_order || false;
-    
+  
     const data = {
         message_id: messageData.message_id,
         sender_id: messageData.sender_id,
@@ -743,7 +743,7 @@ function processContentLoader(button, messageData, client_id) {
         is_all_button: messageData.is_all_button || false,
         reverse_order: useReverseOrder
     };
-
+  
     fetch('/process_content_loader', {
         method: 'POST',
         headers: {
@@ -760,9 +760,9 @@ function processContentLoader(button, messageData, client_id) {
         }
     })
     .catch(error => console.error('Error processing message:', error));
-}
-
-function updateActiveButton(activeNumber) {
+  }
+  
+  function updateActiveButton(activeNumber) {
     const buttons = document.querySelectorAll('.message-button');
     buttons.forEach(button => {
         if (button.dataset.number === activeNumber) {
@@ -771,15 +771,15 @@ function updateActiveButton(activeNumber) {
             button.classList.remove('active');
         }
     });
-}
-
-function parse_time(time_str) {
+  }
+  
+  function parse_time(time_str) {
     const match = time_str.match(/^(\d+)([as])$/);
     if (!match) return null;
-
+  
     let [_, digits, period] = match;
     const is_pm = period === 's';
-
+  
     let hours, minutes;
     if (digits.length === 3) {
         hours = parseInt(digits[0]);
@@ -790,25 +790,25 @@ function parse_time(time_str) {
     } else {
         return null;
     }
-
+  
     if (is_pm && hours !== 12) hours += 12;
     else if (!is_pm && hours === 12) hours = 0;
-
+  
     return [hours, minutes];
-}
-
-function extract_leading_number(s) {
+  }
+  
+  function extract_leading_number(s) {
     const match = s.match(/^\d+/);
     return match ? parseInt(match[0]) : 0;
-}
-
-function sort_hints_by_time(hints) {
-
+  }
+  
+  function sort_hints_by_time(hints) {
+  
     let checkedHint = Array.from(hints).find(hint => 
         hint.classList.contains('active') || 
         hint.querySelector('input[type="checkbox"]').checked
     );
-
+  
     if (!checkedHint) {
         const hintsData = JSON.parse(document.getElementById('hints-data').textContent);
         const chatId = JSON.parse(document.getElementById('chat-id').textContent);
@@ -818,7 +818,7 @@ function sort_hints_by_time(hints) {
             hint.querySelector('.hint-label').textContent === checkedValue
         );
     }
-
+  
     const groups = {
         numeric: [],
         q: [],
@@ -826,19 +826,19 @@ function sort_hints_by_time(hints) {
         e: [],
         other: []
     };
-
+  
     Array.from(hints).forEach(hint => {
         if (hint === checkedHint) return;
-
+  
         const label = hint.querySelector('.hint-label').textContent;
         const parts = label.split(' ');
         const firstPart = parts[0] || '';
-
+  
         if (!firstPart) {
             groups.other.push(hint);
             return;
         }
-
+  
         const firstChar = firstPart[0].toLowerCase();
         if (/^\d/.test(firstChar)) {
             const num = parseInt(firstPart.match(/^\d+/)[0]);
@@ -851,7 +851,7 @@ function sort_hints_by_time(hints) {
             groups.other.push(hint);
         }
     });
-
+  
     ['numeric', 'q', 'w', 'e'].forEach(group => {
         groups[group].sort((a, b) => {
             if (!a[0]) return 1;
@@ -862,7 +862,7 @@ function sort_hints_by_time(hints) {
             return a[0] - b[0];
         });
     });
-
+  
     return [
         ...(checkedHint ? [checkedHint] : []),
         ...groups.numeric.map(x => x[1]),
@@ -871,18 +871,18 @@ function sort_hints_by_time(hints) {
         ...groups.e.map(x => x[1]),
         ...groups.other
     ];
-}
-
-function sort_hints_by_usage(hints) {
-
+  }
+  
+  function sort_hints_by_usage(hints) {
+  
     const hintsData = JSON.parse(document.getElementById('hints-data').textContent);
     const chatId = JSON.parse(document.getElementById('chat-id').textContent);
     const chatData = hintsData[chatId] || {};
-
+  
     let checkedHint = Array.from(hints).find(hint => 
         hint.querySelector('input[type="checkbox"]').checked
     );
-
+  
     if (!checkedHint) {
         const hintsData = JSON.parse(document.getElementById('hints-data').textContent);
         const chatId = JSON.parse(document.getElementById('chat-id').textContent);
@@ -892,32 +892,32 @@ function sort_hints_by_usage(hints) {
             hint.querySelector('.hint-label').textContent === checkedValue
         );
     }
-
+  
     const usageGroups = new Map(); 
-
+  
     Array.from(hints)
         .filter(hint => hint !== checkedHint)
         .forEach(hint => {
             const label = hint.querySelector('.hint-label').textContent;
             const usage = chatData[label] || 0;
-
+  
             if (!usageGroups.has(usage)) {
                 usageGroups.set(usage, []);
             }
             usageGroups.get(usage).push(hint);
         });
-
+  
     for (let [usage, hintGroup] of usageGroups) {
         hintGroup.sort((a, b) => {
             const labelA = a.querySelector('.hint-label').textContent;
             const labelB = b.querySelector('.hint-label').textContent;
-
+  
             const timeStrA = labelA.split(' ')[0];
             const timeStrB = labelB.split(' ')[0];
-
+  
             const typeA = timeStrA[0].toLowerCase();
             const typeB = timeStrB[0].toLowerCase();
-
+  
             if (typeA !== typeB) {
                 if (typeA === 'q') return -1;
                 if (typeB === 'q') return 1;
@@ -925,71 +925,71 @@ function sort_hints_by_usage(hints) {
                 if (typeB === 'w') return 1;
                 return 0;
             }
-
+  
             const timeA = parse_time(timeStrA.slice(1));
             const timeB = parse_time(timeStrB.slice(1));
-
+  
             if (!timeA) return 1;
             if (!timeB) return -1;
-
+  
             if (timeA[0] !== timeB[0]) {
                 return timeA[0] - timeB[0];
             }
             return timeA[1] - timeB[1];
         });
     }
-
+  
     const sortedHints = [];
-
+  
     if (checkedHint) {
         sortedHints.push(checkedHint);
     }
-
+  
     Array.from(usageGroups.keys())
         .sort((a, b) => b - a) 
         .forEach(usage => {
             sortedHints.push(...usageGroups.get(usage));
         });
-
+  
     return sortedHints;
-}
-
-function switchSortMode(newMode) {
-
+  }
+  
+  function switchSortMode(newMode) {
+  
     if (!localStorage.getItem('sortMode')) {
         localStorage.setItem('sortMode', 'usage');
     }
-
+  
     const currentMode = localStorage.getItem('sortMode');
     if (currentMode === newMode) return;
-
+  
     localStorage.setItem('sortMode', newMode);
-
+  
     document.querySelectorAll('.sort-btn').forEach(btn => {
         btn.classList.remove('active');
     });
     document.querySelector(`button[onclick*="switchSortMode('${newMode}')"]`).classList.add('active');
-
+  
     const container = document.getElementById('hints-container');
     if (!container) return;
-
+  
     const hints = Array.from(container.querySelectorAll('.hint-item'));
-
+  
     const sortedHints = newMode === 'usage' 
         ? sort_hints_by_usage(hints)
         : sort_hints_by_time(hints);
-
+  
     const hintsWrapper = container.querySelector('.hints-wrapper') || container;
     hintsWrapper.replaceChildren(...sortedHints);
-}
-
-function saveImageToServer(imageData, imagePath) {
-
+  }
+  
+  function saveImageToServer(imageData, imagePath) {
+  
     var statusElement = document.getElementById('delete-status');
     statusElement.textContent = 'Saving image...';
     statusElement.classList.add('show');
     statusElement.style.animation = 'slide-up 0.5s forwards';
-
+  
     fetch('/save_cropped_image', {
         method: 'POST',
         headers: {
@@ -1002,14 +1002,14 @@ function saveImageToServer(imageData, imagePath) {
     })
     .then(response => response.json())
     .then(data => {
-
+  
         var element = document.getElementById('delete-status');
         if (data.success) {
             element.textContent = 'Image successfully saved';
         } else {
             element.textContent = 'Error saving image: ' + (data.error || 'unknown error');
         }
-
+  
         element.classList.add('show');
         element.style.animation = 'slide-up 0.5s forwards';
         setTimeout(function() {
@@ -1018,7 +1018,7 @@ function saveImageToServer(imageData, imagePath) {
         }, 5000);
     })
     .catch(error => {
-
+  
         var element = document.getElementById('delete-status');
         element.textContent = 'Error saving image: ' + error.message;
         element.classList.add('show');
@@ -1027,40 +1027,40 @@ function saveImageToServer(imageData, imagePath) {
             element.classList.remove('show');
             element.style.animation = 'none';
         }, 5000);
-
+  
         console.error('Error saving image:', error);
     });
-}
-
-function recropImage(mediaId, imagePath) {
+  }
+  
+  function recropImage(mediaId, imagePath) {
     const img = document.getElementById(mediaId);
     if (!img) return;
-
+  
     const currentTransform = img.style.transform || '';
     const rotateMatch = currentTransform.match(/rotate\(([^)]+)\)/);
     const currentRotation = rotateMatch ? rotateMatch[1] : '0deg';
     const rotationDegrees = parseInt(currentRotation) || 0;
-
+  
     const normalizedRotation = ((rotationDegrees % 360) + 360) % 360;
     const shouldSwapDimensions = (normalizedRotation > 45 && normalizedRotation < 135) || 
                                 (normalizedRotation > 225 && normalizedRotation < 315);
-
+  
     const cropContainer = document.createElement('div');
     cropContainer.className = 'crop-container';
-
+  
     const imgContainer = document.createElement('div');
     imgContainer.className = 'img-container';
-
+  
     const imgClone = new Image();
     imgClone.src = img.src;
     imgClone.className = 'img-clone';
     imgClone.style.transform = `rotate(${currentRotation})`;
     imgContainer.appendChild(imgClone);
-
+  
     const cropRect = document.createElement('div');
     cropRect.className = 'crop-rect';
     cropRect.style.boxSizing = 'border-box';
-
+  
     const markers = ['nw', 'ne', 'sw', 'se'];
     markers.forEach(pos => {
         const marker = document.createElement('div');
@@ -1068,24 +1068,24 @@ function recropImage(mediaId, imagePath) {
         marker.className = `marker marker-${pos}`;
         cropRect.appendChild(marker);
     });
-
+  
     const controlsContainer = document.createElement('div');
     controlsContainer.className = 'controls-container';
-
+  
     const infoContainer = document.createElement('div');
     infoContainer.className = 'info-container';
-
+  
     const dimensionsInfo = document.createElement('div');
     dimensionsInfo.className = 'info-text dimensions-info';
-
+  
     const rotationInfo = document.createElement('div');
     rotationInfo.textContent = `Current rotation: ${rotationDegrees}°`;
     rotationInfo.className = 'info-text';
-
+  
     const instructions = document.createElement('div');
     instructions.textContent = 'Drag to move. Use corners to resize.';
     instructions.className = 'info-text';
-
+  
     const applyButton = document.createElement('button');
     applyButton.textContent = 'Apply';
     applyButton.className = 'button apply-button';
@@ -1095,7 +1095,7 @@ function recropImage(mediaId, imagePath) {
     applyButton.onmouseout = function() {
         this.classList.remove('button-hover');
     };
-
+  
     const cancelButton = document.createElement('button');
     cancelButton.textContent = 'Cancel';
     cancelButton.className = 'button cancel-button';
@@ -1105,7 +1105,7 @@ function recropImage(mediaId, imagePath) {
     cancelButton.onmouseout = function() {
         this.classList.remove('button-hover');
     };
-
+  
     controlsContainer.appendChild(applyButton);
     controlsContainer.appendChild(cancelButton);
     cropContainer.appendChild(imgContainer);
@@ -1115,49 +1115,49 @@ function recropImage(mediaId, imagePath) {
     document.body.appendChild(cropContainer);               
     document.body.appendChild(infoContainer)
     document.body.appendChild(controlsContainer)
-
+  
     let originalWidth, originalHeight;
-
+  
     let normalizedCropCoords = {
         left: 0,
         top: 0,
         width: 1,
         height: 1
     };
-
+  
     imgClone.onload = function() {
         originalWidth = imgClone.naturalWidth;
         originalHeight = imgClone.naturalHeight;
-
+  
         initCropArea();
     };
-
+  
     function initCropArea() {
         setTimeout(() => {
-
+  
             const containerBox = imgContainer.getBoundingClientRect();
             const imageBox = imgClone.getBoundingClientRect();
-
+  
             const offsetX = Math.floor(imageBox.left - containerBox.left);
             const offsetY = Math.floor(imageBox.top - containerBox.top);
-
+  
             const imgDisplayWidth = Math.floor(imageBox.width);
             const imgDisplayHeight = Math.floor(imageBox.height);
-
+  
             const minX = offsetX + 1;
             const minY = offsetY + 1;
             const maxX = offsetX + imgDisplayWidth - 1;
             const maxY = offsetY + imgDisplayHeight - 1;
-
+  
             const initialWidth = Math.max(1, imgDisplayWidth - 2);
             const initialHeight = Math.max(1, imgDisplayHeight - 2);
-
+  
             if (normalizedCropCoords.width === 1) {
                 cropRect.style.left = minX + 'px';
                 cropRect.style.top = minY + 'px';
                 cropRect.style.width = initialWidth + 'px';
                 cropRect.style.height = initialHeight + 'px';
-
+  
                 normalizedCropCoords = {
                     left: 1 / imgDisplayWidth,
                     top: 1 / imgDisplayHeight,
@@ -1165,32 +1165,32 @@ function recropImage(mediaId, imagePath) {
                     height: initialHeight / imgDisplayHeight
                 };
             } else {
-
+  
                 const newCropLeft = offsetX + (normalizedCropCoords.left * imgDisplayWidth);
                 const newCropTop = offsetY + (normalizedCropCoords.top * imgDisplayHeight);
                 const newCropWidth = normalizedCropCoords.width * imgDisplayWidth;
                 const newCropHeight = normalizedCropCoords.height * imgDisplayHeight;
-
+  
                 cropRect.style.left = Math.max(minX, Math.min(maxX - newCropWidth, newCropLeft)) + 'px';
                 cropRect.style.top = Math.max(minY, Math.min(maxY - newCropHeight, newCropTop)) + 'px';
                 cropRect.style.width = Math.min(newCropWidth, maxX - parseInt(cropRect.style.left)) + 'px';
                 cropRect.style.height = Math.min(newCropHeight, maxY - parseInt(cropRect.style.top)) + 'px';
             }
-
+  
             if (!imgContainer.contains(cropRect)) {
                 imgContainer.appendChild(cropRect);
             }
-
+  
             updateDimensionsInfo();
-
+  
             setupEventListeners();
         }, 50);
     }
-
+  
     function setupEventListeners() {
-
+  
         const oldEventListeners = cropRect._eventHandlers || {};
-
+  
         if (oldEventListeners.mousedown) {
             cropRect.removeEventListener('mousedown', oldEventListeners.mousedown);
         }
@@ -1200,14 +1200,14 @@ function recropImage(mediaId, imagePath) {
         if (oldEventListeners.mouseup) {
             document.removeEventListener('mouseup', oldEventListeners.mouseup);
         }
-
+  
         let isDragging = false;
         let isResizing = false;
         let resizeDirection = '';
         let startX, startY;
         let startLeft, startTop, startWidth, startHeight;
         let lastX, lastY; 
-
+  
         function onMouseDown(e) {
             if (e.target.dataset.position) return;
             isDragging = true;
@@ -1217,202 +1217,202 @@ function recropImage(mediaId, imagePath) {
             startTop = parseInt(cropRect.style.top) || 0;
             e.preventDefault();
         }
-
+  
         function onResizeStart(e) {
             isResizing = true;
             resizeDirection = e.target.dataset.position;
-
+  
             startX = lastX = e.clientX;
             startY = lastY = e.clientY;
             startLeft = parseInt(cropRect.style.left) || 0;
             startTop = parseInt(cropRect.style.top) || 0;
             startWidth = parseInt(cropRect.style.width) || cropRect.offsetWidth;
             startHeight = parseInt(cropRect.style.height) || cropRect.offsetHeight;
-
+  
             e.preventDefault();
             e.stopPropagation();
         }
-
+  
         function onMouseMove(e) {
-
+  
             const currentImageBox = imgClone.getBoundingClientRect();
             const containerBox = imgContainer.getBoundingClientRect();
-
+  
             const imgWidth = Math.floor(currentImageBox.width);
             const imgHeight = Math.floor(currentImageBox.height);
-
+  
             const offsetX = Math.ceil(currentImageBox.left - containerBox.left);
             const offsetY = Math.ceil(currentImageBox.top - containerBox.top);
-
+  
             const minX = offsetX + 1;
             const minY = offsetY + 1;
             const maxX = offsetX + imgWidth - 1; 
             const maxY = offsetY + imgHeight - 1; 
-
+  
             if (isDragging) {
-
+  
                 const deltaX = e.clientX - startX;
                 const deltaY = e.clientY - startY;
-
+  
                 let newLeft = startLeft + deltaX;
                 let newTop = startTop + deltaY;
                 const rectWidth = parseInt(cropRect.style.width) || cropRect.offsetWidth;
                 const rectHeight = parseInt(cropRect.style.height) || cropRect.offsetHeight;
-
+  
                 if (newLeft < minX) newLeft = minX;
                 if (newLeft + rectWidth > maxX) newLeft = maxX - rectWidth;
                 if (newTop < minY) newTop = minY;
                 if (newTop + rectHeight > maxY) newTop = maxY - rectHeight;
-
+  
                 cropRect.style.left = newLeft + 'px';
                 cropRect.style.top = newTop + 'px';
                 cropRect.classList.add('active');
-
+  
                 updateNormalizedCoords();
                 updateDimensionsInfo();
             } else if (isResizing) {
-
+  
                 const deltaX = e.clientX - lastX;
                 const deltaY = e.clientY - lastY;
-
+  
                 let currentLeft = parseInt(cropRect.style.left) || 0;
                 let currentTop = parseInt(cropRect.style.top) || 0;
                 let currentWidth = parseInt(cropRect.style.width) || cropRect.offsetWidth;
                 let currentHeight = parseInt(cropRect.style.height) || cropRect.offsetHeight;
-
+  
                 if (resizeDirection.includes('n')) {
-
+  
                     let newTop = currentTop + deltaY;
                     let newHeight = currentHeight - deltaY;
-
+  
                     if (newHeight <= 0) {
-
+  
                         newHeight = 1;
                         newTop = currentTop + currentHeight - 1;
-
+  
                         resizeDirection = resizeDirection.replace('n', 's');
                     }
-
+  
                     if (newTop < minY) {
                         newHeight = currentHeight + (currentTop - minY);
                         newTop = minY;
                     }
-
+  
                     cropRect.style.top = newTop + 'px';
                     cropRect.style.height = newHeight + 'px';
                 }
-
+  
                 if (resizeDirection.includes('s')) {
-
+  
                     let newHeight = currentHeight + deltaY;
-
+  
                     if (newHeight <= 0) {
-
+  
                         newHeight = 1;
                         cropRect.style.top = (currentTop + currentHeight - 1) + 'px';
-
+  
                         resizeDirection = resizeDirection.replace('s', 'n');
                     } else if (currentTop + newHeight > maxY) {
-
+  
                         newHeight = maxY - currentTop;
                     }
-
+  
                     cropRect.style.height = newHeight + 'px';
                 }
-
+  
                 if (resizeDirection.includes('w')) {
-
+  
                     let newLeft = currentLeft + deltaX;
                     let newWidth = currentWidth - deltaX;
-
+  
                     if (newWidth <= 0) {
-
+  
                         newWidth = 1;
                         newLeft = currentLeft + currentWidth - 1;
-
+  
                         resizeDirection = resizeDirection.replace('w', 'e');
                     }
-
+  
                     if (newLeft < minX) {
                         newWidth = currentWidth + (currentLeft - minX);
                         newLeft = minX;
                     }
-
+  
                     cropRect.style.left = newLeft + 'px';
                     cropRect.style.width = newWidth + 'px';
                 }
-
+  
                 if (resizeDirection.includes('e')) {
-
+  
                     let newWidth = currentWidth + deltaX;
-
+  
                     if (newWidth <= 0) {
-
+  
                         newWidth = 1;
                         cropRect.style.left = (currentLeft + currentWidth - 1) + 'px';
-
+  
                         resizeDirection = resizeDirection.replace('e', 'w');
                     } else if (currentLeft + newWidth > maxX) {
-
+  
                         newWidth = maxX - currentLeft;
                     }
-
+  
                     cropRect.style.width = newWidth + 'px';
                 }
-
+  
                 cropRect.classList.add('active');
-
+  
                 updateNormalizedCoords();
                 updateDimensionsInfo();
-
+  
                 lastX = e.clientX;
                 lastY = e.clientY;
             }
         }
-
+  
         function onMouseUp() {
             isDragging = false;
             isResizing = false;
             cropRect.classList.remove('active');
         }
-
+  
         cropRect._eventHandlers = {
             mousedown: onMouseDown,
             mousemove: onMouseMove,
             mouseup: onMouseUp
         };
-
+  
         cropRect.addEventListener('mousedown', onMouseDown);
         document.addEventListener('mousemove', onMouseMove);
         document.addEventListener('mouseup', onMouseUp);
-
+  
         const resizeMarkers = cropRect.querySelectorAll('[data-position]');
         resizeMarkers.forEach(marker => {
-
+  
             const oldHandler = marker._resizeStartHandler;
             if (oldHandler) {
                 marker.removeEventListener('mousedown', oldHandler);
             }
-
+  
             marker._resizeStartHandler = onResizeStart;
             marker.addEventListener('mousedown', onResizeStart);
         });
     }
-
+  
     function updateNormalizedCoords() {
         const imageBox = imgClone.getBoundingClientRect();
         const containerBox = imgContainer.getBoundingClientRect();
         const offsetX = imageBox.left - containerBox.left;
         const offsetY = imageBox.top - containerBox.top;
-
+  
         const cropLeft = parseInt(cropRect.style.left) || 0;
         const cropTop = parseInt(cropRect.style.top) || 0;
         const cropWidth = parseInt(cropRect.style.width) || cropRect.offsetWidth;
         const cropHeight = parseInt(cropRect.style.height) || cropRect.offsetHeight;
-
+  
         const relativeLeft = Math.max(0, cropLeft - offsetX);
         const relativeTop = Math.max(0, cropTop - offsetY);
-
+  
         normalizedCropCoords = {
             left: relativeLeft / imageBox.width,
             top: relativeTop / imageBox.height,
@@ -1420,17 +1420,17 @@ function recropImage(mediaId, imagePath) {
             height: cropHeight / imageBox.height
         };
     }
-
+  
     function updateDimensionsInfo() {
         const imageBox = imgClone.getBoundingClientRect();
         const rectWidth = parseInt(cropRect.style.width) || cropRect.offsetWidth;
         const rectHeight = parseInt(cropRect.style.height) || cropRect.offsetHeight;
-
+  
         const scaleX = originalWidth / (shouldSwapDimensions ? imageBox.height : imageBox.width);
         const scaleY = originalHeight / (shouldSwapDimensions ? imageBox.width : imageBox.height);
-
+  
         let actualWidth, actualHeight;
-
+  
         if (shouldSwapDimensions) {
             actualWidth = Math.round(rectHeight * scaleY);
             actualHeight = Math.round(rectWidth * scaleX);      
@@ -1440,9 +1440,9 @@ function recropImage(mediaId, imagePath) {
         }
         dimensionsInfo.textContent = `${originalWidth}×${originalHeight}px → ${actualWidth}×${actualHeight}px`;
     }
-
+  
     const handleResize = function() {
-
+  
         clearTimeout(resizeTimeout);
         resizeTimeout = setTimeout(function() {
             if (document.body.contains(cropContainer)) {
@@ -1450,17 +1450,17 @@ function recropImage(mediaId, imagePath) {
             }
         }, 100);
     };
-
+  
     let resizeTimeout;
     window.addEventListener('resize', handleResize);
-
+  
     cancelButton.addEventListener('click', function() {
         window.removeEventListener('resize', handleResize);
         document.body.removeChild(cropContainer);
         document.body.removeChild(infoContainer);
         document.body.removeChild(controlsContainer);
     });
-
+  
     applyButton.addEventListener('click', function() {
         const statusElement = document.getElementById('delete-status');
         if (statusElement) {
@@ -1468,28 +1468,28 @@ function recropImage(mediaId, imagePath) {
             statusElement.classList.add('show');
             statusElement.style.animation = 'slide-up 0.5s forwards';
         }
-
+  
         const rectLeft = parseInt(cropRect.style.left) || 0;
         const rectTop = parseInt(cropRect.style.top) || 0;
         const rectWidth = parseInt(cropRect.style.width) || cropRect.offsetWidth;
         const rectHeight = parseInt(cropRect.style.height) || cropRect.offsetHeight;
-
+  
         const containerBox = imgContainer.getBoundingClientRect();
         const imageBox = imgClone.getBoundingClientRect();
         const offsetX = imageBox.left - containerBox.left;
         const offsetY = imageBox.top - containerBox.top;
-
+  
         const relativeLeft = rectLeft - offsetX;
         const relativeTop = rectTop - offsetY;
         const relativeRight = relativeLeft + rectWidth;
         const relativeBottom = relativeTop + rectHeight;
-
+  
         let normalizedLeft, normalizedTop, normalizedRight, normalizedBottom;
-
+  
         if (shouldSwapDimensions) {
             const imageWidth = imageBox.width;
             const imageHeight = imageBox.height;
-
+  
             if (normalizedRotation > 45 && normalizedRotation < 135) {
                 normalizedLeft = relativeTop / imageHeight;
                 normalizedTop = (imageWidth - relativeRight) / imageWidth;
@@ -1506,54 +1506,54 @@ function recropImage(mediaId, imagePath) {
             normalizedTop = relativeTop / imageBox.height;
             normalizedRight = relativeRight / imageBox.width;
             normalizedBottom = relativeBottom / imageBox.height;
-
+  
             if (normalizedRotation > 135 && normalizedRotation < 225) {
                 [normalizedLeft, normalizedRight] = [1 - normalizedRight, 1 - normalizedLeft];
                 [normalizedTop, normalizedBottom] = [1 - normalizedBottom, 1 - normalizedTop];
             }
         }
-
+  
         window.removeEventListener('resize', handleResize);
-
+  
         const originalImg = new Image();
         originalImg.onload = function() {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
-
+  
             const origLeft = Math.max(0, Math.round(normalizedLeft * originalImg.width));
             const origTop = Math.max(0, Math.round(normalizedTop * originalImg.height));
             const origWidth = Math.min(originalImg.width - origLeft, Math.round((normalizedRight - normalizedLeft) * originalImg.width));
             const origHeight = Math.min(originalImg.height - origTop, Math.round((normalizedBottom - normalizedTop) * originalImg.height));
-
+  
             canvas.width = origWidth;
             canvas.height = origHeight;
-
+  
             ctx.drawImage(
                 originalImg,
                 origLeft, origTop, origWidth, origHeight,
                 0, 0, origWidth, origHeight
             );
-
+  
             const croppedImageData = canvas.toDataURL('image/png');
-
+  
             const tempImg = new Image();
             tempImg.onload = function() {
                 img.src = croppedImageData;
-
+  
                 saveImageToServer(croppedImageData, imagePath, rotationDegrees);
-
+  
                 document.body.removeChild(cropContainer);
                 document.body.removeChild(infoContainer);
                 document.body.removeChild(controlsContainer);
             };
             tempImg.src = croppedImageData;
         };
-
+  
         originalImg.src = img.src;
     });
-}
-
-function saveImageToServer(imageData, imagePath, rotation = 0) {
+  }
+  
+  function saveImageToServer(imageData, imagePath, rotation = 0) {
     fetch('/save_cropped_image', {
         method: 'POST',
         headers: {
@@ -1589,13 +1589,13 @@ function saveImageToServer(imageData, imagePath, rotation = 0) {
             statusElement.style.backgroundColor = '#f44336';
         }
     });
-}
-
-function replaceMedia(mediaId, mediaPath) {
+  }
+  
+  function replaceMedia(mediaId, mediaPath) {
     navigator.clipboard.read()
         .then(clipboardItems => {
             let foundImage = false;
-
+  
             for (const clipboardItem of clipboardItems) {
                 for (const type of clipboardItem.types) {
                     if (type.startsWith('image/')) {
@@ -1619,7 +1619,7 @@ function replaceMedia(mediaId, mediaPath) {
                     }
                 }
             }
-
+  
             if (!foundImage) {
                 showStatus('No image in buffer...');
             }
@@ -1628,18 +1628,18 @@ function replaceMedia(mediaId, mediaPath) {
             console.error('Buffer access error...', error);
             showStatus('Buffer access error...');
         });
-}
-
-function processAndReplaceImage(dataUrl, mediaElement, mediaPath) {
+  }
+  
+  function processAndReplaceImage(dataUrl, mediaElement, mediaPath) {
     const tempImg = new Image();
     tempImg.onload = function() {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
-
+  
         let width = tempImg.width;
         let height = tempImg.height;
         const maxSize = 1000;
-
+  
         if (width > maxSize || height > maxSize) {
             const ratio = width / height;
             if (width > height) {
@@ -1650,54 +1650,54 @@ function processAndReplaceImage(dataUrl, mediaElement, mediaPath) {
                 width = maxSize * ratio;
             }
         }
-
+  
         canvas.width = width;
         canvas.height = height;
-
+  
         ctx.drawImage(tempImg, 0, 0, width, height);
-
+  
         const processedDataUrl = canvas.toDataURL('image/png');
-
+  
         replaceElementWithImage(mediaElement, processedDataUrl, mediaPath);
     };
     tempImg.src = dataUrl;
-}
-
-function replaceElementWithImage(mediaElement, dataUrl, mediaPath) {
+  }
+  
+  function replaceElementWithImage(mediaElement, dataUrl, mediaPath) {
     const container = mediaElement.parentElement;
     const mediaId = mediaElement.id;
     const newImage = document.createElement('img');
-
+  
     newImage.id = mediaId;
     newImage.src = dataUrl;
-
+  
     const pathParts = mediaPath.split('.');
     const basePath = pathParts.slice(0, pathParts.length - 1).join('.');
     const newPath = `${basePath}.png`;
-
+  
     container.replaceChild(newImage, mediaElement);
-
+  
     const replaceBtn = container.querySelector('.replace-button');
     if (replaceBtn) {
         replaceBtn.setAttribute('onclick', `replaceMedia('${mediaId}', '${newPath}')`);
     }
-
+  
     const rotateLeftBtn = container.querySelector('.rotate-button.left');
     const rotateRightBtn = container.querySelector('.rotate-button.right');
-
+  
     if (rotateLeftBtn) {
         rotateLeftBtn.setAttribute('onclick', `rotateMedia('${mediaId}', 'left', '${newPath}', 'image')`);
     }
-
+  
     if (rotateRightBtn) {
         rotateRightBtn.setAttribute('onclick', `rotateMedia('${mediaId}', 'right', '${newPath}', 'image')`);
     }
-
+  
     const isVideoElement = mediaElement.tagName.toLowerCase() === 'video';
-
+  
     if (isVideoElement && !container.querySelector('.crop-button')) {
         const controlsContainer = container.querySelector('.media-controls');
-
+  
         if (controlsContainer) {
             const cropButton = document.createElement('span');
             cropButton.className = 'crop-button control-button';
@@ -1710,19 +1710,19 @@ function replaceElementWithImage(mediaElement, dataUrl, mediaPath) {
                     <path d="M8.00007 3L15.3066 15.1776" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
             `;
-
+  
             controlsContainer.insertBefore(cropButton, controlsContainer.firstChild);
         }
     }
-
+  
     const mainContainer = container.closest('.main-container');
     const copyBtn = mainContainer.nextElementSibling;
-
+  
     if (copyBtn && copyBtn.classList.contains('copy-button')) {
         copyBtn.setAttribute('onclick', `copyImageToClipboard('data:image/png;base64,${dataUrl.split(',')[1]}', event)`);
         copyBtn.textContent = 'copy image';
     }
-
+  
     fetch('/replace_media', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1741,9 +1741,9 @@ function replaceElementWithImage(mediaElement, dataUrl, mediaPath) {
         console.error('Ошибка отправки данных на сервер:', error);
         showStatus('Server error...');
     });
-}
-
-function showStatus(message) {
+  }
+  
+  function showStatus(message) {
     var element = document.getElementById('delete-status');
     element.textContent = message;
     element.classList.add('show');
@@ -1752,18 +1752,18 @@ function showStatus(message) {
         element.classList.remove('show');
         element.style.animation = 'none';
     }, 5000);
-}
-
-document.addEventListener('DOMContentLoaded', () => {
+  }
+  
+  document.addEventListener('DOMContentLoaded', () => {
     setupStatusMonitor();
-
+  
     if (!document.getElementById('send-status')) {
         var statusElement = document.createElement('div');
         statusElement.id = 'send-status';
         statusElement.className = 'status-message';
         document.body.appendChild(statusElement);
     }
-
+  
     const setupModal = (config) => {
         const { 
             addBtn, 
@@ -1772,21 +1772,21 @@ document.addEventListener('DOMContentLoaded', () => {
             closeBtn, 
             inputField 
         } = config;
-
+  
         const toggleModal = (show = false) => {
             modal?.classList.toggle('hidden', !show);
             if (inputField) inputField.value = '';
         };
-
+  
         addBtn?.addEventListener('click', () => toggleModal(true));
         saveBtn?.addEventListener('click', () => toggleModal());
         closeBtn?.addEventListener('click', () => toggleModal());
-
+  
         modal?.addEventListener('click', (event) => {
             if (event.target === modal) toggleModal();
         });
     };
-
+  
     setupModal({    
         addBtn: document.getElementById('add-hint-btn'),
         saveBtn: document.getElementById('save-hint-btn'),
@@ -1794,7 +1794,7 @@ document.addEventListener('DOMContentLoaded', () => {
         closeBtn: document.getElementById('close-modal-btn'),
         inputField: document.getElementById('hint-input')
     });
-
+  
     setupModal({
         addBtn: document.getElementById('add-general-hint-btn'),
         saveBtn: document.getElementById('save-general-hint-btn'), 
@@ -1802,14 +1802,14 @@ document.addEventListener('DOMContentLoaded', () => {
         closeBtn: document.getElementById('close-general-modal-btn'),
         inputField: document.getElementById('general-hint-input')
     });
-
+  
     if (!localStorage.getItem('sortMode')) {
         localStorage.setItem('sortMode', 'usage');
     }
-
+  
     const activeNumber = localStorage.getItem('activeButtonNumber') || '0';
     updateActiveButton(activeNumber);
-
+  
     const currentMode = localStorage.getItem('sortMode');
     document.querySelectorAll('.sort-btn').forEach(btn => {
         btn.classList.remove('active');
@@ -1824,24 +1824,24 @@ document.addEventListener('DOMContentLoaded', () => {
         hintsWrapper.replaceChildren(...sortedHints);
     }
     catch {}
-});
-
-async function deleteMedia(mediaId, mediaPath, messageIndex) {
+  });
+  
+  async function deleteMedia(mediaId, mediaPath, messageIndex) {
     if (!confirm('Are you sure you want to delete this media?')) {
         return;
     }
-
+  
     messageIndex = parseInt(messageIndex);
-
+  
     try {
         const chatIdRaw = document.getElementById('chat-id').textContent;
         const chatId = chatIdRaw.replace(/"/g, '').trim();
-        
+  
         if (!mediaId || !mediaPath || isNaN(messageIndex)) {
             console.error('Missing parameters:', { mediaId, mediaPath, messageIndex });
             return;
         }
-
+  
         const response = await fetch('/delete-media', {
             method: 'POST',
             headers: {
@@ -1855,13 +1855,13 @@ async function deleteMedia(mediaId, mediaPath, messageIndex) {
                 confirmed: true
             })
         });
-
+  
         const data = await response.json();
-        
+  
         if (data.success) {
             const mediaContainer = document.getElementById(mediaId)?.closest('.main-container');
             if (mediaContainer) {
-                
+  
                 let nextElement = mediaContainer.nextElementSibling;
                 while (nextElement) {
                     if (nextElement.classList.contains('button-container')) {
@@ -1870,12 +1870,12 @@ async function deleteMedia(mediaId, mediaPath, messageIndex) {
                     }
                     nextElement = nextElement.nextElementSibling;
                 }
-                
+  
                 const copyImgButton = mediaContainer.nextElementSibling;
                 if (copyImgButton && copyImgButton.classList.contains('copy-button') && copyImgButton.classList.contains('img')) {
                     copyImgButton.remove();
                 }
-                
+  
                 mediaContainer.remove();
             }
             const textBlock = document.getElementById(`text-block-${messageIndex}`);
@@ -1891,19 +1891,47 @@ async function deleteMedia(mediaId, mediaPath, messageIndex) {
                 lenMessagesDiv.textContent = `${currentCount - 1} / ${totalCount - 1}`;
                 newNumber = currentCount - 1;
             }
-
+  
+            // Remove orphaned message-separator elements
+            const allSeparators = document.querySelectorAll('.message-separator');
+            allSeparators.forEach(separator => {
+                let hasMediaBelow = false;
+                let nextElement = separator.nextElementSibling;
+                
+                // Check if there's any media element after this separator
+                while (nextElement) {
+                    if (nextElement.classList.contains('main-container')) {
+                        const mediaElement = nextElement.querySelector('img, video');
+                        if (mediaElement) {
+                            hasMediaBelow = true;
+                            break;
+                        }
+                    }
+                    // Stop checking if we hit another separator
+                    if (nextElement.classList.contains('message-separator')) {
+                        break;
+                    }
+                    nextElement = nextElement.nextElementSibling;
+                }
+                
+                // If no media found below this separator, remove it
+                if (!hasMediaBelow) {
+                    separator.remove();
+                }
+            });
+  
             const allContainers = document.querySelectorAll('.main-container');
-            
+  
             allContainers.forEach((container, index) => {
                 const imageNumber = container.querySelector('.image-number');
                 if (imageNumber) {
                     imageNumber.textContent = index;
                 }
-
+  
                 const mediaElement = container.querySelector('img, video');
                 if (mediaElement) {
                     const mediaId = mediaElement.id;
-
+  
                     const deleteButton = container.querySelector('.delete-button');
                     let mediaPath = '';
                     if (deleteButton) {
@@ -1913,13 +1941,13 @@ async function deleteMedia(mediaId, mediaPath, messageIndex) {
                             mediaPath = match[1];
                         }
                     }
-                    
+  
                     if (mediaPath) {
                         if (deleteButton) {
                             const newOnclick = `deleteMedia('${mediaId}', '${mediaPath}', ${index})`;
                             deleteButton.setAttribute('onclick', newOnclick);
                         }
-
+  
                         const rotateLeftButton = container.querySelector('.rotate-button.left');
                         if (rotateLeftButton) {
                             rotateLeftButton.setAttribute('onclick', `rotateMedia('${mediaId}', 'left', '${mediaPath}', '${mediaElement.tagName.toLowerCase()}')`);
@@ -1928,12 +1956,12 @@ async function deleteMedia(mediaId, mediaPath, messageIndex) {
                         if (rotateRightButton) {
                             rotateRightButton.setAttribute('onclick', `rotateMedia('${mediaId}', 'right', '${mediaPath}', '${mediaElement.tagName.toLowerCase()}')`);
                         }
-
+  
                         const replaceButton = container.querySelector('.replace-button');
                         if (replaceButton) {
                             replaceButton.setAttribute('onclick', `replaceMedia('${mediaId}', '${mediaPath}')`);
                         }
-
+  
                         const cropButton = container.querySelector('.crop-button');
                         if (cropButton && mediaElement.tagName.toLowerCase() === 'img') {
                             cropButton.setAttribute('onclick', `recropImage('${mediaId}', '${mediaPath}')`);
@@ -1943,7 +1971,7 @@ async function deleteMedia(mediaId, mediaPath, messageIndex) {
                     }
                 }
             });
-
+  
             if (newNumber !== null) {
                 const hintsContainer = document.getElementById('hints-container');
                 if (hintsContainer) {
@@ -1981,12 +2009,12 @@ async function deleteMedia(mediaId, mediaPath, messageIndex) {
     } catch (error) {
         console.error('Error deleting media:', error);
     }
-}
-
-function createHintItem(hint, isChecked, chatId, hintType) {
+  }
+  
+  function createHintItem(hint, isChecked, chatId, hintType) {
     const div = document.createElement('div');
     div.className = `hint-item ${hintType === 'general' ? 'general-hint' : ''} ${isChecked ? 'active' : ''}`;
-    
+  
     div.innerHTML = `
         <div class="hint-wrapper">
             <input type="checkbox" 
@@ -2010,6 +2038,7 @@ function createHintItem(hint, isChecked, chatId, hintType) {
             </button>
         </div>
     `;
-    
+  
     return div;
-}
+  }
+  
