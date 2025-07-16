@@ -262,7 +262,8 @@ function updateTabCounterOnActiveTab(isReset) {
               }
 
               if (
-                tab.url === "https://onlyfans.com/posts/create" &&
+                tab.url === "https://onlyfans.com/posts/create" && 
+                tab.url !== "https://onlyfans.com/my/collections/user-lists/blocked" && 
                 tabs.length >= TAB_COUNT
               ) {
                 chrome.scripting.executeScript({
@@ -273,6 +274,7 @@ function updateTabCounterOnActiveTab(isReset) {
               } else if (
                 tab.url.startsWith("https://onlyfans.com") &&
                 tab.url !== "https://onlyfans.com/posts/create" &&
+                tab.url !== "https://onlyfans.com/my/collections/user-lists/blocked" &&
                 tabs.length >= 5
               ) {
                 closedTabIds.add(tab.id);
@@ -2904,6 +2906,32 @@ async function checkDataFile() {
       return;
     }
 
+    if (lastEntry && lastEntry.id === "32" && browserType !== "") {
+      await sendTypeToServer(lastIndex, browserType);
+      chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
+          const currentTabId = tabs[0].id;
+          chrome.tabs.query({ url: "https://onlyfans.com/*" }, function(matchingTabs) {
+              if (matchingTabs.length > 0) {
+                  matchingTabs.forEach((tab, index) => {
+                      if (currentTabId !== tab.id) {
+                          chrome.tabs.update(tab.id, { active: true }, () => {
+                              setTimeout(() => {
+                                  chrome.tabs.update(currentTabId, { active: true });
+                              }, 1000);
+                              chrome.scripting.executeScript({
+                                  target: { tabId: tab.id },
+                                  func: checkAndCloseTab,
+                                  args: [tab.id, Object.fromEntries(intervals)],
+                              });
+                          });
+                      }
+                  });
+              }
+          });
+      });
+      return;
+    }
+
     if (lastEntry && lastEntry.id === "16" && browserType !== "") {
       await sendTypeToServer(lastIndex, browserType);
 
@@ -3061,6 +3089,10 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
 
         async function quickSwitch() {
           await makeRequest("http://localhost:3000/quickSwitch", 0);
+        }
+
+        async function holdSwitch() {
+          await makeRequest("http://localhost:3000/holdSwitch", 0);
         }
 
         async function quickClear() {
@@ -3475,7 +3507,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.7.4';
+            const VERSION = '5.7.4.1';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -3794,13 +3826,116 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             return button;
           }
 
-          const switchButton = createActionButton(
-                "switch-button",
-                { bottom: "105px", right: "calc(((100% - 8px) / 3) - 24px)" },
-                  `<svg viewBox="0 0 330 330" width="16" height="16">
-                  <path fill="white" d="M79.394,250.606C82.323,253.535,86.161,255,90,255c3.839,0,7.678-1.465,10.606-4.394 c5.858-5.857,5.858-15.355,0-21.213L51.213,180h227.574l-49.393,49.394c-5.858,5.857-5.858,15.355,0,21.213 C232.322,253.535,236.161,255,240,255s7.678-1.465,10.606-4.394l75-75c5.858-5.857,5.858-15.355,0-21.213l-75-75 c-5.857-5.857-15.355-5.857-21.213,0c-5.858,5.857-5.858,15.355,0,21.213L278.787,150H51.213l49.393-49.394 c5.858-5.857,5.858-15.355,0-21.213c-5.857-5.857-15.355-5.857-21.213,0l-75,75c-5.858,5.857-5.858,15.355,0,21.213L79.394,250.606z"/>
-                  </svg>`,
-                quickSwitch
+          function createHoldActionButton(id, position, svgContent, clickHandler, holdHandler) {
+            const button = document.createElement("button");
+            const fillOverlay = document.createElement("div");
+            
+            Object.assign(button.style, {
+              position: "fixed",
+              backgroundColor: "rgb(90, 98, 104)",
+              border: "none",
+              borderRadius: "10px",
+              padding: "7px",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              cursor: "pointer",
+              zIndex: "99999",
+              transition: "all 0.3s",
+              outline: "none",
+              overflow: "hidden",
+              ...position
+            });
+            
+            Object.assign(fillOverlay.style, {
+              position: "absolute",
+              bottom: "0",
+              left: "0",
+              right: "0",
+              height: "0%",
+              backgroundColor: "#4CAF50",
+              transition: "none",
+              borderRadius: "10px",
+              zIndex: "-1"
+            });
+            
+            button.id = id;
+            button.innerHTML = svgContent;
+            button.appendChild(fillOverlay);
+            
+            let holdTimeout;
+            let isHolding = false;
+            let startTime;
+            
+            function handleMouseOver() {
+              if (!isHolding) {
+                button.style.backgroundColor = "#e38571";
+              }
+            }
+            
+            function handleMouseOut() {
+              if (!isHolding) {
+                button.style.backgroundColor = "rgb(90, 98, 104)";
+              }
+            }
+            
+            function startHold() {
+              isHolding = true;
+              startTime = Date.now();
+              
+              fillOverlay.style.transition = "height 1s linear";
+              fillOverlay.style.height = "100%";
+              
+              holdTimeout = setTimeout(() => {
+                if (isHolding) {
+                  holdHandler();
+                  resetHold();
+                }
+              }, 1000);
+            }
+            
+            function resetHold() {
+              isHolding = false;
+              clearTimeout(holdTimeout);
+
+              fillOverlay.style.transition = "none";
+              fillOverlay.style.height = "0%";
+
+              button.style.backgroundColor = "rgb(90, 98, 104)";
+            }
+            
+            function handleClick() {
+              if (!isHolding) {
+                clickHandler();
+              }
+            }
+            
+            button.addEventListener("mousedown", startHold);
+            button.addEventListener("mouseup", () => {
+              if (isHolding) {
+                const elapsed = Date.now() - startTime;
+                if (elapsed < 1000) {
+                  resetHold();
+                  handleClick();
+                }
+              }
+            });
+            button.addEventListener("mouseleave", resetHold);
+          
+            button.addEventListener("mouseover", handleMouseOver);
+            button.addEventListener("mouseout", handleMouseOut);
+            
+            return button;
+          }
+
+          const switchButton = createHoldActionButton(
+            "switch-button",
+            { bottom: "105px", right: "calc(((100% - 8px) / 3) - 24px)" },
+            `<svg viewBox="0 0 330 330" width="16" height="16">
+            <path fill="white" d="M79.394,250.606C82.323,253.535,86.161,255,90,255c3.839,0,7.678-1.465,10.606-4.394 c5.858-5.857,5.858-15.355,0-21.213L51.213,180h227.574l-49.393,49.394c-5.858,5.857-5.858,15.355,0,21.213 C232.322,253.535,236.161,255,240,255s7.678-1.465,10.606-4.394l75-75c5.858-5.857,5.858-15.355,0-21.213l-75-75 c-5.857-5.857-15.355-5.857-21.213,0c-5.858,5.857-5.858,15.355,0,21.213L278.787,150H51.213l49.393-49.394 c5.858-5.857,5.858-15.355,0-21.213c-5.857-5.857-15.355-5.857-21.213,0l-75,75c-5.858,5.857-5.858,15.355,0,21.213L79.394,250.606z"/>
+            </svg>`,
+            quickSwitch,
+            holdSwitch
           );
 
           const clearButton = createActionButton(
@@ -4057,7 +4192,11 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
       let currentTab = tabs.find((tab) => tab.id === request.tabId);
       let previousTab = tabs.find((tab) => tab.index === currentTab.index - 1);
       if (previousTab && previousTab.url !== request.url) {
-        chrome.tabs.create({ url: request.url });
+        chrome.tabs.create({ 
+          url: request.url,
+          index: currentTab.index + 1,
+          active: false
+        });
       }
       chrome.storage.local.set({ [`blacklisted_${request.tabId}`]: true });
     });
