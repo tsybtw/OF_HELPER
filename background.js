@@ -73,6 +73,16 @@ let isStop = false;
 const intervals = new Map();
 let processing = false;
 
+let currentBrowserNumber = 1; 
+let lastTabCount = 0;
+
+chrome.storage.local.get(['currentBrowserNumber'], (result) => {
+  if (result.currentBrowserNumber) {
+    currentBrowserNumber = result.currentBrowserNumber;
+    console.log(`Browser number initialized: ${currentBrowserNumber}`);
+  }
+});
+
 function checkAndCloseTab(tabId, serializedIntervals) {
   const intervalsArray = Object.entries(serializedIntervals);
   const hasInterval = intervalsArray.some(([key]) => key === tabId.toString());
@@ -148,10 +158,35 @@ function checkAndCloseTab(tabId, serializedIntervals) {
     }
 }
 
+// Send periodic browser status updates
+setInterval(() => {
+  chrome.tabs.query({}, function(tabs) {
+    const onlyFansTabsCount = tabs.filter(tab => 
+      tab.url && tab.url.startsWith('https://onlyfans.com')
+    ).length;
+
+    // Only send if count changed or every 30 seconds
+    if (onlyFansTabsCount !== lastTabCount || Date.now() % 30000 < 2000) {
+      // Get active browser number from checked browsers
+      chrome.storage.local.get(null, function(items) {
+        const activeBrowser = Object.keys(items)
+          .filter(key => key.startsWith('browser') && key.endsWith('Checked') && items[key])
+          .map(key => parseInt(key.match(/\d+/)[0]))[0];
+        
+        const browserNum = activeBrowser || items.currentBrowserNumber
+        currentBrowserNumber = browserNum; // Update global variable
+        console.log(`Sending ready request for browser ${browserNum} with ${onlyFansTabsCount} tabs`);
+        sendReadyRequest(browserNum, onlyFansTabsCount);
+      });
+      lastTabCount = onlyFansTabsCount;
+    }
+  });
+}, 2000);
+
 function updateTabCounterOnActiveTab(isReset) {
   chrome.tabs.query({}, function (allTabs) { 
     const onlyFansTabsCount = allTabs.filter(tab => 
-      tab.url.startsWith('https://onlyfans.com')
+      tab.url && tab.url.startsWith('https://onlyfans.com')
     ).length;
 
     chrome.tabs.query({ active: true, currentWindow: true }, function (activeTabs) {
@@ -287,6 +322,36 @@ function updateTabCounterOnActiveTab(isReset) {
     );
   }
 }
+
+// Function to send ready request with tab count
+async function sendReadyRequest(browserNumber, tabCount) {
+  try {
+    const response = await fetch('http://localhost:8765/ready-browser-status', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        browser_number: browserNumber,
+        tab_count: tabCount
+      })
+    });
+
+    if (!response.ok) {
+      console.error('Failed to send ready request');
+    }
+  } catch (error) {
+    console.error('Error sending ready request:', error);
+  }
+}
+
+// Listen for changes to browser number
+chrome.storage.onChanged.addListener((changes, namespace) => {
+  if (namespace === 'local' && changes.currentBrowserNumber) {
+    currentBrowserNumber = changes.currentBrowserNumber.newValue || 1;
+    console.log(`Browser number updated: ${currentBrowserNumber}`);
+  }
+});
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   switch (message.type) {
@@ -2134,6 +2199,71 @@ function listenForButtonClicks(arg, tabId) {
 
 let lastTabId;
 
+// Track tab changes and send ready requests
+chrome.tabs.onRemoved.addListener(function(tabId, removeInfo) {
+  // When a tab is closed, check current tab count and send ready request
+  chrome.tabs.query({}, function(tabs) {
+    const onlyFansTabsCount = tabs.filter(tab => 
+      tab.url && tab.url.startsWith('https://onlyfans.com')
+    ).length;
+
+    // Get active browser number from checked browsers
+    chrome.storage.local.get(null, function(items) {
+      const activeBrowser = Object.keys(items)
+        .filter(key => key.startsWith('browser') && key.endsWith('Checked') && items[key])
+        .map(key => parseInt(key.match(/\d+/)[0]))[0];
+      
+      const browserNum = activeBrowser || items.currentBrowserNumber
+      sendReadyRequest(browserNum, onlyFansTabsCount);
+    });
+    lastTabCount = onlyFansTabsCount;
+  });
+});
+
+// Track when tabs are created or updated to OnlyFans
+chrome.tabs.onCreated.addListener(function(tab) {
+  if (tab.url && tab.url.startsWith('https://onlyfans.com')) {
+    chrome.tabs.query({}, function(tabs) {
+      const onlyFansTabsCount = tabs.filter(tab => 
+        tab.url && tab.url.startsWith('https://onlyfans.com')
+      ).length;
+
+      // Get active browser number from checked browsers
+      chrome.storage.local.get(null, function(items) {
+        const activeBrowser = Object.keys(items)
+          .filter(key => key.startsWith('browser') && key.endsWith('Checked') && items[key])
+          .map(key => parseInt(key.match(/\d+/)[0]))[0];
+        
+        const browserNum = activeBrowser || items.currentBrowserNumber
+        sendReadyRequest(browserNum, onlyFansTabsCount);
+      });
+      lastTabCount = onlyFansTabsCount;
+    });
+  }
+});
+
+chrome.tabs.onUpdated.addListener(function(tabId, changeInfo, tab) {
+  // Check if URL was updated to OnlyFans
+  if (changeInfo.url && changeInfo.url.startsWith('https://onlyfans.com')) {
+    chrome.tabs.query({}, function(tabs) {
+      const onlyFansTabsCount = tabs.filter(tab => 
+        tab.url && tab.url.startsWith('https://onlyfans.com')
+      ).length;
+
+      // Get active browser number from checked browsers
+      chrome.storage.local.get(null, function(items) {
+        const activeBrowser = Object.keys(items)
+          .filter(key => key.startsWith('browser') && key.endsWith('Checked') && items[key])
+          .map(key => parseInt(key.match(/\d+/)[0]))[0];
+        
+        const browserNum = activeBrowser || items.currentBrowserNumber
+        sendReadyRequest(browserNum, onlyFansTabsCount);
+      });
+      lastTabCount = onlyFansTabsCount;
+    });
+  }
+});
+
 chrome.tabs.onUpdated.addListener(function (tabId, changeInfo, tab) {
   if (
     changeInfo.status === "complete" &&
@@ -3507,7 +3637,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.7.4.2';
+            const VERSION = '5.8';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -3829,7 +3959,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           function createHoldActionButton(id, position, svgContent, clickHandler, holdHandler) {
             const button = document.createElement("button");
             const fillOverlay = document.createElement("div");
-            
+
             Object.assign(button.style, {
               position: "fixed",
               backgroundColor: "rgb(90, 98, 104)",
@@ -3846,7 +3976,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
               overflow: "hidden",
               ...position
             });
-            
+
             Object.assign(fillOverlay.style, {
               position: "absolute",
               bottom: "0",
@@ -3858,34 +3988,34 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
               borderRadius: "10px",
               zIndex: "-1"
             });
-            
+
             button.id = id;
             button.innerHTML = svgContent;
             button.appendChild(fillOverlay);
-            
+
             let holdTimeout;
             let isHolding = false;
             let startTime;
-            
+
             function handleMouseOver() {
               if (!isHolding) {
                 button.style.backgroundColor = "#e38571";
               }
             }
-            
+
             function handleMouseOut() {
               if (!isHolding) {
                 button.style.backgroundColor = "rgb(90, 98, 104)";
               }
             }
-            
+
             function startHold() {
               isHolding = true;
               startTime = Date.now();
-              
+
               fillOverlay.style.transition = "height 1s linear";
               fillOverlay.style.height = "100%";
-              
+
               holdTimeout = setTimeout(() => {
                 if (isHolding) {
                   holdHandler();
@@ -3893,7 +4023,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
                 }
               }, 1000);
             }
-            
+
             function resetHold() {
               isHolding = false;
               clearTimeout(holdTimeout);
@@ -3903,13 +4033,13 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
 
               button.style.backgroundColor = "rgb(90, 98, 104)";
             }
-            
+
             function handleClick() {
               if (!isHolding) {
                 clickHandler();
               }
             }
-            
+
             button.addEventListener("mousedown", startHold);
             button.addEventListener("mouseup", () => {
               if (isHolding) {
@@ -3921,10 +4051,10 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
               }
             });
             button.addEventListener("mouseleave", resetHold);
-          
+
             button.addEventListener("mouseover", handleMouseOver);
             button.addEventListener("mouseout", handleMouseOut);
-            
+
             return button;
           }
 
@@ -4201,7 +4331,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
       chrome.storage.local.set({ [`blacklisted_${request.tabId}`]: true });
     });
   }
-  
+
   if (request.action === "closeTab" && sender.tab?.id) {
     closedTabIds.add(sender.tab.id);
     chrome.tabs.remove(sender.tab.id);
