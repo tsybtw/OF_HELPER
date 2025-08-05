@@ -430,7 +430,12 @@ function copyToClipboard(text, event) {
 
   function toggleQueueDropdown() {
     const dropdown = document.getElementById('queue-dropdown');
+    const isOpening = !dropdown.classList.contains('show');
+
     dropdown.classList.toggle('show');
+
+    localStorage.setItem('queueDropdownOpen', isOpening ? 'true' : 'false');
+
     if (dropdown.classList.contains('show')) {
         loadInitialQueueData();
       }
@@ -476,6 +481,10 @@ function copyToClipboard(text, event) {
         browserStatus.style.display = 'block';
         browserSettings.style.display = 'block';
 
+        setTimeout(() => {
+            restoreQueueDropdownState();
+        }, 50);
+
     } else {
         toggleBtn.classList.remove('active');
         modeToggle.classList.remove('active');
@@ -483,7 +492,13 @@ function copyToClipboard(text, event) {
         queueStatus.style.display = 'none';
         userButtons.style.display = 'none';
         browserStatus.style.display = 'none';
-        browserSettings.style.display = 'none'
+        browserSettings.style.display = 'none';
+
+        const dropdown = document.getElementById('queue-dropdown');
+        if (dropdown) {
+            dropdown.classList.remove('show');
+            localStorage.setItem('queueDropdownOpen', 'false');
+        }
     }
   }
 
@@ -637,6 +652,17 @@ function copyToClipboard(text, event) {
     });
   }
 
+  function restoreQueueDropdownState() {
+    const dropdown = document.getElementById('queue-dropdown');
+    const shouldBeOpen = localStorage.getItem('queueDropdownOpen') === 'true';
+
+    if (dropdown && shouldBeOpen) {
+        dropdown.classList.add('show');
+
+        loadInitialQueueData();
+    }
+  }
+
   function removeQueueUser(userIndex) {
     if (confirm('Are you sure you want to remove this user from queue?')) {
         fetch(`/remove-queue-user/${userIndex}`, { method: 'POST' })
@@ -712,11 +738,9 @@ function copyToClipboard(text, event) {
   }
 
   function showQueueCompletionModal() {
-    console.log('showQueueCompletionModal called');
 
     let modal = document.getElementById('queue-completion-modal');
     if (!modal) {
-        console.log('Creating new queue completion modal');
         modal = document.createElement('div');
         modal.id = 'queue-completion-modal';
         modal.className = 'queue-modal hidden';
@@ -743,7 +767,6 @@ function copyToClipboard(text, event) {
         </div>
     `;
 
-    console.log('Showing queue completion modal');
     modal.classList.remove('hidden');
 
     showStatus('Queue processing completed!', 'success');
@@ -854,20 +877,29 @@ function copyToClipboard(text, event) {
         const stopBtn = document.querySelector('.queue-stop-btn');
 
         if (browserSettingsDiv) {
-            let settingsHtml = `
-                <div class="browser-settings-header">Browser Settings</div>
-                <div class="setting-row">
-                    <span class="setting-label">Tab Threshold:</span>
-                    <input type="number" id="tab-threshold-input" class="setting-input" 
-                           value="${data.queue_settings.tab_threshold}" 
-                           onchange="updateQueueSettings()" min="1" max="100">
-                </div>
-                <div class="setting-row">
-                    <button class="clear-browsers-btn" onclick="clearAllBrowsers()">Clear All Browsers</button>
-                </div>
-            `;
-            if (browserSettingsDiv.innerHTML !== settingsHtml) {
-                browserSettingsDiv.innerHTML = settingsHtml;
+            const currentInput = browserSettingsDiv.querySelector('#tab-threshold-input');
+            const currentThreshold = data.queue_settings?.tab_threshold || 25;
+
+            if (!currentInput || parseInt(currentInput.value) !== currentThreshold) {
+
+                const activeElement = document.activeElement;
+                const isInputFocused = activeElement && activeElement.id === 'tab-threshold-input';
+
+                if (!isInputFocused) {
+                    let settingsHtml = `
+                        <div class="browser-settings-header">Browser Settings</div>
+                        <div class="setting-row">
+                            <span class="setting-label">Tab Threshold:</span>
+                            <input type="number" id="tab-threshold-input" class="setting-input" 
+                                   value="${currentThreshold}" 
+                                   onchange="updateQueueSettings()" min="1" max="100">
+                        </div>
+                        <div class="setting-row">
+                            <button class="clear-browsers-btn" onclick="clearAllBrowsers()">Clear All Browsers</button>
+                        </div>
+                    `;
+                    browserSettingsDiv.innerHTML = settingsHtml;
+                }
             }
 
             browserSettingsDiv.style.display = data.queue_mode_enabled ? 'block' : 'none';
@@ -894,8 +926,6 @@ function copyToClipboard(text, event) {
             } else if (data.hint_adjustment && typeof data.hint_adjustment === 'number') {
                 hintAdjustment = data.hint_adjustment;
             }
-
-            console.log(`Using hint adjustment: ${hintAdjustment}`);
 
             if (Object.keys(browsers).length === 0) {
                 const noBrowsersContent = '<div class="no-browsers">No browser data received yet<br><small>Please wait or reload your browser tabs...</small></div>';
@@ -942,7 +972,6 @@ function copyToClipboard(text, event) {
 
                 if (browserListDiv.innerHTML !== browserHtml) {
                     browserListDiv.innerHTML = browserHtml;
-                    console.log('Updated browser list with data:', browsers);
                 }
             }
         }
@@ -952,9 +981,54 @@ function copyToClipboard(text, event) {
 
             if (data.queue_running) {
                 const currentUser = data.users[data.current_user] || {};
-                statusHTML += `<div class="queue-status-item">
-                    <span class="queue-status-label">Current User:</span>${data.current_user + 1}/${data.total_users}
-                </div>`;
+
+                const threshold = data.queue_settings?.tab_threshold;
+                const browsers = data.browser_tab_counts || {};
+                let hintAdjustment = 0;
+                if (browserInfo && typeof browserInfo.hint_adjustment === 'number') {
+                    hintAdjustment = browserInfo.hint_adjustment;
+                }
+
+                let browsersReady = true;
+                if (Object.keys(browsers).length > 0) {
+                    for (const [browserNum, currentTabs] of Object.entries(browsers)) {
+                        const adjustedTabs = currentTabs + hintAdjustment;
+                        if (adjustedTabs >= threshold) {
+                            browsersReady = false;
+                            break;
+                        }
+                    }
+                }
+
+                const screenshotsStatus = data.status?.screenshots_sent || false;
+
+                statusHTML = `
+                    <div class="queue-status-header">Queue Processing Status</div>
+                    <div class="queue-status-grid">
+                        <div class="queue-status-item">
+                            <span class="queue-status-label">Current User:</span>
+                            <span class="queue-status-value">
+                                <span class="queue-user-progress">${data.current_user + 1}/${data.total_users}</span>
+                            </span>
+                        </div>
+                        <div class="queue-status-item">
+                            <span class="queue-status-label">Browsers Ready:</span>
+                            <span class="queue-status-value">
+                                <span class="queue-status-icon ${browsersReady ? 'success' : 'error'}">
+                                    ${browsersReady ? '✓' : '✗'}
+                                </span>
+                            </span>
+                        </div>
+                        <div class="queue-status-item">
+                            <span class="queue-status-label">Screenshots Sent:</span>
+                            <span class="queue-status-value">
+                                <span class="queue-status-icon ${screenshotsStatus ? 'success' : 'waiting'}">
+                                    ${screenshotsStatus ? '✓' : '⏳'}
+                                </span>
+                            </span>
+                        </div>
+                    </div>
+                `;
 
                 if (startBtn && !startBtn.disabled) {
                     startBtn.disabled = true;
@@ -965,7 +1039,17 @@ function copyToClipboard(text, event) {
                     stopBtn.style.opacity = '1';
                 }
             } else {
-                statusHTML = `<div class="queue-status-item">Status: Stopped (${data.total_users} users loaded)</div>`;
+                statusHTML = `
+                    <div class="queue-status-header">Queue Status</div>
+                    <div class="queue-status-grid">
+                        <div class="queue-status-item">
+                            <span class="queue-status-label">Status:</span>
+                            <span class="queue-status-value">
+                                <span style="color: #ccc;">Stopped (${data.total_users} users loaded)</span>
+                            </span>
+                        </div>
+                    </div>
+                `;
 
                 if (startBtn && (startBtn.disabled !== (data.total_users === 0))) {
                     startBtn.disabled = data.total_users === 0;
@@ -1095,10 +1179,6 @@ function copyToClipboard(text, event) {
             foundActiveHint = true;
         }
     });
-
-    if (!foundActiveHint && activeHint) {
-        console.log(`Active hint "${activeHint}" not found in checkbox list`);
-    }
   }
 
   function showStatus(message, type) {
@@ -1311,7 +1391,7 @@ function copyToClipboard(text, event) {
     const newHintKey = newHintInput.value.trim();
 
     if (!newHintKey) {
-        alert('Введите ключ');
+        alert('Hint is not valid!');
         return;
     }
 
@@ -2516,7 +2596,6 @@ function copyToClipboard(text, event) {
       })
       .then(data => {
         if (data && data.success && data.queue_data && data.browser_data) {
-          console.log('Updating queue status with initial data');
           updateQueueStatus(data.queue_data, data.browser_data);
         }
       })
@@ -2550,8 +2629,6 @@ function copyToClipboard(text, event) {
       })
         .then(response => {
           if (response.status === 204) {
-
-            console.log('No changes detected in polling');
             return null;
           }
           if (!response.ok) {
@@ -2561,7 +2638,6 @@ function copyToClipboard(text, event) {
         })
         .then(data => {
           if (data && data.success && data.queue_data && data.browser_data) {
-            console.log('Updating queue status from polling');
             updateQueueStatus(data.queue_data, data.browser_data);
           }
         })
@@ -2569,39 +2645,115 @@ function copyToClipboard(text, event) {
     }, 2000);
   }
 
-  function startSimpleReloadCheck() {
-    let lastReloadTimestamp = 0;
-
-    setInterval(() => {
-      fetch('/files/simple_reload.json?' + Date.now())
-        .then(response => {
-          if (response.ok) {
-            return response.json();
-          }
-          return null;
-        })
-        .then(data => {
-          if (data && data.should_reload && data.timestamp > lastReloadTimestamp) {
-            console.log('Reload signal detected, reloading page...');
-            lastReloadTimestamp = data.timestamp;
-            location.reload();
-          }
-        })
-        .catch(() => {
-
-        });
-    }, 1000);
-  }
-
   let lastQueueRunning = null;
 
   function checkQueueCompletion(currentQueueData) {
 
     if (lastQueueRunning === true && currentQueueData.queue_running === false && currentQueueData.queue_mode_enabled) {
-      console.log('Queue just completed, showing notification');
       showQueueCompletionModal();
     }
     lastQueueRunning = currentQueueData.queue_running;
+  }
+
+  function syncHintsFromActiveDisplay() {
+    try {
+
+      const activeHintDisplays = document.querySelectorAll('.active-hint-display');
+
+      activeHintDisplays.forEach(display => {
+        const displayText = display.textContent.trim();
+
+        const match = displayText.match(/^\[(.*)\]$/);
+        if (!match) return;
+
+        const hintText = match[1];
+
+        const hintsContainer = document.getElementById('hints-container');
+        if (!hintsContainer) return;
+
+        const existingHints = hintsContainer.querySelectorAll('.hint-label');
+        let hintExists = false;
+
+        existingHints.forEach(label => {
+          if (label.textContent.trim() === hintText) {
+            hintExists = true;
+
+            const checkbox = label.previousElementSibling;
+            if (checkbox && checkbox.type === 'checkbox') {
+
+              const allCheckboxes = hintsContainer.querySelectorAll('input[type="checkbox"]');
+              const allHintItems = hintsContainer.querySelectorAll('.hint-item');
+
+              allCheckboxes.forEach(cb => cb.checked = false);
+              allHintItems.forEach(item => item.classList.remove('active'));
+
+              checkbox.checked = true;
+              checkbox.closest('.hint-item').classList.add('active');
+            }
+          }
+        });
+
+        if (!hintExists) {
+
+          const userContainer = display.closest('.user-container');
+          const isGeneralHint = false; 
+
+          const chatIdScript = document.getElementById('chat-id');
+          if (!chatIdScript) return;
+
+          let chatId = '';
+          try {
+            chatId = JSON.parse(chatIdScript.textContent);
+          } catch (e) {
+            console.error('Error parsing chat ID:', e);
+            return;
+          }
+
+          const hintsWrapper = hintsContainer.querySelector('.hints-wrapper');
+          if (!hintsWrapper) return;
+
+          const allCheckboxes = hintsContainer.querySelectorAll('input[type="checkbox"]');
+          const allHintItems = hintsContainer.querySelectorAll('.hint-item');
+
+          allCheckboxes.forEach(cb => cb.checked = false);
+          allHintItems.forEach(item => item.classList.remove('active'));
+
+          const hintType = isGeneralHint ? 'general' : 'personal';
+          const checkboxId = `checkbox-${hintType}-${hintText}`;
+
+          const newHintItem = document.createElement('div');
+          newHintItem.className = `hint-item ${isGeneralHint ? 'general-hint' : ''} active`;
+          newHintItem.innerHTML = `
+            <div class="hint-wrapper">
+              <input type="checkbox" 
+                  id="${checkboxId}" 
+                  onchange="updateHintCheckbox('${chatId}', '${hintText}', 'update', '${hintType}')"
+                  class="hint-checkbox"
+                  checked>
+              <label for="${checkboxId}" 
+                  class="hint-label ${isGeneralHint ? 'general' : ''}">${hintText}</label>
+              <button class="hint-delete-btn" 
+                  onclick="deleteHint('${chatId}', '${hintText}', '${hintType}')"
+                  aria-label="Delete ${hintType} hint">
+                <svg xmlns="http://www.w3.org/2000/svg" x="0px" y="0px" width="32" height="32" viewBox="0 0 64 64">
+                  <rect width="48" height="10" x="7" y="7" fill="#f9e3ae" rx="2" ry="2"></rect>
+                  <rect width="36" height="4" x="13" y="55" fill="#f9e3ae" rx="2" ry="2"></rect>
+                  <path fill="#c2cde7" d="M47 55L15 55 10 17 52 17 47 55z"></path>
+                  <path fill="#ced8ed" d="M25 55L15 55 10 17 24 17 25 55z"></path>
+                  <path fill="#b5c4e0" d="M11,17v2a3,3 0,0,0 3,3H38L37,55H47l5-38Z"></path>
+                  <path fill="#8d6c9f" d="M16 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 16 10zM11 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 11 10zM21 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 21 10zM26 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 26 10zM31 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 31 10zM36 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 36 10zM41 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 41 10zM46 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 46 10zM51 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 51 10z"></path>
+                  <path fill="#8d6c9f" d="M53,6H9A3,3 0,0,0 6,9v6a3,3 0,0,0 3,3c0,.27 4.89 36.22 4.89 36.22A3 3 0,0,0 15,60H47a3,3 0,0,0 1.11-5.78l2.28-17.3a1 1 0,0,0 .06-.47L52.92 18H53a3,3 0,0,0 3-3V9A3,3 0,0,0 53,6ZM24.59 18l5 5-4.78 4.78a1 1 0,1,0 1.41 1.41L31 24.41 37.59 31 31 37.59l-7.29-7.29h0l-5.82-5.82a1 1 0,0,0-1.41 1.41L21.59 31l-7.72 7.72L12.33 27.08 21.41 18Zm16 0 3.33 3.33a1 1 0,0,0 1.41-1.41L43.41 18h7.17L39 29.59 32.41 23l5-5Zm-11 21L23 45.59l-5.11-5.11a1 1 0,0,0-1.41 1.41L21.59 47l-5.86 5.86L14.2 41.22l8.8-8.8Zm7.25 4.42L32.41 39 39 32.41l5.14 5.14a1 1 0,0,0 1.41-1.41L40.41 31 47 24.41l2.67 2.67-1.19 9L38.3 46.28h0L31 53.59 24.41 47 31 40.41l4.42 4.42a1 1 0,0,0 1.41-1.41ZM23 48.41 28.59 54H17.41Zm16 0L44.59 54H33.41ZM40.41 47 48 39.37 46.27 52.86ZM50 24.58 48.41 23l2.06-2.06Zm-19-3L27.41 18h7.17Zm-19.47-.64L13.59 23 12 24.58Zm3.47 .64L11.41 18h7.17ZM47 58H15a1,1 0,0,1 0-2H47a1,1 0,0,1 0 2Zm7-43a1,1 0,0,1-1 1H9a1,1 0,0,1-1-1V9A1,1 0,0,1 9 8H53a1,1 0,0,1 1 1Z"></path>
+                </svg>
+              </button>
+            </div>
+          `;
+
+          hintsWrapper.insertBefore(newHintItem, hintsWrapper.firstChild);
+        }
+      });
+    } catch (error) {
+      console.error('Error syncing hints from active display:', error);
+    }
   }
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -2610,7 +2762,13 @@ function copyToClipboard(text, event) {
     loadInitialQueueData();
     startQueueDataPolling();
 
-    startSimpleReloadCheck();
+    setTimeout(() => {
+        restoreQueueDropdownState();
+    }, 100);
+
+    setTimeout(() => {
+        syncHintsFromActiveDisplay();
+    }, 200);
 
     document.addEventListener('click', (event) => {
         const dropdown = document.getElementById('queue-dropdown');
@@ -2618,6 +2776,8 @@ function copyToClipboard(text, event) {
 
         if (dropdown && !dropdown.contains(event.target) && !toggleBtn.contains(event.target)) {
             dropdown.classList.remove('show');
+
+            localStorage.setItem('queueDropdownOpen', 'false');
         }
     });
 
