@@ -625,30 +625,85 @@ function copyToClipboard(text, event) {
     });
   }
 
-  function switchToUser(userIndex) {
+  async function switchToUser(userIndex) {
+    const button = document.querySelector(`button[onclick="switchToUser(${userIndex})"]`);
+    if (button && button.disabled) {
+        console.log('Switch already in progress, ignoring click');
+        return;
+    }
 
-    saveBetweenQueueUsers()
-      .then(() => {
+    const allUserButtons = document.querySelectorAll('.user-btn');
+    allUserButtons.forEach(btn => btn.disabled = true);
+
+    try {
+        
+        let saveAttempts = 0;
+        const maxSaveAttempts = 3;
+        
+        while (saveAttempts < maxSaveAttempts) {
+            try {
+                await saveBetweenQueueUsers();
+                console.log('State saved successfully');
+                break;
+            } catch (error) {
+                saveAttempts++;
+                console.warn(`Save attempt ${saveAttempts} failed:`, error);
+                if (saveAttempts >= maxSaveAttempts) {
+                    throw new Error('Failed to save current state after multiple attempts');
+                }
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+        }
+
         showStatus('Switching user...', 'info');
 
-        return fetch(`/switch-to-user/${userIndex}`, { method: 'POST' });
-      })
-      .then(response => response.json())
-      .then(data => {
-          if (data.success) {
-              showStatus(data.message, 'success');
+        let switchAttempts = 0;
+        const maxSwitchAttempts = 3;
+        let switchSuccess = false;
 
-              setTimeout(() => {
-                  location.reload();
-              }, 2000);
-          } else {
-              showStatus(data.message, 'error');
-          }
-      })
-      .catch(error => {
-          console.error('Error switching user:', error);
-          showStatus('Error switching user', 'error');
-      });
+        while (switchAttempts < maxSwitchAttempts && !switchSuccess) {
+            try {
+                const response = await fetch(`/switch-to-user/${userIndex}`, { 
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showStatus(data.message, 'success');
+                    switchSuccess = true;
+                    
+
+                } else {
+                    throw new Error(data.error || 'Switch failed without specific error');
+                }
+            } catch (error) {
+                switchAttempts++;
+                console.warn(`Switch attempt ${switchAttempts} failed:`, error);
+                
+                if (switchAttempts >= maxSwitchAttempts) {
+                    showStatus(`Failed to switch after ${maxSwitchAttempts} attempts: ${error.message}`, 'error');
+                } else {
+                    showStatus(`Switch attempt ${switchAttempts} failed, retrying...`, 'info');
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error in switchToUser:', error);
+        showStatus('Error switching user: ' + error.message, 'error');
+    } finally {
+        setTimeout(() => {
+            allUserButtons.forEach(btn => btn.disabled = false);
+        }, 2000);
+    }
   }
 
   function removeQueueUser(userIndex) {
@@ -913,6 +968,24 @@ function copyToClipboard(text, event) {
                 hintAdjustment = data.browser_data.hint_adjustment;
             } else if (data.hint_adjustment && typeof data.hint_adjustment === 'number') {
                 hintAdjustment = data.hint_adjustment;
+            } else if (data.queue_data && typeof data.queue_data.hint_adjustment === 'number') {
+                hintAdjustment = data.queue_data.hint_adjustment;
+            } else if (currentBrowserData && typeof currentBrowserData.hint_adjustment === 'number') {
+                hintAdjustment = currentBrowserData.hint_adjustment;
+            } else {
+                // Fallback: try to calculate hint adjustment from current user's active hint
+                if (data.queue_mode_enabled && data.users && data.users.length > 0) {
+                    const currentUser = data.users[data.current_user];
+                    if (currentUser && currentUser.active_hint) {
+                        const parts = currentUser.active_hint.split(' ');
+                        if (parts.length >= 2) {
+                            const adjustment = parseInt(parts[1]);
+                            if (!isNaN(adjustment)) {
+                                hintAdjustment = adjustment;
+                            }
+                        }
+                    }
+                }
             }
 
             if (Object.keys(browsers).length === 0) {
@@ -967,14 +1040,66 @@ function copyToClipboard(text, event) {
         if (statusDiv && data.queue_mode_enabled) {
             let statusHTML = '';
 
+            const generateScreenshotsHTML = (users, currentUserIndex) => {
+                let screenshotsHTML = '';
+                users.forEach((user, index) => {
+                    const status = user.screenshot_status || 'none';
+                    const isCurrent = index === currentUserIndex;
+                    let className = '';
+
+                    switch (status) {
+                        case 'success':
+                            className = 'success';
+                            break;
+                        case 'failed':
+                            className = 'error';
+                            break;
+                        case 'pending':
+                            className = 'pending';
+                            break;
+                        default:
+                            className = 'none';
+                    }
+
+                    screenshotsHTML += `
+                    <div class="user-screenshot-status ${isCurrent ? 'current' : ''} ${className}">
+                        <span class="user-number">U${user.user_number}</span>
+                    </div>
+                `;
+                });
+                return screenshotsHTML;
+            };
+
             if (data.queue_running) {
                 const currentUser = data.users[data.current_user] || {};
-
                 const threshold = data.queue_settings?.tab_threshold;
                 const browsers = data.browser_tab_counts || {};
                 let hintAdjustment = 0;
+
                 if (browserInfo && typeof browserInfo.hint_adjustment === 'number') {
                     hintAdjustment = browserInfo.hint_adjustment;
+                } else if (data.browser_data && typeof data.browser_data.hint_adjustment === 'number') {
+                    hintAdjustment = data.browser_data.hint_adjustment;
+                } else if (data.hint_adjustment && typeof data.hint_adjustment === 'number') {
+                    hintAdjustment = data.hint_adjustment;
+                } else if (data.queue_data && typeof data.queue_data.hint_adjustment === 'number') {
+                    hintAdjustment = data.queue_data.hint_adjustment;
+                } else if (currentBrowserData && typeof currentBrowserData.hint_adjustment === 'number') {
+                    hintAdjustment = currentBrowserData.hint_adjustment;
+                } else {
+                    // Fallback: try to calculate hint adjustment from current user's active hint
+                    if (data.queue_mode_enabled && data.users && data.users.length > 0) {
+                        const currentUser = data.users[data.current_user];
+                        if (currentUser && currentUser.active_hint) {
+                            const parts = currentUser.active_hint.split(' ');
+                            if (parts.length >= 2) {
+                                const adjustment = parseInt(parts[1]);
+                                if (!isNaN(adjustment)) {
+                                    hintAdjustment = adjustment;
+                                }
+                            }
+                        }
+                    }
                 }
 
                 let browsersReady = true;
@@ -988,64 +1113,42 @@ function copyToClipboard(text, event) {
                     }
                 }
 
-                let screenshotsStatus = null;
-                let screenshotsIcon = '⏳';
-                let screenshotsClass = 'waiting';
-
-                if (browserInfo && browserInfo.screenshots_status !== undefined) {
-                    screenshotsStatus = browserInfo.screenshots_status;
-                } else if (data.browser_data && data.browser_data.screenshots_status !== undefined) {
-                    screenshotsStatus = data.browser_data.screenshots_status;
-                }
-
-                if (screenshotsStatus === true) {
-                    screenshotsIcon = '✓';
-                    screenshotsClass = 'success';
-                } else if (screenshotsStatus === false) {
-                    screenshotsIcon = '✗';
-                    screenshotsClass = 'error';
-                } else {
-                    screenshotsIcon = '⏳';
-                    screenshotsClass = 'waiting';
-                }
-
                 const totalPosts = browserInfo?.total_queue_posts || 0;
+                const screenshotsHTML = generateScreenshotsHTML(data.users, data.current_user);
 
                 statusHTML = `
-                    <div class="queue-status-header">Queue Processing Status</div>
-                    <div class="queue-status-grid">
-                        <div class="queue-status-item">
-                            <span class="queue-status-label">Current User:</span>
-                            <span class="queue-status-value">
-                                <span class="queue-user-progress">${data.current_user + 1}/${data.total_users}</span>
-                            </span>
-                        </div>
-                        ${totalPosts > 0 ? `
-                        <div class="queue-status-item">
-                            <span class="queue-status-label">Total Posts:</span>
-                            <span class="queue-status-value">
-                                <span class="queue-total-posts">${totalPosts}</span>
-                            </span>
-                        </div>
-                        ` : ''}
-                        <div class="queue-status-item">
-                            <span class="queue-status-label">Browsers Ready:</span>
-                            <span class="queue-status-value">
-                                <span class="queue-status-icon ${browsersReady ? 'success' : 'error'}">
-                                    ${browsersReady ? '✓' : '✗'}
-                                </span>
-                            </span>
-                        </div>
-                        <div class="queue-status-item">
-                            <span class="queue-status-label">Screenshots Sent:</span>
-                            <span class="queue-status-value">
-                                <span class="queue-status-icon ${screenshotsClass}">
-                                    ${screenshotsIcon}
-                                </span>
-                            </span>
-                        </div>
+                <div class="queue-status-header">Queue Processing Status</div>
+                <div class="queue-status-grid">
+                    <div class="queue-status-item">
+                        <span class="queue-status-label">Current User:</span>
+                        <span class="queue-status-value">
+                            <span class="queue-total-users">${data.current_user + 1}/${data.total_users}</span>
+                        </span>
                     </div>
-                `;
+                    ${totalPosts > 0 ? `
+                    <div class="queue-status-item">
+                        <span class="queue-status-label">Total Posts:</span>
+                        <span class="queue-status-value">
+                            <span class="queue-total-posts">${totalPosts}</span>
+                        </span>
+                    </div>` : ''}
+                    <div class="queue-status-item">
+                        <span class="queue-status-label">Browsers Ready:</span>
+                        <span class="queue-status-value">
+                            <span class="queue-status-icon ${browsersReady ? 'success' : 'error'}">
+                                ${browsersReady ? '✓' : '✗'}
+                            </span>
+                        </span>
+                    </div>
+                    ${screenshotsHTML ? `
+                    <div class="queue-status-item full-width">
+                        <span class="queue-status-label">Screenshots Status:</span>
+                        <div class="screenshots-status-grid">
+                            ${screenshotsHTML}
+                        </div>
+                    </div>` : ''}
+                </div>
+            `;
 
                 if (startBtn && !startBtn.disabled) {
                     startBtn.disabled = true;
@@ -1057,6 +1160,7 @@ function copyToClipboard(text, event) {
                 }
             } else {
                 const totalPosts = browserInfo?.total_queue_posts || 0;
+                const screenshotsHTML = generateScreenshotsHTML(data.users, -1); // No current user when stopped
 
                 statusHTML = `
                     <div class="queue-status-header">Queue Status</div>
@@ -1073,8 +1177,14 @@ function copyToClipboard(text, event) {
                             <span class="queue-status-value">
                                 <span class="queue-total-posts">${totalPosts}</span>
                             </span>
-                        </div>
-                        ` : ''}
+                        </div>` : ''}
+                        ${screenshotsHTML ? `
+                        <div class="queue-status-item full-width">
+                            <span class="queue-status-label">Screenshots Status:</span>
+                            <div class="screenshots-status-grid">
+                                ${screenshotsHTML}
+                            </div>
+                        </div>` : ''}
                     </div>
                 `;
 
@@ -1116,7 +1226,7 @@ function copyToClipboard(text, event) {
                         <button class="user-btn${activeClass}${completedClass}${processingClass}" onclick="switchToUser(${index})">
                             ${user.user_number || (index + 1)}
                         </button>
-                        <span class="user-nickname">${user.nickname || 'Unknown'}${activeHintDisplay}</span>
+                        <span class="user-nickname">${(user.nickname ? user.nickname.split(' ')[0] : 'Unknown')}${activeHintDisplay}</span>
                         <button class="user-delete-btn${deleteButtonDisabled}"${deleteOnClick} title="${canDelete ? 'Remove ' + (user.nickname || 'User ' + (index + 1)) : 'Cannot remove last user'}"${deleteButtonStyle}>×</button>
                     </div>
                 `;
@@ -2741,6 +2851,17 @@ function copyToClipboard(text, event) {
     return new Promise((resolve, reject) => {
       try {
         const currentHtml = document.documentElement.outerHTML;
+        
+        // Validate HTML content before sending
+        if (!currentHtml || currentHtml.length < 100 || 
+            (!currentHtml.includes('<!DOCTYPE html>') && !currentHtml.includes('<html>'))) {
+          console.warn('Invalid HTML content detected, skipping save');
+          resolve(); // Don't fail the switch for invalid HTML
+          return;
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
         fetch('/auto-save-user-state', {
           method: 'POST',
@@ -2750,21 +2871,33 @@ function copyToClipboard(text, event) {
           body: JSON.stringify({
             html_content: currentHtml,
             save_type: 'full_state'
-          })
+          }),
+          signal: controller.signal
         })
-        .then(response => response.json())
+        .then(response => {
+          clearTimeout(timeoutId);
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+          return response.json();
+        })
         .then(data => {
           if (data.success) {
             console.log('State saved before switching user');
             resolve();
           } else {
             console.warn('Save failed:', data.error);
-            reject(new Error(data.error));
+            reject(new Error(data.error || 'Unknown save error'));
           }
         })
         .catch(error => {
-          console.error('Save error:', error);
-          reject(error);
+          clearTimeout(timeoutId);
+          if (error.name === 'AbortError') {
+            reject(new Error('Save operation timed out'));
+          } else {
+            console.error('Save error:', error);
+            reject(error);
+          }
         });
 
       } catch (error) {
