@@ -1185,10 +1185,31 @@ input[type="checkbox"] {
   border-radius: 10px;
   padding: 15px;
   min-width: 320px;
+  max-height: 80vh;
+  overflow-y: auto;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
   color: white;
   display: none;
   margin-bottom: 5px;
+}
+
+.queue-dropdown::-webkit-scrollbar {
+  width: 8px;
+}
+
+.queue-dropdown::-webkit-scrollbar-track {
+  background-color: #000000;
+  border-radius: 10px;
+}
+
+.queue-dropdown::-webkit-scrollbar-thumb {
+  background-color: #fb8556;
+  border-radius: 10px;
+  border: 2px solid #000000;
+}
+
+.queue-dropdown::-webkit-scrollbar-thumb:hover {
+  background-color: #fb8556;
 }
 
 .queue-dropdown.show {
@@ -1196,11 +1217,13 @@ input[type="checkbox"] {
 }
 
 .queue-controls-header {
-  font-size: 14px;
+  font-size: 18px;
   font-weight: bold;
-  margin-bottom: 10px;
+  margin-bottom: 15px;
   text-align: center;
   color: #fbdf56;
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 .queue-mode-switch {
@@ -1208,14 +1231,16 @@ input[type="checkbox"] {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 15px;
-  padding: 8px;
+  padding: 12px 15px;
   background: rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
 .queue-mode-label {
-  font-size: 13px;
+  font-size: 16px;
   font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .queue-mode-toggle {
@@ -1258,13 +1283,15 @@ input[type="checkbox"] {
   background: #4CAF50;
   color: black;
   border: 2px solid black;
-  padding: 10px 15px;
+  padding: 12px 15px;
   border-radius: 10px;
   cursor: pointer;
   font-family: 'Varela Round', sans-serif;
   font-weight: bold;
-  font-size: 14px;
+  font-size: 16px;
   transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .queue-stop-btn {
@@ -1296,15 +1323,15 @@ input[type="checkbox"] {
 }
 
 .queue-status-header {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: bold;
   margin-bottom: 15px;
   color: #fbdf56;
   text-align: center;
   text-transform: uppercase;
-  letter-spacing: 0.8px;
+  letter-spacing: 1px;
   border-bottom: 1px solid rgba(251, 223, 86, 0.3);
-  padding-bottom: 8px;
+  padding-bottom: 10px;
 }
 
 .queue-status-grid {
@@ -1317,10 +1344,10 @@ input[type="checkbox"] {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 12px;
+  padding: 12px 15px;
   background: rgba(255, 255, 255, 0.05);
   border-radius: 8px;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
   transition: all 0.3s ease;
 }
@@ -1334,6 +1361,18 @@ input[type="checkbox"] {
   color: white;
   font-weight: bold;
   text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+  font-size: 16px;
+}
+
+.queue-total-posts {
+  color: #fbdf56;
+  font-size: 18px;
+  font-weight: bold;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+  background: rgba(251, 223, 86, 0.2);
+  padding: 4px 12px;
+  border-radius: 12px;
+  border: 2px solid rgba(251, 223, 86, 0.4);
 }
 
 .queue-status-value {
@@ -1407,7 +1446,7 @@ input[type="checkbox"] {
   padding: 8px;
   background: rgba(255, 255, 255, 0.05);
   border-radius: 6px;
-  max-height: 300px;
+  max-height: 150px;
   overflow-y: auto;
 }
 
@@ -1420,15 +1459,15 @@ input[type="checkbox"] {
 }
 
 .browser-settings-header {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: bold;
   margin-bottom: 12px;
   color: #fbdf56;
   text-align: center;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
   border-bottom: 1px solid rgba(251, 223, 86, 0.3);
-  padding-bottom: 6px;
+  padding-bottom: 8px;
 }
 
 .setting-row {
@@ -1476,13 +1515,13 @@ input[type="checkbox"] {
 }
 
 .browser-status-header {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: bold;
   margin-bottom: 12px;
   color: #4CAF50;
   text-align: center;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
 }
 
 .browser-item {

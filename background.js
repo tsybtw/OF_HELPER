@@ -172,7 +172,7 @@ setInterval(() => {
         const activeBrowser = Object.keys(items)
           .filter(key => key.startsWith('browser') && key.endsWith('Checked') && items[key])
           .map(key => parseInt(key.match(/\d+/)[0]))[0];
-        
+
         const browserNum = activeBrowser || items.currentBrowserNumber
         currentBrowserNumber = browserNum; // Update global variable
         console.log(`Sending ready request for browser ${browserNum} with ${onlyFansTabsCount} tabs`);
@@ -1057,7 +1057,7 @@ function postStories() {
     const joyElement = document.getElementById('joy');
     if (joyElement) {
       joyElement.style.display = 'none';
-  }
+    }
   }
   return true;
 }
@@ -2212,7 +2212,7 @@ chrome.tabs.onRemoved.addListener(function(tabId, removeInfo) {
       const activeBrowser = Object.keys(items)
         .filter(key => key.startsWith('browser') && key.endsWith('Checked') && items[key])
         .map(key => parseInt(key.match(/\d+/)[0]))[0];
-      
+
       const browserNum = activeBrowser || items.currentBrowserNumber
       sendReadyRequest(browserNum, onlyFansTabsCount);
     });
@@ -2233,7 +2233,7 @@ chrome.tabs.onCreated.addListener(function(tab) {
         const activeBrowser = Object.keys(items)
           .filter(key => key.startsWith('browser') && key.endsWith('Checked') && items[key])
           .map(key => parseInt(key.match(/\d+/)[0]))[0];
-        
+
         const browserNum = activeBrowser || items.currentBrowserNumber
         sendReadyRequest(browserNum, onlyFansTabsCount);
       });
@@ -2255,7 +2255,7 @@ chrome.tabs.onUpdated.addListener(function(tabId, changeInfo, tab) {
         const activeBrowser = Object.keys(items)
           .filter(key => key.startsWith('browser') && key.endsWith('Checked') && items[key])
           .map(key => parseInt(key.match(/\d+/)[0]))[0];
-        
+
         const browserNum = activeBrowser || items.currentBrowserNumber
         sendReadyRequest(browserNum, onlyFansTabsCount);
       });
@@ -2545,6 +2545,16 @@ async function checkDataFile() {
       if (firstCreatedTab) {
         await chrome.tabs.update(firstCreatedTab.id, { active: true });
       }
+
+      fetch('http://localhost:3000/clear', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }).catch(error => {
+        console.error('Error clearing data.json:', error);
+      });
+
     } catch (error) {
       console.error('Error in processTags:', error);
 
@@ -3637,7 +3647,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.8.0.1';
+            const VERSION = '5.8.1';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
