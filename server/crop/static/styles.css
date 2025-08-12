@@ -471,7 +471,7 @@ html {
   padding: 5px 5px 0px 5px;
   border-radius: 10px;
   z-index: 0;
-  max-height: calc(100vh - 220px);
+  max-height: calc(100vh - 270px);
   min-height: 50px;
   min-width: 170px;
   display: flex;

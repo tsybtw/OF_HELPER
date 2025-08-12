@@ -3647,7 +3647,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.8.1.3';
+            const VERSION = '5.8.2';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -4050,9 +4050,13 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
               }
             }
 
-            button.addEventListener("mousedown", startHold);
-            button.addEventListener("mouseup", () => {
-              if (isHolding) {
+            button.addEventListener("mousedown", (e) => {
+              if (e.button === 0) {
+                startHold();
+              }
+            });
+            button.addEventListener("mouseup", (e) => {
+              if (e.button === 0 && isHolding) {
                 const elapsed = Date.now() - startTime;
                 if (elapsed < 1000) {
                   resetHold();
@@ -4077,6 +4081,48 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             quickSwitch,
             holdSwitch
           );
+
+           // Right-click activation toggle for switchButton with persisted state
+           let isRightActivated = false;
+           function updateRightActivationStyle() {
+             if (isRightActivated) {
+               switchButton.style.boxShadow = "0 0 0 2px #FFD700 inset, 0 0 8px rgba(255,215,0,0.7)";
+               switchButton.setAttribute("data-right-activated", "true");
+             } else {
+               switchButton.style.boxShadow = "";
+               switchButton.setAttribute("data-right-activated", "false");
+             }
+           }
+           // Initialize from storage
+           chrome.storage.local.get("switchRightActivated", (res) => {
+             isRightActivated = !!res.switchRightActivated;
+             updateRightActivationStyle();
+           });
+           // React to global state changes from other tabs
+           chrome.storage.onChanged.addListener((changes, namespace) => {
+             if (namespace === 'local' && Object.prototype.hasOwnProperty.call(changes, 'switchRightActivated')) {
+               isRightActivated = !!changes.switchRightActivated.newValue;
+               updateRightActivationStyle();
+             }
+           });
+           // Toggle and persist on right-click
+           switchButton.addEventListener("contextmenu", (e) => {
+             e.preventDefault();
+             isRightActivated = !isRightActivated;
+             chrome.storage.local.set({ switchRightActivated: isRightActivated }, () => {
+               updateRightActivationStyle();
+             });
+           });
+
+           // Listen for auto completion to optionally trigger a left click on switchButton
+           chrome.runtime.onMessage.addListener((request) => {
+             if (request && request.action === "autoCompleted" && isRightActivated) {
+                 const down = new MouseEvent("mousedown", { bubbles: true, button: 0 });
+                 const up = new MouseEvent("mouseup", { bubbles: true, button: 0 });
+                 switchButton.dispatchEvent(down);
+                 switchButton.dispatchEvent(up);
+             }
+           });
 
           const clearButton = createActionButton(
             "clear-button",
@@ -5264,7 +5310,24 @@ async function resetAllButtonStyles() {
           console.log('Error sending screenshots request:', error);
         })
         .finally(() => {
-                    chrome.storage.local.set({ isStop: false }, resolve);
+                    const finish = () => chrome.storage.local.set({ isStop: false }, resolve);
+                    // Send completion to the last OnlyFans tab in the current window
+                    chrome.tabs.query({ currentWindow: true }, (tabs) => {
+                      if (!tabs || tabs.length === 0) {
+                        finish();
+                        return;
+                      }
+                      const onlyfansTabs = tabs.filter(t => t.url && t.url.includes("onlyfans.com"));
+                      const targetList = onlyfansTabs.length > 0 ? onlyfansTabs : tabs;
+                      const lastTab = targetList.reduce((acc, t) => (t.index > acc.index ? t : acc), targetList[0]);
+                      if (!lastTab || !lastTab.id) {
+                        finish();
+                        return;
+                      }
+                      chrome.tabs.sendMessage(lastTab.id, { action: "autoCompleted" }, () => {
+                        finish();
+                      });
+                    });
         });
       });
     });
