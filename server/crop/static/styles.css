@@ -308,7 +308,7 @@ video {
   margin-bottom: 10px;
   background: #000000;
   padding: 5px;
-  border-radius: 0px 0px 5px 5px;
+  border-radius: 0px 5px 5px 0px;
   text-align: center;
   width: 100px;
   top: 155px;
