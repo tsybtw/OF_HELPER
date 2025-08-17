@@ -300,7 +300,6 @@ video {
 
 .len-messages {
   position: fixed;
-  left: 210px;
   z-index: 10;
   color: #6BFF96;
   font-family: 'Varela Round', sans-serif;
@@ -312,6 +311,7 @@ video {
   border-radius: 0px 0px 5px 5px;
   text-align: center;
   width: 100px;
+  top: 155px;
 }
 
 @keyframes slide-up {
