@@ -305,13 +305,14 @@ video {
   font-family: 'Varela Round', sans-serif;
   font-size: 24px;
   font-weight: bold;
-  margin-bottom: 10px;
   background: #000000;
   padding: 5px;
-  border-radius: 0px 5px 5px 0px;
+  border-radius: 5px 0px 0px 5px;
   text-align: center;
   width: 100px;
   top: 155px;
+  left: 210px;
+  transition: all 0.3s;
 }
 
 @keyframes slide-up {
@@ -477,6 +478,7 @@ html {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  transition: all 0.3s;
 }
 
 .hints-wrapper {
@@ -795,6 +797,7 @@ input[type="checkbox"] {
   font-family: 'Varela Round', sans-serif;
   font-weight: bold;
   color: #000000;
+  transition: all 0.3s;
 }
 
 .message-button {
@@ -851,6 +854,7 @@ input[type="checkbox"] {
 }
 
 .auto-delete-container {
+  pointer-events: none;
   position: fixed;
   left: 330px;
   bottom: 5px;
@@ -864,18 +868,40 @@ input[type="checkbox"] {
 
 @media screen and (max-height: 400px) {
   .auto-delete-container {
-    left: 5px;
+    left: 10px;
     transform: scale(0.7);
     bottom: 0px;
     transform-origin: bottom left;
+    gap: 5px;
   }
 
   #hints-container {
     max-height: calc(100vh - 120px);
   }
+
+  .queue-toggle {
+      left: -5px !important;
+      bottom: 50px !important;
+      transform: scale(0.7);
+  }
+
+  .queue-toggle .queue-dropdown {
+    left: 0;
+    right: auto;
+    transform-origin: bottom left;
+  }
+  .len-messages {
+    top: calc(100vh - 35px);
+  }
+  .buttons-grid {
+    left: 270px;
+    bottom: 35px;
+    transform: scale(0.7) translateX(-100%); 
+  }
 }
 
 .toggle-switch {
+  pointer-events: all;
   position: relative;
   width: 100px;
   height: 40px;
@@ -919,7 +945,6 @@ input[type="checkbox"] {
   padding: 8px 8px;
   background: #f8f9fa;
   border-radius: 6px;
-  transition: all 0.3s ease;
   width: 90%;
   justify-content: center;
   font-weight: 600;
@@ -1149,6 +1174,7 @@ input[type="checkbox"] {
   bottom: 95px;
   z-index: 1000;
   font-family: 'Varela Round', sans-serif;
+  transition: all 0.3s ease;
 }
 
 .queue-toggle-btn {
