@@ -525,6 +525,13 @@ input[type="checkbox"] {
   cursor: pointer;
 }
 
+.setting-row-inline .hint-checkbox {
+  width: 20px;
+  height: 20px;
+  margin: 0px;
+  cursor: pointer;
+}
+
 #hints-container .hint-item .hint-label {
   flex: 1;
   font-family: 'Varela Round', sans-serif;
@@ -1612,6 +1619,12 @@ input[type="checkbox"] {
   padding: 4px 0;
 }
 
+.setting-row-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .setting-label {
   font-size: 15px;
   color: white;
@@ -1718,6 +1731,14 @@ input[type="checkbox"] {
   border-color: rgba(244, 67, 54, 0.6);
   animation: pulse-danger 2s infinite;
   box-shadow: 0 2px 8px rgba(244, 67, 54, 0.4);
+}
+
+/* Pink highlight for satisfied lower-limit condition */
+.tab-count.lowlimit {
+  color: #ff6fa5;
+  background: rgba(255, 111, 165, 0.25);
+  border-color: rgba(255, 111, 165, 0.6);
+  box-shadow: 0 2px 8px rgba(255, 111, 165, 0.3);
 }
 
 .arrow {
