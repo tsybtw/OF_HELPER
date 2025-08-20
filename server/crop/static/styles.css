@@ -1261,13 +1261,21 @@ input[type="checkbox"] {
 
 .queue-mode-switch {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 10px;
   margin-bottom: 15px;
   padding: 12px 15px;
   background: rgba(255, 255, 255, 0.1);
   border-radius: 8px;
 }
+
+.queue-mode-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.persist-queue-row .setting-label { min-width: 0; }
 
 .queue-mode-label {
   font-size: 16px;
@@ -1456,7 +1464,6 @@ input[type="checkbox"] {
   }
 }
 
-/* Screenshots status grid styles */
 .queue-status-item.full-width {
   grid-column: 1 / -1;
   flex-direction: column;
@@ -1599,6 +1606,50 @@ input[type="checkbox"] {
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+.switch-tabs-inline {
+  margin: 4px 0 6px 0;
+}
+
+#switch-tabs-status,
+#switch-tabs-status-inline {
+  margin-top: 6px;
+}
+
+.switch-phase-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+}
+
+.switch-phase-title {
+  font-weight: bold;
+  color: #fbdf56;
+}
+
+.switch-phase-icon {
+  font-size: 16px;
+}
+
+.skip-switch-btn-neutral {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  border: none;
+  width: 100%;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: 'Varela Round', sans-serif;
+  font-weight: bold;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  margin: 8px 0;
+}
+
+.skip-switch-btn-neutral:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
 .browser-settings-header {
   font-size: 16px;
   font-weight: bold;
@@ -1625,11 +1676,47 @@ input[type="checkbox"] {
   gap: 8px;
 }
 
+.switch-tabs-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 28px;
+}
+
+.switch-tabs-row .hint-checkbox {
+  width: 20px;
+  height: 20px;
+}
+
+.switch-tabs-row .setting-label {
+  min-width: 0;
+}
+
+.switch-tabs-row .setting-label {
+  font-size: 15px;
+  color: white;
+  font-weight: 700;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.persist-queue-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 28px;
+  margin-top: 8px;
+}
+
 .setting-label {
   font-size: 15px;
   color: white;
   font-weight: 700;
   text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.upper-limit-label {
+  margin-left: 48px; 
+  display: inline-block;
 }
 
 .setting-input {
@@ -1733,7 +1820,6 @@ input[type="checkbox"] {
   box-shadow: 0 2px 8px rgba(244, 67, 54, 0.4);
 }
 
-/* Pink highlight for satisfied lower-limit condition */
 .tab-count.lowlimit {
   color: #ff6fa5;
   background: rgba(255, 111, 165, 0.25);
@@ -1941,8 +2027,6 @@ input[type="checkbox"] {
         fill: #FF8A65;
     }
 
-
-/* Queue Modal Styles */
 .queue-modal {
     position: fixed;
     top: 0;

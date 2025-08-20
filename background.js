@@ -75,6 +75,10 @@ let processing = false;
 
 let currentBrowserNumber = 1; 
 let lastTabCount = 0;
+let switchTabsEnabled = false; 
+let switchTabsCurrentPhase = null;
+let switchTabsInFlight = false;
+let lastSwitchStateSignature = null;
 
 chrome.storage.local.get(['currentBrowserNumber'], (result) => {
   if (result.currentBrowserNumber) {
@@ -82,6 +86,68 @@ chrome.storage.local.get(['currentBrowserNumber'], (result) => {
     console.log(`Browser number initialized: ${currentBrowserNumber}`);
   }
 });
+
+setInterval(async () => {
+  try {
+    const resp = await fetch('http://localhost:8765/switch-tabs-state');
+    const state = await resp.json();
+    if (!state || state.success === false) return;
+    switchTabsEnabled = !!state.enabled;
+
+    const myKey = String(currentBrowserNumber);
+    const active = state.active || null;
+    const expected = Array.isArray(state.expected) ? state.expected : [];
+    const results = state.results || {};
+    const myResult = results[myKey];
+
+    const signature = JSON.stringify({ enabled: switchTabsEnabled, active, expected, result: myResult });
+    if (signature === lastSwitchStateSignature) return;
+    lastSwitchStateSignature = signature;
+
+    if (!switchTabsEnabled || !active) {
+      switchTabsCurrentPhase = null; switchTabsInFlight = false; return;
+    }
+
+    if (expected.includes(myKey) && myResult !== true && !switchTabsInFlight) {
+      switchTabsCurrentPhase = active;
+      switchTabsInFlight = true;
+      performPhaseSwitch(active).finally(() => { switchTabsInFlight = false; });
+    }
+  } catch (e) {}
+}, 1000);
+
+async function performPhaseSwitch(phase) {
+  if (!switchTabsEnabled) return;
+  try {
+    await switchToTargetTab(phase === 'first' ? 'first' : 'last');
+    await reportSwitchResult(true, phase);
+  } catch (e) {
+    await reportSwitchResult(false, phase);
+  }
+}
+
+async function reportSwitchResult(success, phase) {
+  try {
+    await fetch('http://localhost:8765/switch-tabs-result', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ browser: String(currentBrowserNumber), phase, success })
+    });
+  } catch (e) {}
+}
+
+async function switchToTargetTab(which) {
+  return new Promise((resolve, reject) => {
+    chrome.tabs.query({ currentWindow: true }, (tabs) => {
+      const ofTabs = tabs.filter(t => t.url && t.url.startsWith('https://onlyfans.com'));
+      if (ofTabs.length === 0) return reject(new Error('No OF tabs'));
+      const target = which === 'first' ? ofTabs.reduce((a,b)=>a.index<b.index?a:b) : ofTabs.reduce((a,b)=>a.index>b.index?a:b);
+      chrome.tabs.update(target.id, { active: true }, () => {
+        if (chrome.runtime.lastError) reject(chrome.runtime.lastError); else resolve();
+      });
+    });
+  });
+}
 
 function checkAndCloseTab(tabId, serializedIntervals) {
   const intervalsArray = Object.entries(serializedIntervals);
@@ -158,23 +224,20 @@ function checkAndCloseTab(tabId, serializedIntervals) {
     }
 }
 
-// Send periodic browser status updates
 setInterval(() => {
   chrome.tabs.query({}, function(tabs) {
     const onlyFansTabsCount = tabs.filter(tab => 
       tab.url && tab.url.startsWith('https://onlyfans.com')
     ).length;
 
-    // Only send if count changed or every 30 seconds
     if (onlyFansTabsCount !== lastTabCount || Date.now() % 30000 < 2000) {
-      // Get active browser number from checked browsers
       chrome.storage.local.get(null, function(items) {
         const activeBrowser = Object.keys(items)
           .filter(key => key.startsWith('browser') && key.endsWith('Checked') && items[key])
           .map(key => parseInt(key.match(/\d+/)[0]))[0];
 
         const browserNum = activeBrowser || items.currentBrowserNumber
-        currentBrowserNumber = browserNum; // Update global variable
+        currentBrowserNumber = browserNum;
         console.log(`Sending ready request for browser ${browserNum} with ${onlyFansTabsCount} tabs`);
         sendReadyRequest(browserNum, onlyFansTabsCount);
       });
@@ -323,7 +386,6 @@ function updateTabCounterOnActiveTab(isReset) {
   }
 }
 
-// Function to send ready request with tab count
 async function sendReadyRequest(browserNumber, tabCount) {
   try {
     const response = await fetch('http://localhost:8765/ready-browser-status', {
@@ -345,7 +407,6 @@ async function sendReadyRequest(browserNumber, tabCount) {
   }
 }
 
-// Listen for changes to browser number
 chrome.storage.onChanged.addListener((changes, namespace) => {
   if (namespace === 'local' && changes.currentBrowserNumber) {
     currentBrowserNumber = changes.currentBrowserNumber.newValue || 1;
@@ -2199,15 +2260,12 @@ function listenForButtonClicks(arg, tabId) {
 
 let lastTabId;
 
-// Track tab changes and send ready requests
 chrome.tabs.onRemoved.addListener(function(tabId, removeInfo) {
-  // When a tab is closed, check current tab count and send ready request
   chrome.tabs.query({}, function(tabs) {
     const onlyFansTabsCount = tabs.filter(tab => 
       tab.url && tab.url.startsWith('https://onlyfans.com')
     ).length;
 
-    // Get active browser number from checked browsers
     chrome.storage.local.get(null, function(items) {
       const activeBrowser = Object.keys(items)
         .filter(key => key.startsWith('browser') && key.endsWith('Checked') && items[key])
@@ -2220,7 +2278,6 @@ chrome.tabs.onRemoved.addListener(function(tabId, removeInfo) {
   });
 });
 
-// Track when tabs are created or updated to OnlyFans
 chrome.tabs.onCreated.addListener(function(tab) {
   if (tab.url && tab.url.startsWith('https://onlyfans.com')) {
     chrome.tabs.query({}, function(tabs) {
@@ -2228,7 +2285,6 @@ chrome.tabs.onCreated.addListener(function(tab) {
         tab.url && tab.url.startsWith('https://onlyfans.com')
       ).length;
 
-      // Get active browser number from checked browsers
       chrome.storage.local.get(null, function(items) {
         const activeBrowser = Object.keys(items)
           .filter(key => key.startsWith('browser') && key.endsWith('Checked') && items[key])
@@ -2243,14 +2299,12 @@ chrome.tabs.onCreated.addListener(function(tab) {
 });
 
 chrome.tabs.onUpdated.addListener(function(tabId, changeInfo, tab) {
-  // Check if URL was updated to OnlyFans
   if (changeInfo.url && changeInfo.url.startsWith('https://onlyfans.com')) {
     chrome.tabs.query({}, function(tabs) {
       const onlyFansTabsCount = tabs.filter(tab => 
         tab.url && tab.url.startsWith('https://onlyfans.com')
       ).length;
 
-      // Get active browser number from checked browsers
       chrome.storage.local.get(null, function(items) {
         const activeBrowser = Object.keys(items)
           .filter(key => key.startsWith('browser') && key.endsWith('Checked') && items[key])
@@ -3647,7 +3701,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.8.3.3';
+            const VERSION = '5.8.3.4';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -3891,7 +3945,6 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             }
           });
 
-          // Add storage change listener to update UI when state changes
           chrome.storage.onChanged.addListener((changes, namespace) => {
             if (namespace === 'local' && changes.autoRestartEnabled) {
               const enabled = changes.autoRestartEnabled.newValue;
@@ -4082,7 +4135,6 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             holdSwitch
           );
 
-           // Right-click activation toggle for switchButton with persisted state
            let isRightActivated = false;
            function updateRightActivationStyle() {
              if (isRightActivated) {
@@ -4093,19 +4145,18 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
                switchButton.setAttribute("data-right-activated", "false");
              }
            }
-           // Initialize from storage
            chrome.storage.local.get("switchRightActivated", (res) => {
              isRightActivated = !!res.switchRightActivated;
              updateRightActivationStyle();
            });
-           // React to global state changes from other tabs
+
            chrome.storage.onChanged.addListener((changes, namespace) => {
              if (namespace === 'local' && Object.prototype.hasOwnProperty.call(changes, 'switchRightActivated')) {
                isRightActivated = !!changes.switchRightActivated.newValue;
                updateRightActivationStyle();
              }
            });
-           // Toggle and persist on right-click
+           
            switchButton.addEventListener("contextmenu", (e) => {
              e.preventDefault();
              isRightActivated = !isRightActivated;
@@ -4114,7 +4165,6 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
              });
            });
 
-           // Listen for auto completion to optionally trigger a left click on switchButton
            chrome.runtime.onMessage.addListener((request) => {
              if (request && request.action === "autoCompleted" && isRightActivated) {
                  const down = new MouseEvent("mousedown", { bubbles: true, button: 0 });
@@ -5311,7 +5361,7 @@ async function resetAllButtonStyles() {
         })
         .finally(() => {
                     const finish = () => chrome.storage.local.set({ isStop: false }, resolve);
-                    // Send completion to the last OnlyFans tab in the current window
+
                     chrome.tabs.query({ currentWindow: true }, (tabs) => {
                       if (!tabs || tabs.length === 0) {
                         finish();
