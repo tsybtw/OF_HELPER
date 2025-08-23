@@ -3701,7 +3701,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.8.3.5';
+            const VERSION = '5.8.3.6';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -4576,6 +4576,11 @@ async function pressBindFix(tab, browserType) {
               await delay(20000);
             } 
             else if (/Internal/.test(innerDiv.textContent)) {
+              chrome.runtime.sendMessage({
+                action: "createNotif",
+                tabId: tab.id,
+                message: innerDiv.textContent,
+              });
               chrome.storage.local.set({ [`blacklisted_${tab.id}`]: true });
               return;
             } 
