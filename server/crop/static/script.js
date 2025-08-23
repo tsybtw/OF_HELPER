@@ -132,7 +132,6 @@ function copyToClipboard(text, event) {
             return;
         }
 
-        const mediaElement = document.getElementById(mediaId);
         if (!mediaElement) return;
 
         mediaElement.style.transform = `rotate(${rotationStates[mediaId]}deg)`;
@@ -144,6 +143,8 @@ function copyToClipboard(text, event) {
             mediaElement.style.maxWidth = '';
             mediaElement.style.maxHeight = '310px';
         }
+
+        try { await saveBetweenQueueUsers(); } catch (_) {}
 
     } catch (error) {
         console.error('Error rotating media:', error);
@@ -604,7 +605,11 @@ function copyToClipboard(text, event) {
 
                 loadInitialQueueData();
             } else {
-                showStatus(data.message, 'error');
+                if (data.invalid_users && Array.isArray(data.invalid_users) && data.invalid_users.length > 0) {
+                    showInvalidUsersPrompt(data.invalid_users);
+                } else {
+                    showStatus(data.message, 'error');
+                }
             }
         });
     }
@@ -670,7 +675,11 @@ function copyToClipboard(text, event) {
             showStatus('Queue started from first user', 'success');
             loadInitialQueueData();
         } else {
-            showStatus(data.message, 'error');
+            if (data.invalid_users && Array.isArray(data.invalid_users) && data.invalid_users.length > 0) {
+                showInvalidUsersPrompt(data.invalid_users);
+            } else {
+                showStatus(data.message, 'error');
+            }
         }
     });
   }
@@ -689,9 +698,60 @@ function copyToClipboard(text, event) {
             showStatus('Queue started from current user', 'success');
             loadInitialQueueData();
         } else {
-            showStatus(data.message, 'error');
+            if (data.invalid_users && Array.isArray(data.invalid_users) && data.invalid_users.length > 0) {
+                showInvalidUsersPrompt(data.invalid_users);
+            } else {
+                showStatus(data.message, 'error');
+            }
         }
     });
+  }
+
+  function showInvalidUsersPrompt(invalidUsers) {
+    let modal = document.getElementById('queue-invalid-hints-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'queue-invalid-hints-modal';
+        modal.className = 'queue-modal hidden';
+        document.body.appendChild(modal);
+    }
+
+    const items = invalidUsers.map(u => `
+      <div class="invalid-user-item">
+        <div class="invalid-user-text">User ${u.user_number} (${u.nickname || 'Unknown'})</div>
+        <div class="invalid-user-actions">
+          <button class="queue-modal-btn queue-modal-btn-secondary" onclick="switchToUser(${u.index}); closeInvalidUsersPrompt()">Switch</button>
+          <button class="queue-modal-btn queue-modal-btn-danger" onclick="removeQueueUser(${u.index}); closeInvalidUsersPrompt()">Remove</button>
+        </div>
+      </div>
+    `).join('');
+
+    modal.innerHTML = `
+      <div class="queue-modal-content">
+        <div class="queue-modal-header">
+          <h3>Invalid Active Hints</h3>
+        </div>
+        <div class="queue-modal-body">
+          <p>These users have no required posts count in their active hint:</p>
+          <div class="invalid-users-list">${items}</div>
+        </div>
+        <div class="queue-modal-buttons">
+          <button class="queue-modal-btn queue-modal-btn-secondary" onclick="closeInvalidUsersPrompt()">Close</button>
+        </div>
+      </div>
+    `;
+
+    modal.classList.remove('hidden');
+    modal.addEventListener('click', function(e) {
+      if (e.target === modal) {
+        closeInvalidUsersPrompt();
+      }
+    });
+  }
+
+  function closeInvalidUsersPrompt() {
+    const modal = document.getElementById('queue-invalid-hints-modal');
+    if (modal) modal.classList.add('hidden');
   }
 
   function stopQueue() {
@@ -772,7 +832,7 @@ function copyToClipboard(text, event) {
                     try {
                         const chatIdFromResponse = data?.user_data?.chat_id;
                         if (chatIdFromResponse) {
-                            refreshHintsByChatId(String(chatIdFromResponse));
+                            refreshHintsByChatId(String(chatIdFromResponse), userIndex);
                         } else {
 
                             const qres = await fetch('/get-queue-data', { method: 'GET' });
@@ -780,7 +840,7 @@ function copyToClipboard(text, event) {
                                 const qdata = await qres.json();
                                 const target = qdata?.queue_data?.users?.[userIndex];
                                 if (target && target.chat_id) {
-                                    refreshHintsByChatId(String(target.chat_id));
+                                    refreshHintsByChatId(String(target.chat_id), userIndex);
                                 }
                             }
                         }
@@ -1020,27 +1080,86 @@ function copyToClipboard(text, event) {
     } catch (_) {}
   }
 
-  async function refreshHintsByChatId(chatId) {
+  async function refreshHintsByChatId(chatId, userIndex = null) {
     try {
       beginHintsLoading();
+
       const res = await fetch('/get-hints', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId })
+        body: JSON.stringify({ 
+          chat_id: chatId,
+          user_index: userIndex
+        })
       });
       const payload = await res.json();
       if (!payload || !payload.success) return;
       lastHintsChatIdRefreshed = String(chatId);
       const personal = payload.personal || {};
       const general = payload.general || { hints: [], checkbox: '' };
-      const container = document.getElementById('hints-container');
-      if (!container) return;
-      container.innerHTML = '';
+
       const personalKeys = Object.keys(personal).filter(k => k !== 'now' && k !== 'checkbox');
       const activePersonal = personal.checkbox && personalKeys.includes(personal.checkbox) ? personal.checkbox : '';
       const activeGeneral = general.checkbox || '';
       let currentMode = localStorage.getItem('sortMode') || 'usage';
-      let html = `
+
+      const totalHintsCount = (activePersonal ? 1 : 0) + personalKeys.length + (Array.isArray(general.hints) ? general.hints.length : 0);
+      if (totalHintsCount === 0) {
+        try {
+
+          if (userIndex !== null) {
+            const userContainers = document.querySelectorAll('.user-container');
+            userContainers.forEach(userContainer => {
+              const userBtn = userContainer.querySelector('.user-btn');
+              if (userBtn) {
+
+                let currentUserIndex;
+                if (userBtn.hasAttribute('data-user-index')) {
+                  currentUserIndex = parseInt(userBtn.getAttribute('data-user-index'));
+                } else {
+
+                  currentUserIndex = parseInt(userBtn.textContent.trim());
+                }
+
+                if (currentUserIndex === userIndex) {
+                  const activeHintDisplay = userContainer.querySelector('.active-hint-display');
+                  if (activeHintDisplay) {
+                    activeHintDisplay.remove();
+                  }
+                }
+              }
+            });
+          }
+        } catch (_) {}
+
+        const container = document.getElementById('hints-container');
+        if (container) {
+          container.remove();
+        }
+        endHintsLoading();
+        return;
+      }
+
+      let container = document.getElementById('hints-container');
+      if (!container) {
+
+        let chatSection = document.querySelector('.chat-section');
+        if (!chatSection) {
+          chatSection = document.createElement('div');
+          chatSection.className = 'chat-section';
+          document.body.appendChild(chatSection);
+        }
+        container = document.createElement('div');
+        container.id = 'hints-container';
+        container.className = 'hints-container';
+        chatSection.appendChild(container);
+      }
+
+      container.innerHTML = '';
+
+      let html = '';
+      if (totalHintsCount >= 2) {
+        html += `
             <div class="sort-buttons">
                 <button onclick="switchSortMode('usage')" class="sort-btn ${currentMode === 'usage' ? 'active' : ''}">
                     <svg width="24" height="24" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="#000000" class="bi bi-sort-numeric-down-alt">
@@ -1057,15 +1176,17 @@ function copyToClipboard(text, event) {
                         </g>
                     </svg>
                 </button>
-            </div>
+            </div>`;
+      }
+      html += `
             <div class="hints-wrapper">`;
       if (activePersonal) {
         html += `
             <div class="hint-item active">
                 <div class="hint-wrapper">
-                    <input type="checkbox" id="checkbox-personal-${activePersonal}" checked class="hint-checkbox" onchange="updateHintCheckbox('${payload.chat_id}', '${activePersonal}', 'update', 'personal')">
+                    <input type="checkbox" id="checkbox-personal-${activePersonal}" checked class="hint-checkbox" onchange="updateHintCheckbox('${payload.chat_id}', '${activePersonal}', 'update', 'personal', ${userIndex !== null ? userIndex : 'null'})">
                     <label for="checkbox-personal-${activePersonal}" class="hint-label">${activePersonal}</label>
-                    <button class="hint-delete-btn" onclick="deleteHint('${payload.chat_id}', '${activePersonal}', 'personal')" aria-label="Delete personal hint"></button>
+                    <button class="hint-delete-btn" onclick="deleteHint('${payload.chat_id}', '${activePersonal}', 'personal', ${userIndex !== null ? userIndex : 'null'})" aria-label="Delete personal hint"></button>
                 </div>
             </div>`;
       }
@@ -1073,9 +1194,9 @@ function copyToClipboard(text, event) {
         html += `
             <div class="hint-item">
                 <div class="hint-wrapper">
-                    <input type="checkbox" id="checkbox-personal-${h}" class="hint-checkbox" onchange="updateHintCheckbox('${payload.chat_id}', '${h}', 'update', 'personal')">
+                    <input type="checkbox" id="checkbox-personal-${h}" class="hint-checkbox" onchange="updateHintCheckbox('${payload.chat_id}', '${h}', 'update', 'personal', ${userIndex !== null ? userIndex : 'null'})">
                     <label for="checkbox-personal-${h}" class="hint-label">${h}</label>
-                    <button class="hint-delete-btn" onclick="deleteHint('${payload.chat_id}', '${h}', 'personal')" aria-label="Delete personal hint"></button>
+                    <button class="hint-delete-btn" onclick="deleteHint('${payload.chat_id}', '${h}', 'personal', ${userIndex !== null ? userIndex : 'null'})" aria-label="Delete personal hint"></button>
                 </div>
             </div>`;
       });
@@ -1085,9 +1206,9 @@ function copyToClipboard(text, event) {
         html += `
             <div class="hint-item general-hint ${isChecked ? 'active' : ''}">
                 <div class="hint-wrapper">
-                    <input type="checkbox" id="checkbox-general-${h}" ${isChecked ? 'checked' : ''} class="hint-checkbox" onchange="updateHintCheckbox('${payload.chat_id}', '${h}', 'update', 'general')">
-                    <label for="checkbox-general-${h}" class="hint-label general">${h}</label>
-                    <button class="hint-delete-btn" onclick="deleteHint('${payload.chat_id}', '${h}', 'general')" aria-label="Delete general hint"></button>
+                    <input type="checkbox" id="checkbox-general-${h}" ${isChecked ? 'checked' : ''} class="hint-checkbox" onchange="updateHintCheckbox('${payload.chat_id}', '${h}', 'update', 'general', ${userIndex !== null ? userIndex : 'null'})">
+                    <label for="checkbox-general-${h}" class="hint-label general">${h}"></label>
+                    <button class="hint-delete-btn" onclick="deleteHint('${payload.chat_id}', '${h}', 'general', ${userIndex !== null ? userIndex : 'null'})" aria-label="Delete general hint"></button>
                 </div>
             </div>`;
       });
@@ -1102,7 +1223,7 @@ function copyToClipboard(text, event) {
           <path fill="#ced8ed" d="M25 55L15 55 10 17 24 17 25 55z"></path>
           <path fill="#b5c4e0" d="M11,17v2a3,3 0,0,0 3,3H38L37,55H47l5-38Z"></path>
           <path fill="#8d6c9f" d="M16 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 16 10zM11 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 11 10zM21 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 21 10zM26 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 26 10zM31 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 31 10zM36 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 36 10zM41 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 41 10zM46 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 46 10zM51 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 51 10z"></path>
-          <path fill="#8d6c9f" d="M53,6H9A3,3 0 0 0 6 9v6a3,3 0,0,0 3,3c0,.27 4.89 36.22 4.89 36.22A3 3 0 0 0 15 60H47a3,3 0 0 0 1.11 -5.78l2.28 -17.3a1 1 0 0 0 .06 -.47L52.92 18H53a3,3 0 0 0 3 -3V9A3,3 0 0 0 53 6ZM24.59 18l5 5 -4.78 4.78a1 1 0 1 0 1.41 1.41L31 24.41 37.59 31 31 37.59l-7.29 -7.29h0l-5.82 -5.82a1 1 0 0 0 -1.41 1.41L21.41 31l-7.72 7.72L12.33 27.08 21.41 18Zm16 0 3.33 3.33a1 1 0 0 0 1.41 -1.41L43.41 18h7.17L39 29.59 32.41 23l5 -5Zm-11 21L23 45.59l-5.11 -5.11a1 1 0,0,0 -1.41 1.41L21.59 47l-5.86 5.86L14.2 41.22l8.8 -8.8Zm7.25 4.42L32.41 39 39 32.41l5.14 5.14a1 1 0,0,0 1.41 -1.41L40.41 31 47 24.41l2.67 2.67 -1.19 9L38.3 46.28h0L31 53.59 24.41 47 31 40.41l4.42 4.42a1 1 0,0,0 1.41 -1.41ZM23 48.41 28.59 54H17.41Zm16 0L44.59 54H33.41ZM40.41 47 48 39.37 46.27 52.86ZM50 24.58 48.41 23l2.06 -2.06Zm-19-3L27.41 18h7.17Zm-19.47 -.64L13.59 23 12 24.58Zm3.47 .64L11.41 18h7.17ZM47 58H15a1,1 0,0,1 0 -2H47a1,1 0,0,1 0 2Zm7-43a1,1 0,0,1-1 1H9a1,1 0,0,1-1-1V9A3,3 0,0,1 9 8H53a1,1 0,0,1 1 1Z"></path>
+          <path fill="#8d6c9f" d="M53,6H9A3,3 0,0,0 6,9v6a3,3 0,0,0 3,3c0,.27 4.89 36.22 4.89 36.22A3 3 0,0,0 15,60H47a3,3 0,0,0 1.11 -5.78l2.28 -17.3a1 1 0,0,0 .06 -.47L52.92 18H53a3,3 0,0,0 3 -3V9A3,3 0,0,0 53,6ZM24.59 18l5 5 -4.78 4.78a1 1 0,1,0 1.41 1.41L31 24.41 37.59 31 31 37.59l-7.29 -7.29h0l-5.82 -5.82a1 1 0,0,0-1.41 1.41L21.41 31l-7.72 7.72L12.33 27.08 21.41 18Zm16 0 3.33 3.33a1 1 0,0,0 1.41-1.41L43.41 18h7.17L39 29.59 32.41 23l5-5Zm-11 21L23 45.59l-5.11 -5.11a1 1 0,0,0 -1.41 1.41L21.59 47l-5.86 5.86L14.2 41.22l8.8-8.8Zm7.25 4.42L32.41 39 39 32.41l5.14 5.14a1 1 0,0,0 1.41-1.41L40.41 31 47 24.41l2.67 2.67 -1.19 9L38.3 46.28h0L31 53.59 24.41 47 31 40.41l4.42 4.42a1 1 0,0,0 1.41-1.41ZM23 48.41 28.59 54H17.41Zm16 0L44.59 54H33.41ZM40.41 47 48 39.37 46.27 52.86ZM50 24.58 48.41 23l2.06 -2.06Zm-19-3L27.41 18h7.17Zm-19.47 -.64L13.59 23 12 24.58Zm3.47 .64L11.41 18h7.17ZM47 58H15a1,1 0,0,1 0 -2H47a1,1 0,0,1 0 2Zm7-43a1,1 0,0,1-1 1H9a1,1 0,0,1-1-1V9A3,3 0,0,1 9 8H53a1,1 0,0,1 1 1Z"></path>
         </svg>`;
       container.querySelectorAll('.hint-delete-btn').forEach(btn => {
         if (!btn.innerHTML || btn.innerHTML.trim() === '') {
@@ -1606,7 +1727,7 @@ function copyToClipboard(text, event) {
 
                 newUserButtonsHTML += `
                     <div class="user-container">
-                        <button class="user-btn${activeClass}${completedClass}${processingClass}" onclick="switchToUser(${index})">
+                        <button class="user-btn${activeClass}${completedClass}${processingClass}" onclick="switchToUser(${index})" data-user-index="${index}">
                             ${user.user_number || (index + 1)}
                         </button>
                         <span class="user-nickname">${(user.nickname ? user.nickname.split(' ')[0] : 'Unknown')}${activeHintDisplay}</span>
@@ -1626,7 +1747,7 @@ function copyToClipboard(text, event) {
                 if (activeChatId) {
                     const targetId = String(activeChatId);
                     if (targetId !== lastHintsChatIdRefreshed) {
-                        refreshHintsByChatId(targetId);
+                        refreshHintsByChatId(targetId, currentActiveUser);
                     }
                 }
             } catch (_) {}
@@ -1781,7 +1902,7 @@ function clearAllHintCheckboxes() {
     });
 }
 
-function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'personal') {
+function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'personal', userIndex = null) {
     fetch('/update_hints', {
         method: 'POST',
         headers: {
@@ -1791,7 +1912,8 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
             chat_id: chatId,
             hint_key: hintKey,
             action: action,
-            hint_type: hintType
+            hint_type: hintType,
+            user_index: userIndex
         })
     })
     .then(response => response.json())
@@ -1809,6 +1931,32 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
 
             const remainingItems = hintsContainer.querySelectorAll('.hint-item');
             if (remainingItems.length === 0) {
+                try {
+
+                    if (userIndex !== null) {
+                        const userContainers = document.querySelectorAll('.user-container');
+                        userContainers.forEach(userContainer => {
+                            const userBtn = userContainer.querySelector('.user-btn');
+                            if (userBtn) {
+
+                                let currentUserIndex;
+                                if (userBtn.hasAttribute('data-user-index')) {
+                                    currentUserIndex = parseInt(userBtn.getAttribute('data-user-index'));
+                                } else {
+
+                                    currentUserIndex = parseInt(userBtn.textContent.trim());
+                                }
+
+                                if (currentUserIndex === userIndex) {
+                                    const activeHintDisplay = userContainer.querySelector('.active-hint-display');
+                                    if (activeHintDisplay) {
+                                        activeHintDisplay.remove();
+                                    }
+                                }
+                            }
+                        });
+                    }
+                } catch (_) {}
                 hintsContainer.remove();
                 return;
             }
@@ -1834,7 +1982,8 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
                         chat_id: chatId,
                         hint_key: newHintKey,
                         action: 'update',
-                        hint_type: newHintType
+                        hint_type: newHintType,
+                        user_index: userIndex
                     })
                 });
             }
@@ -1843,6 +1992,32 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
             if (hintsWrapper) {
                 const remainingItems = hintsWrapper.children.length;
                 if (remainingItems === 0) {
+                    try {
+
+                        if (userIndex !== null) {
+                            const userContainers = document.querySelectorAll('.user-container');
+                            userContainers.forEach(userContainer => {
+                                const userBtn = userContainer.querySelector('.user-btn');
+                                if (userBtn) {
+
+                                    let currentUserIndex;
+                                    if (userBtn.hasAttribute('data-user-index')) {
+                                        currentUserIndex = parseInt(userBtn.getAttribute('data-user-index'));
+                                    } else {
+
+                                        currentUserIndex = parseInt(userBtn.textContent.trim());
+                                    }
+
+                                    if (currentUserIndex === userIndex) {
+                                        const activeHintDisplay = userContainer.querySelector('.active-hint-display');
+                                        if (activeHintDisplay) {
+                                            activeHintDisplay.remove();
+                                        }
+                                    }
+                                }
+                            });
+                        }
+                    } catch (_) {}
                     hintsContainer.remove();
                 } else if (remainingItems < 2) {
                     const sortButtons = hintsContainer.querySelector('.sort-buttons');
@@ -1882,11 +2057,11 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
     .catch(error => console.error('Error:', error));
 }
 
-  function deleteHint(chatId, hintKey, hintType = 'personal') {
-    updateHintCheckbox(chatId, hintKey, 'delete', hintType);
+  function deleteHint(chatId, hintKey, hintType = 'personal', userIndex = null) {
+            updateHintCheckbox(chatId, hintKey, 'delete', hintType, userIndex);
   }
 
-  function saveHint(chatId, messageCount, hintType = 'personal') {
+  function saveHint(chatId, messageCount, hintType = 'personal', userIndex = null) {
     const newHintInput = document.getElementById(hintType === 'personal' ? 'hint-input' : 'general-hint-input');
     const newHintKey = newHintInput.value.trim();
 
@@ -1904,7 +2079,8 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
             chat_id: chatId,
             hint_key: newHintKey,
             message_count: messageCount,
-            hint_type: hintType
+            hint_type: hintType,
+            user_index: userIndex
         })
     })
     .then(response => response.json())
@@ -1959,13 +2135,13 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
                 <div class="hint-wrapper">
                     <input type="checkbox" 
                         id="${checkboxId}" 
-                        onchange="updateHintCheckbox('${chatId}', '${fullHintKey}', 'update', '${hintType}')"
+                        onchange="updateHintCheckbox('${chatId}', '${fullHintKey}', 'update', '${hintType}', ${userIndex !== null ? userIndex : 'null'})"
                         class="hint-checkbox"
                         checked>
                     <label for="${checkboxId}" 
                         class="hint-label ${hintType === 'general' ? 'general' : ''}">${fullHintKey}</label>
                     <button class="hint-delete-btn" 
-                        onclick="deleteHint('${chatId}', '${fullHintKey}', '${hintType}')"
+                        onclick="deleteHint('${chatId}', '${fullHintKey}', '${hintType}', ${userIndex !== null ? userIndex : 'null'})"
                         aria-label="Delete ${hintType} hint">
                         <svg xmlns="http://www.w3.org/2000/svg" x="0px" y="0px" width="32" height="32" viewBox="0 0 64 64">
                             <rect width="48" height="10" x="7" y="7" fill="#f9e3ae" rx="2" ry="2"></rect>
@@ -1986,6 +2162,13 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
 
                 clearAllHintCheckboxes();
                 hintsWrapper.appendChild(newHintItem);
+            }
+
+            if (hintsWrapper.children.length >= 2) {
+                const sortButtons = hintsContainer.querySelector('.sort-buttons');
+                if (sortButtons) {
+                    sortButtons.style.display = 'flex';
+                }
             }
 
             fetch('/update_hints', {
@@ -2880,7 +3063,7 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
         })
     })
     .then(response => response.json())
-    .then(data => {
+    .then(async data => {
         const statusElement = document.getElementById('delete-status');
         if (statusElement) {
             if (data.success) {
@@ -2894,6 +3077,7 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
                 statusElement.style.backgroundColor = '#f44336';
             }
         }
+        try { await saveBetweenQueueUsers(); } catch (_) {}
     })
     .catch(error => {
         console.error('Error saving image:', error);
@@ -3048,8 +3232,9 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
         })
     })
     .then(response => response.json())
-    .then(data => {
+    .then(async data => {
         showStatus(data.success ? "Success!" : "Error!");
+        try { await saveBetweenQueueUsers(); } catch (_) {}
     })
     .catch(error => {
         console.error('Ошибка отправки данных на сервер:', error);
@@ -3564,6 +3749,7 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
                 media_path: mediaPath,
                 message_index: messageIndex,
                 chat_id: chatId,
+                user_index: (currentQueueData && typeof currentQueueData.current_user === 'number') ? currentQueueData.current_user : null,
                 confirmed: true
             })
         });
@@ -3822,6 +4008,31 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
                 }
             } catch (e) {
                 console.warn('Failed to refresh hints after deletion', e);
+            }
+
+            try {
+                if (currentQueueData && currentQueueData.queue_mode_enabled) {
+                    const userIndex = currentQueueData.current_user;
+                    if (currentQueueData.users && typeof userIndex === 'number' && currentQueueData.users[userIndex]) {
+                        if (typeof data.active_hint === 'string') {
+                            currentQueueData.users[userIndex].active_hint = data.active_hint;
+                        }
+                        // Immediately update active-hint-display in the queue header
+                        const userButtonsDiv = document.getElementById('user-buttons');
+                        if (userButtonsDiv) {
+                            try {
+                                updateQueueStatus(currentQueueData, currentBrowserData || null);
+                            } catch (_) {}
+                        }
+                    }
+                }
+            } catch (_) {}
+
+            // Persist DOM/HTML right after deletion so it won't reappear on reload
+            try {
+                await saveBetweenQueueUsers();
+            } catch (err) {
+                console.warn('Auto-save after delete failed:', err);
             }
         } else {
             console.error('Failed to delete media:', data.error);

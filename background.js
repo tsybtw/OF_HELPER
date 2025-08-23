@@ -1100,12 +1100,12 @@ async function processImageAndUpload(imageTag) {
 
 function postStories() {
   function checkButtonExists() {
-    const button = document.querySelector('.g-btn.m-rounded.m-reset-width.d-inline-flex');
+    const button = document.querySelector('.g-btn.m-btn-editor-style.m-rounded.m-reset-width.d-inline-flex');
     return button !== null;
   }
 
   function clickButton() {
-    const button = document.querySelector('.g-btn.m-rounded.m-reset-width.d-inline-flex');
+    const button = document.querySelector('.g-btn.m-btn-editor-style.m-rounded.m-reset-width.d-inline-flex');
     if (button) {
       button.click();
       return true;
@@ -3701,7 +3701,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.8.3.4';
+            const VERSION = '5.8.3.5';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 

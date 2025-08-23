@@ -2171,6 +2171,48 @@ input[type="checkbox"] {
     font-weight: bold;
 }
 
+.invalid-users-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 300px;
+    overflow: auto;
+    padding: 0 4px;
+}
+
+.invalid-user-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.invalid-user-text {
+    color: #ffffff;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.invalid-user-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.queue-modal-btn-danger {
+    background-color: #e53935;
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.queue-modal-btn-danger:hover {
+    background-color: #d32f2f;
+    transform: translateY(-1px);
+}
+
 .queue-modal-buttons {
     padding: 16px 24px 24px;
     display: flex;
@@ -2220,6 +2262,44 @@ input[type="checkbox"] {
 
 .queue-modal-btn:active {
     transform: scale(0.95);
+}
+
+.queue-modal-btn:not(.queue-modal-btn-primary):not(.queue-modal-btn-secondary):not(.queue-modal-btn-danger) {
+    background-color: #6c757d;
+    color: white;
+    border-color: #6c757d;
+}
+
+.queue-modal-btn:not(.queue-modal-btn-primary):not(.queue-modal-btn-secondary):not(.queue-modal-btn-danger):hover {
+    background-color: #5a6268;
+    transform: scale(1.05);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.invalid-user-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    background-color: rgba(255, 255, 255, 0.05);
+    min-height: 60px;
+}
+
+.invalid-user-text {
+    color: #ffffff;
+    font-size: 14px;
+    line-height: 1.4;
+    flex: 1;
+    min-width: 0;
+}
+
+.invalid-user-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
 }
 
 .user-screenshot-status.pending {
