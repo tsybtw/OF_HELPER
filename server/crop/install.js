@@ -154,20 +154,22 @@ function fixMacOSPermissions() {
         }
 
         console.log('Setting up crop permissions in current directory...');
-        try {
-            execSync('sudo xattr -d com.apple.quarantine ./crop', { stdio: 'inherit' });
-            console.log('Quarantine removed from crop successfully');
-        } catch (error) {
-            info(`Note: ${error.message}. This is normal if the file was not in quarantine.`);
-        }
- 
-        try {
-            execSync('sudo chmod +x crop', { stdio: 'inherit' });
-            console.log('Execute permissions set for crop successfully');
-        } catch (error) {
-            hasErrors = true;
-            warn(`Failed to set execute permissions for crop: ${error}`);
-        }
+        ;['crop-arm64', 'crop-x86_64'].forEach((binName) => {
+            try {
+                execSync(`sudo xattr -d com.apple.quarantine ./${binName}` , { stdio: 'inherit' });
+                console.log(`Quarantine removed from ${binName} successfully`);
+            } catch (error) {
+                info(`Note: ${error.message}. This is normal if the file was not in quarantine.`);
+            }
+
+            try {
+                execSync(`sudo chmod +x ${binName}`, { stdio: 'inherit' });
+                console.log(`Execute permissions set for ${binName} successfully`);
+            } catch (error) {
+                hasErrors = true;
+                warn(`Failed to set execute permissions for ${binName}: ${error}`);
+            }
+        });
     }
 }
 
