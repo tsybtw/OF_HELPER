@@ -40,20 +40,22 @@ function fixMacOSPermissions() {
             process.chdir('..');
             console.log(`Changed to server directory: ${process.cwd()}`);
             
-            try {
-                execSync('sudo xattr -d com.apple.quarantine ./main', { stdio: 'inherit' });
-                console.log('Quarantine removed from main successfully');
-            } catch (error) {
-                info(`Note: ${error.message}. This is normal if the file was not in quarantine.`);
-            }
-     
-            try {
-                execSync('sudo chmod +x main', { stdio: 'inherit' });
-                console.log('Execute permissions set for main successfully');
-            } catch (error) {
-                hasErrors = true;
-                warn(`Failed to set execute permissions for main: ${error}`);
-            }
+            ;['main-arm', 'main-intel'].forEach((binName) => {
+                try {
+                    execSync(`sudo xattr -d com.apple.quarantine ./${binName}`, { stdio: 'inherit' });
+                    console.log(`Quarantine removed from ${binName} successfully`);
+                } catch (error) {
+                    info(`Note: ${error.message}. This is normal if the file was not in quarantine.`);
+                }
+
+                try {
+                    execSync(`sudo chmod +x ${binName}`, { stdio: 'inherit' });
+                    console.log(`Execute permissions set for ${binName} successfully`);
+                } catch (error) {
+                    hasErrors = true;
+                    warn(`Failed to set execute permissions for ${binName}: ${error}`);
+                }
+            });
             
             process.chdir('..');
             console.log(`Changed to parent directory: ${process.cwd()}`);
