@@ -1,13 +1,19 @@
-1. Перейдите по ссылке:
+1. Установите:
+на macOS: Python, Node.js
+на Windows: Python, Node.js, Java, Lightshot/ShareX, Windows Terminal
+
+2. Перейдите по ссылке:
 https://github.com/tsybtw/OF_HELPER/releases
 
 Для macOS:
-Скачайте файлы ffmpeg и ffprobe
+Скачайте файлы ffmpeg и ffprobe.
 
 Для Windows: 
-Скачайте файлы ffmpeg.exe и ffprobe.exe
+Скачайте файлы ffmpeg.exe и ffprobe.exe.
 
-2. Поместите 2 скачанных файла в папку ffmpeg
+3. Поместите 2 скачанных файла в папку ffmpeg.
+
+4. Перейдите в папку server, разархивируйте нужный zip архив в эту же папку так, чтобы в папке server был файл main.exe (main-intel/main-arm для macOS).
 
 Для macOS:
 Нажмите правой кнопкой мыши на папку crop -> Новый терминал по адресу папки
@@ -15,10 +21,10 @@ https://github.com/tsybtw/OF_HELPER/releases
 Для Windows: 
 Перейдите в папку crop и нажмите на строку пути -> Введите cmd и нажмите Enter
 
-3. Выполните команду:
+5. Выполните команду:
 node install.js
 
-4. Перейдите на сайт:
+6. Перейдите на сайт:
 
 https://my.telegram.org/auth
 
@@ -27,8 +33,8 @@ https://my.telegram.org/auth
     3. Нажмите Create New Application.
 
     Заполните поля:
-    App title - любое название на латинице (от 5 символов)
-    Short name - аналогично
+    App title - любое название на латинице (от 5 символов).
+    Short name - аналогично.
     Остальные поля можно оставить как есть.
 
     4. Нажмите Create application.
