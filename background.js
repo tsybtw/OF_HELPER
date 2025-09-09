@@ -427,6 +427,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       break;
   }
 
+  // Page -> background relay for sending browser-data
+  if (message && message.type === 'OFH_SEND_BROWSER_DATA_BG' && message.payload) {
+    (async () => {
+      try {
+        await fetch('http://localhost:8765/browser-data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(message.payload)
+        });
+      } catch (_) {}
+    })();
+    return true;
+  }
+
   if (message.action === "toggleAutoRestartState") {
     chrome.storage.local.get('autoRestartEnabled', (result) => {
       const enabled = !result.autoRestartEnabled;
@@ -535,288 +549,6 @@ async function fakeColorsOff() {
   button.style.background = "#8C6E6E"; 
 }
 
-async function searchPosts() {
-  const fileUrl = chrome.runtime.getURL("server/files/tags.txt");
-  const response = await fetch(fileUrl);
-  const text = await response.text();
-  const lines = text.split("\n").filter((line) => line.trim() !== "");
-
-  const usernameDiv = document.querySelector(".g-user-username");
-  if (usernameDiv) {
-    const username = usernameDiv.innerText;
-    const baseUrl = "https://onlyfans.com/";
-    const searchUrl = "/search/posts?q=";
-
-    chrome.runtime.sendMessage({
-      action: "openAndProtectTabs",
-      urls: lines.map(line => `${baseUrl}${line}${searchUrl}${username}`)
-    });
-  }
-}
-
-chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
-   if (message.action === "protectTab") {
-
-    const openedTabIds = [];
-
-    message.urls.forEach(url => {
-      chrome.tabs.create({ url: url }, (tab) => {
-
-        protectedTabs.add(tab.id);
-        openedTabIds.push(tab.id);
-
-        chrome.tabs.onUpdated.addListener(function listener(tabId, changeInfo) {
-          if (tabId === tab.id && changeInfo.status === 'complete') {
-            chrome.tabs.onUpdated.removeListener(listener);
-
-            chrome.scripting.executeScript({
-              target: { tabId: tab.id },
-              function: processTab
-            });
-          }
-        });
-      });
-    });
-
-    sendResponse({ success: true });
-
-    } else if (message.action === "openAndProtectTabs") {
-      message.urls.forEach(url => {
-        chrome.tabs.create({ url: url }, (tab) => {
-          protectedTabs.add(tab.id);
-        });
-      });
-    }
-})
-
-async function checkModels() {
-  const fileUrl = chrome.runtime.getURL("server/files/tags.txt");
-  const response = await fetch(fileUrl);
-  const text = await response.text();
-  const lines = text.split("\n").filter((line) => line.trim() !== "");
-
-  const urls = lines.map(line => `https://onlyfans.com/${line}`);
-  chrome.runtime.sendMessage({
-    action: "protectTab",
-    urls: urls
-  });
-}
-
-async function processTab() {
-  async function outputElements() {
-    const usernameElements = document.querySelectorAll(".g-user-username");
-    const username = usernameElements.length >= 2 ? usernameElements[1].textContent : "-";
-    let fanCountElement = document.querySelector('svg[data-icon-name="icon-follow"]');
-    const fanCount = fanCountElement
-      ? fanCountElement.nextElementSibling.textContent.trim()
-      : "closed Fans";
-
-    setTimeout(async () => {
-      const currentMonthElement = document.querySelector(".vdatetime-calendar__current--month");
-      const currentMonth = currentMonthElement ? currentMonthElement.textContent : "-";
-      let firstActiveDay = document.querySelector(
-        ".vdatetime-calendar__month__day:not(.vdatetime-calendar__month__day--disabled)"
-      );
-      let firstActiveDayNumber = firstActiveDay
-        ? firstActiveDay.querySelector("span span").textContent
-        : "-";
-
-      const data = { username, currentMonth, firstActiveDayNumber, fanCount };
-
-      try {
-        const response = await fetch("http://localhost:3000/checkModels", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(data)
-        });
-
-        if (response.ok) {
-          console.log("Data sent successfully to the server");
-          chrome.runtime.sendMessage({ action: "closeTab" });
-        } else {
-          console.error("Failed to send data to the server");
-        }
-      } catch (error) {
-        console.error("Error:", error);
-      }
-    }, 1000);
-  }
-
-  let subscribeButtonClicked = false;
-  let dropdownButtonClicked = false;
-
-  const observer = new MutationObserver(async (mutationsList, observer) => {
-    for (let mutation of mutationsList) {
-      if (mutation.type === "childList") {
-        const subscribeButton = document.querySelector(
-          ".m-rounded.m-flex.m-space-between.m-lg.g-btn"
-        );
-        const dropdownButton = document.querySelector(
-          ".btn.dropdown-toggle.g-btn.m-gray.m-with-round-hover.m-icon.m-icon-only.m-sm-size"
-        );
-
-        if (
-          subscribeButton &&
-          !dropdownButtonClicked &&
-          !dropdownButton &&
-          !subscribeButtonClicked
-        ) {
-          subscribeButtonClicked = true;
-          setTimeout(() => {
-            subscribeButton.click();
-            setTimeout(() => {
-              const newDropdownButton = document.querySelector(
-                ".btn.dropdown-toggle.g-btn.m-gray.m-with-round-hover.m-icon.m-icon-only.m-sm-size"
-              );
-              if (newDropdownButton) {
-                newDropdownButton.click();
-                dropdownButtonClicked = true;
-
-                setTimeout(() => {
-                  const goToDateLabel = document.querySelector(
-                    'label[for="filter-go-to-date"]'
-                  );
-                  if (goToDateLabel) {
-                    goToDateLabel.click();
-                  }
-
-                  setTimeout(async () => {
-                    let days = Array.from(
-                      document.querySelectorAll(
-                        ".vdatetime-calendar__month .vdatetime-calendar__month__day"
-                      )
-                    );
-                    days = days.filter(
-                      (day) =>
-                        !day.classList.contains(
-                          "vdatetime-calendar__month__day--disabled"
-                        )
-                    );
-
-                    while (days.length > 0) {
-                      const previousButton = document.querySelector(
-                        ".vdatetime-calendar__navigation--previous"
-                      );
-                      if (previousButton) {
-                        previousButton.click();
-                        await new Promise((resolve) =>
-                          setTimeout(resolve, 100)
-                        );
-                      }
-                      days = Array.from(
-                        document.querySelectorAll(
-                          ".vdatetime-calendar__month .vdatetime-calendar__month__day"
-                        )
-                      );
-                      days = days.filter(
-                        (day) =>
-                          !day.classList.contains(
-                            "vdatetime-calendar__month__day--disabled"
-                          )
-                      );
-                    }
-
-                    const nextButton = document.querySelector(
-                      ".vdatetime-calendar__navigation--next"
-                    );
-                    if (nextButton) {
-                      nextButton.click();
-                      setTimeout(async () => {
-                        await outputElements();
-
-                        observer.disconnect();
-                      }, 500);
-                    }
-                  }, 500);
-                }, 3000);
-              }
-            }, 9000);
-          }, 5000);
-        }
-
-        if (dropdownButton && !dropdownButtonClicked) {
-          dropdownButtonClicked = true;
-          setTimeout(() => {
-            dropdownButton.click();
-            setTimeout(() => {
-              const goToDateLabel = document.querySelector(
-                'label[for="filter-go-to-date"]'
-              );
-              if (goToDateLabel) {
-                goToDateLabel.click();
-              }
-
-              setTimeout(async () => {
-                let days = Array.from(
-                  document.querySelectorAll(
-                    ".vdatetime-calendar__month .vdatetime-calendar__month__day"
-                  )
-                );
-                days = days.filter(
-                  (day) =>
-                    !day.classList.contains(
-                      "vdatetime-calendar__month__day--disabled"
-                    )
-                );
-
-                while (days.length > 0) {
-                  const previousButton = document.querySelector(
-                    ".vdatetime-calendar__navigation--previous"
-                  );
-                  if (previousButton) {
-                    previousButton.click();
-                    await new Promise((resolve) =>
-                      setTimeout(resolve, 100)
-                    );
-                  }
-                  days = Array.from(
-                    document.querySelectorAll(
-                      ".vdatetime-calendar__month .vdatetime-calendar__month__day"
-                    )
-                  );
-                  days = days.filter(
-                    (day) =>
-                      !day.classList.contains(
-                        "vdatetime-calendar__month__day--disabled"
-                      )
-                  );
-                }
-
-                const nextButton = document.querySelector(
-                  ".vdatetime-calendar__navigation--next"
-                );
-                if (nextButton) {
-                  nextButton.click();
-                  setTimeout(async () => {
-                    await outputElements();
-
-                    observer.disconnect();
-                  }, 500);
-                }
-              }, 500);
-            }, 500);
-          }, 5000);
-        }
-      }
-    }
-  });
-
-  if (document.readyState !== "loading") {
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-    });
-  } else {
-    document.addEventListener("DOMContentLoaded", () => {
-      observer.observe(document.body, {
-        childList: true,
-        subtree: true,
-      });
-    });
-  }
-}
 
 let lastMentionPos = null;
 
@@ -2688,22 +2420,21 @@ async function checkDataFile() {
             func: openNewTab,
           });
           return;
-        } else if (lastEntry.textInput === "check") {
-          const browserNumber = browserType.replace("browser", ""); 
-          const selectedBrowserArray = lastEntry.selectedBrowsers.split(" ");
-          if (selectedBrowserArray.includes(browserNumber) || lastEntry.selectedBrowsers == "") {
-            await executeScriptIfValid(activeTab, {
-                target: { tabId: activeTab.id },
-                func: checkModels,
-            });
-            return;
-          } 
-          return;
-        } else if (lastEntry.textInput === "search") {
-          await executeScriptIfValid(activeTab, {
-            target: { tabId: activeTab.id },
-            func: searchPosts,
-          });
+        } else if (lastEntry.textInput === "add") {
+          try {
+            const selection = (lastEntry.selectedBrowsers || '').trim();
+            const selected = String(selection)
+              .split(/\s+/)
+              .map(s => parseInt(s, 10))
+              .filter(n => !isNaN(n));
+            let myNumber = 0;
+            try { myNumber = parseInt(String(browserType).replace(/\D/g, ''), 10) || 0; } catch (_) { myNumber = 0; }
+            if (selected.length === 0 || (myNumber && selected.includes(myNumber))) {
+              await collectFromSelectedBrowsers(selection);
+            } else {
+              // Not selected for this instance; no-op
+            }
+          } catch (_) {}
           return;
         } else if (validateDelete(lastEntry.textInput)) {
           const number = extractNumber(lastEntry.textInput);
@@ -3701,7 +3432,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.8.4.4';
+            const VERSION = '5.8.5';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -5451,3 +5182,161 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
     });
   }
 });
+
+async function collectOnlyfansData(tabId) {
+  try {
+    // Collect UA, x-bc and username from page context
+    const [inj] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        try {
+          let tag = '';
+          try {
+            const el = document.querySelector('.g-user-username');
+            if (el && el.textContent) tag = String(el.textContent).trim();
+          } catch (_) {}
+          if (tag && tag.startsWith('@')) tag = tag.slice(1);
+          const ua = navigator.userAgent || '';
+          const xbc = (typeof localStorage !== 'undefined' && localStorage.getItem('bcTokenSha')) || '';
+
+          // Build overlay UI
+          try { const ex = document.getElementById('ofh-overlay'); if (ex) ex.remove(); } catch (_) {}
+          const overlay = document.createElement('div');
+          overlay.id = 'ofh-overlay';
+          overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483646;display:flex;align-items:flex-start;justify-content:flex-end;background:rgba(0,0,0,0);transition:background 220ms ease;';
+          const panel = document.createElement('div');
+          panel.id = 'ofh-panel';
+          panel.style.cssText = 'transform:translateY(-20px);transition:transform 260ms ease,opacity 240ms ease;opacity:0;background:#1e1e1e;color:#e0e0e0;border-radius:10px;padding:14px;max-width:160px;margin:16px;box-shadow:0 6px 18px rgba(0,0,0,.45);border:1px solid #2a2a2a;font-family:\'Josefin Sans\', sans-serif;';
+          const title = document.createElement('div');
+          title.textContent = 'Data collected';
+          title.style.cssText = 'font-weight:600;margin-bottom:10px;color:#8ab4f8;text-align:center;';
+          const buttons = document.createElement('div');
+          buttons.style.cssText = 'display:flex;flex-direction:column;gap:10px;justify-content:flex-start;align-items:stretch;';
+
+          function makeBtn(id, label) {
+            const btn = document.createElement('button');
+            btn.id = id;
+            btn.textContent = label;
+            Object.assign(btn.style, {
+              backgroundColor: 'rgb(90, 98, 104)',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '10px',
+              padding: '8px 14px',
+              cursor: 'pointer',
+              transition: 'all 0.3s',
+              outline: 'none',
+              fontFamily: '\'Josefin Sans\', sans-serif'
+            });
+            btn.addEventListener('mouseover', () => { btn.style.backgroundColor = '#e38571'; });
+            btn.addEventListener('mouseout', () => { btn.style.backgroundColor = 'rgb(90, 98, 104)'; btn.style.transform = 'scale(1)'; });
+            btn.addEventListener('mousedown', () => { btn.style.transform = 'scale(0.98)'; });
+            btn.addEventListener('mouseup', () => { btn.style.transform = 'scale(1)'; });
+            return btn;
+          }
+
+          const copyBtn = makeBtn('ofh-copy', 'copy');
+          const sendBtn = makeBtn('ofh-send', 'send');
+          const closeBtn = makeBtn('ofh-close', 'close');
+
+          function animateClose() {
+            try {
+              panel.style.transform = 'translateY(-20px)';
+              panel.style.opacity = '0';
+              overlay.style.background = 'rgba(0,0,0,0)';
+              setTimeout(() => { try { overlay.remove(); } catch(_) {} }, 280);
+            } catch (_) {}
+          }
+
+          overlay.addEventListener('click',(e)=>{ if(e.target===overlay){ animateClose(); } });
+          const uaToken = String(ua).trim().replace(/\s+/g,'_');
+          const copyStr = [tag, uaToken, xbc].join(' ').trim();
+          copyBtn.addEventListener('click', async ()=>{ try{ await navigator.clipboard.writeText(copyStr); }catch(_){} });
+          closeBtn.addEventListener('click', (ev)=>{ ev.stopPropagation(); animateClose(); });
+
+          buttons.appendChild(copyBtn);
+          buttons.appendChild(sendBtn);
+          buttons.appendChild(closeBtn);
+          panel.appendChild(title);
+          panel.appendChild(buttons);
+          overlay.appendChild(panel);
+          (document.body || document.documentElement).appendChild(overlay);
+          // Force reflow to ensure transition runs
+          void panel.offsetHeight;
+          requestAnimationFrame(()=>{ try{ overlay.style.background='rgba(0,0,0,0.35)'; panel.style.opacity='1'; panel.style.transform='translateY(10px)'; }catch(_){} });
+
+          // Relay send to background via window.postMessage => content script
+          try {
+            window.addEventListener('message', (ev) => {
+              try {
+                const data = ev?.data;
+                if (data && data.type === 'OFH_SEND_BROWSER_DATA' && data.payload) {
+                  chrome.runtime.sendMessage({ type: 'OFH_SEND_BROWSER_DATA_BG', payload: data.payload });
+                }
+              } catch (_) {}
+            }, { once: true });
+          } catch (_) {}
+
+          return { ua, xbc, tag, overlayPresent: true };
+        } catch (e) {
+          return { ua: '', xbc: '', tag: '' };
+        }
+      }
+    });
+    const ua = (inj && inj.result && inj.result.ua) || '';
+    const xbc = (inj && inj.result && inj.result.xbc) || '';
+    const tag = (inj && inj.result && inj.result.tag) || '';
+
+    // Collect sess and auth_id via cookies API
+    const sess = await new Promise((resolve) => {
+      try { chrome.cookies.get({ url: 'https://onlyfans.com/', name: 'sess' }, c => resolve((c && c.value) || '')); } catch (_) { resolve(''); }
+    });
+    const authId = await new Promise((resolve) => {
+      try { chrome.cookies.get({ url: 'https://onlyfans.com/', name: 'auth_id' }, c => resolve((c && c.value) || '')); } catch (_) { resolve(''); }
+    });
+
+    // Wire Add and Close handlers; no auto-send, only on Add
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (payload) => {
+        try {
+          const overlay = document.getElementById('ofh-overlay');
+          const sendBtn = document.getElementById('ofh-send');
+          const closeBtn = document.getElementById('ofh-close');
+          if (!overlay || !sendBtn || !closeBtn) return;
+          const animateClose = () => {
+            try {
+              const panel = document.getElementById('ofh-panel');
+              const overlayEl = document.getElementById('ofh-overlay');
+              if (!panel || !overlayEl) { overlayEl?.remove(); return; }
+              panel.style.transform = 'translateY(-20px)';
+              panel.style.opacity = '0';
+              overlayEl.style.background = 'rgba(0,0,0,0)';
+              setTimeout(() => { try { overlayEl.remove(); } catch(_) {} }, 280);
+            } catch(_) {}
+          };
+
+          sendBtn.addEventListener('click', async (ev) => {
+            ev.stopPropagation();
+            try {
+              window.postMessage({ type: 'OFH_SEND_BROWSER_DATA', payload }, '*');
+            } catch (_) {}
+            animateClose();
+          }, { once: true });
+          closeBtn.addEventListener('click', (ev) => { ev.stopPropagation(); animateClose(); }, { once: true });
+        } catch (_) {}
+      },
+      args: [{ tag, userAgent: ua, xbc, sess, authId }]
+    });
+  } catch (_) {}
+}
+
+async function collectFromSelectedBrowsers(selectedBrowsersRaw) {
+  try {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const activeTab = tabs && tabs[0];
+    if (activeTab && activeTab.url && activeTab.url.startsWith('https://onlyfans.com/')) {
+      await collectOnlyfansData(activeTab.id);
+    }
+  } catch (_) {}
+}
