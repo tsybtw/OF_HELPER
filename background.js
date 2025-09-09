@@ -3432,7 +3432,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.8.5';
+            const VERSION = '5.8.5.1';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -4297,11 +4297,21 @@ async function pressBindFix(tab, browserType) {
             if (innerDiv.textContent.includes("tag")) {
               let username = innerDiv.textContent.split("@")[1].trim();
               let url = `https://onlyfans.com/my/collections/user-lists/blocked?search=${username}`;
+
+              chrome.runtime.sendMessage({
+                action: "createNotif",
+                tabId: tab.id,
+                message: innerDiv.textContent,
+              });
+
               chrome.runtime.sendMessage({
                 action: "blacklist",
                 url,
                 tabId: tab.id,
               });
+
+              chrome.storage.local.set({ [`blacklisted_${tab.id}`]: true });
+              return;
             }
             else if (/(Daily|Nothing)/.test(innerDiv.textContent)) {
               await delay(20000);
