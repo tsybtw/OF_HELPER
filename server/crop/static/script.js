@@ -285,7 +285,7 @@ function copyToClipboard(text, event) {
     .catch((error) => {
         console.error('Error:', error);
         if (statusElement) {
-            statusElement.textContent = "Ошибка: " + error;
+            statusElement.textContent = "Error: " + error;
         }
         copyButton.style.backgroundColor = '#FF6B6B'; 
     });
@@ -434,7 +434,10 @@ function copyToClipboard(text, event) {
     const isOpening = !dropdown.classList.contains('show');
 
     if (!isOpening) {
-      try { saveQueueDropdownScroll(); } catch (_) {}
+      try { 
+        const currentUserIndex = currentQueueData?.current_user;
+        saveQueueDropdownScroll(currentUserIndex); 
+      } catch (_) {}
     }
 
     dropdown.classList.toggle('show');
@@ -443,15 +446,19 @@ function copyToClipboard(text, event) {
 
     if (dropdown.classList.contains('show')) {
         try { ensurePersistQueueControl(); } catch (_) {}
-        try { restoreQueueDropdownScroll(); } catch (_) {}
+        try { 
+          const currentUserIndex = currentQueueData?.current_user;
+          restoreQueueDropdownScroll(currentUserIndex); 
+        } catch (_) {}
         loadInitialQueueData();
       }
   }
 
-  function getQueueScrollStorageKey() {
+  function getQueueScrollStorageKey(userIndex = null) {
     try {
       if (typeof currentQueueData === 'object' && currentQueueData && Array.isArray(currentQueueData.users)) {
-        const idx = Number.isInteger(currentQueueData.current_user) ? currentQueueData.current_user : 0;
+
+        const idx = userIndex !== null ? userIndex : (Number.isInteger(currentQueueData.current_user) ? currentQueueData.current_user : 0);
         const user = currentQueueData.users[idx] || {};
         const id = user.user_id || user.user_number || user.nickname || idx;
         return `queueDropdownScroll_${String(id)}`;
@@ -460,20 +467,20 @@ function copyToClipboard(text, event) {
     return 'queueDropdownScroll_global';
   }
 
-  function saveQueueDropdownScroll() {
+  function saveQueueDropdownScroll(userIndex = null) {
     try {
       const dropdown = document.getElementById('queue-dropdown');
       if (!dropdown) return;
-      const key = getQueueScrollStorageKey();
+      const key = getQueueScrollStorageKey(userIndex);
       localStorage.setItem(key, String(dropdown.scrollTop || 0));
     } catch (_) {}
   }
 
-  function restoreQueueDropdownScroll() {
+  function restoreQueueDropdownScroll(userIndex = null) {
     try {
       const dropdown = document.getElementById('queue-dropdown');
       if (!dropdown) return;
-      const key = getQueueScrollStorageKey();
+      const key = getQueueScrollStorageKey(userIndex);
       const raw = localStorage.getItem(key);
       if (raw != null) {
         const val = parseInt(raw, 10);
@@ -775,7 +782,12 @@ function copyToClipboard(text, event) {
         return;
     }
 
-    try { saveQueueDropdownScroll(); } catch (_) {}
+    try { 
+      const currentUserIndex = currentQueueData?.current_user;
+      if (currentUserIndex !== null && currentUserIndex !== undefined) {
+        saveQueueDropdownScroll(currentUserIndex); 
+      }
+    } catch (_) {}
 
     const allUserButtons = document.querySelectorAll('.user-btn');
     allUserButtons.forEach(btn => btn.disabled = true);
@@ -828,6 +840,12 @@ function copyToClipboard(text, event) {
                     if (currentQueueData && currentQueueData.queue_mode_enabled) {
                         clearAllHintCheckboxes();
                     }
+
+                    try {
+                        setTimeout(() => {
+                            restoreQueueDropdownScroll(userIndex);
+                        }, 100);
+                    } catch (_) {}
 
                     try {
                         const chatIdFromResponse = data?.user_data?.chat_id;
@@ -1282,7 +1300,7 @@ function copyToClipboard(text, event) {
     }
 
     if (queueData) {
-      currentQueueData = JSON.parse(JSON.stringify(queueData)); 
+      currentQueueData = JSON.parse(JSON.stringify(queueData));
     }
     if (browserData) {
       currentBrowserData = JSON.parse(JSON.stringify(browserData)); 
@@ -1703,13 +1721,37 @@ function copyToClipboard(text, event) {
 
             if (statusDiv.innerHTML !== statusHTML) {
                 statusDiv.innerHTML = statusHTML;
-                try { if (document.getElementById('queue-dropdown')?.classList.contains('show')) restoreQueueDropdownScroll(); } catch (_) {}
+                try { 
+                  if (document.getElementById('queue-dropdown')?.classList.contains('show')) {
+                    const currentUserIndex = data?.current_user;
+                    restoreQueueDropdownScroll(currentUserIndex); 
+                  }
+                } catch (_) {}
             }
         }
 
         if (userButtonsDiv && data.queue_mode_enabled && data.users && data.users.length > 0) {
             const currentActiveUser = data.current_user;
             const canDelete = data.users.length > 1; 
+
+            const stateHash = JSON.stringify({
+                users: data.users.map(u => ({
+                    user_number: u.user_number,
+                    nickname: u.nickname,
+                    status: u.status,
+                    active_hint: u.active_hint
+                })),
+                current_user: currentActiveUser,
+                can_delete: canDelete
+            });
+
+            if (userButtonsDiv.getAttribute('data-state-hash') === stateHash) {
+
+                if (userButtonsDiv.querySelectorAll('.queue-user-item').length > 0) {
+                    updateDragAndDropListeners();
+                }
+                return;
+            }
 
             let newUserButtonsHTML = '';
             data.users.forEach((user, index) => {
@@ -1726,7 +1768,7 @@ function copyToClipboard(text, event) {
                 }
 
                 newUserButtonsHTML += `
-                    <div class="user-container">
+                    <div class="user-container queue-user-item" data-user-index="${index}">
                         <button class="user-btn${activeClass}${completedClass}${processingClass}" onclick="switchToUser(${index})" data-user-index="${index}">
                             ${user.user_number || (index + 1)}
                         </button>
@@ -1736,10 +1778,20 @@ function copyToClipboard(text, event) {
                 `;
             });
 
-            if (userButtonsDiv.innerHTML !== newUserButtonsHTML) {
-                userButtonsDiv.innerHTML = newUserButtonsHTML;
-                try { if (document.getElementById('queue-dropdown')?.classList.contains('show')) restoreQueueDropdownScroll(); } catch (_) {}
-            }
+            userButtonsDiv.innerHTML = newUserButtonsHTML;
+            userButtonsDiv.setAttribute('data-state-hash', stateHash);
+            try { updateDragAndDropListeners(); } catch (_) {}
+
+            try { 
+              if (document.getElementById('queue-dropdown')?.classList.contains('show')) {
+                const currentUserIndex = data?.current_user;
+                restoreQueueDropdownScroll(currentUserIndex); 
+              }
+            } catch (_) {}
+
+            userButtonsDiv.querySelectorAll('.queue-user-item').forEach(el => {
+                el.removeAttribute('data-drag-listeners-attached');
+            });
 
             try {
                 const activeUser = data.users && typeof currentActiveUser === 'number' ? data.users[currentActiveUser] : null;
@@ -1809,6 +1861,7 @@ function copyToClipboard(text, event) {
                 userButtons.style.display = targetDisplay;
             }
         }
+
     }
 
   function switchAutoDelete(){
@@ -3291,13 +3344,20 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
         if (data && data.success && data.queue_data && data.browser_data) {
           updateQueueStatus(data.queue_data, data.browser_data);
 
+          setTimeout(() => {
+            initializeDragAndDrop();
+          }, 100);
+
           try {
             const shouldOpen = localStorage.getItem('queueDropdownOpen') === 'true';
             const dropdown = document.getElementById('queue-dropdown');
             if (dropdown) {
               if (shouldOpen) {
                 dropdown.classList.add('show');
-                try { restoreQueueDropdownScroll(); } catch (_) {}
+                try { 
+                  const currentUserIndex = data?.queue_data?.current_user;
+                  restoreQueueDropdownScroll(currentUserIndex); 
+                } catch (_) {}
               } else {
                 dropdown.classList.remove('show');
               }
@@ -3361,7 +3421,10 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
               if (dropdown) {
                 if (shouldOpen) {
                   dropdown.classList.add('show');
-                  try { restoreQueueDropdownScroll(); } catch (_) {}
+                  try { 
+                    const currentUserIndex = data?.queue_data?.current_user;
+                    restoreQueueDropdownScroll(currentUserIndex); 
+                  } catch (_) {}
                 } else {
                   dropdown.classList.remove('show');
                 }
@@ -3587,6 +3650,10 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
     startQueueDataPolling();
     setupAutoSave();
 
+    setTimeout(() => {
+      initializeDragAndDrop();
+    }, 1000);
+
     (function enforceSingleActiveHintOnLoad() {
       try {
         const hintsContainer = document.getElementById('hints-container');
@@ -3617,7 +3684,10 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
         const toggleBtn = document.querySelector('.queue-toggle-btn');
 
         if (dropdown && !dropdown.contains(event.target) && !toggleBtn.contains(event.target)) {
-            try { saveQueueDropdownScroll(); } catch (_) {}
+            try { 
+              const currentUserIndex = currentQueueData?.current_user;
+              saveQueueDropdownScroll(currentUserIndex); 
+            } catch (_) {}
             dropdown.classList.remove('show');
 
             localStorage.setItem('queueDropdownOpen', 'false');
@@ -3678,14 +3748,23 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
       const shouldOpen = localStorage.getItem('queueDropdownOpen') === 'true';
       const dropdown = document.getElementById('queue-dropdown');
       if (dropdown) {
-        if (shouldOpen) { dropdown.classList.add('show'); try { restoreQueueDropdownScroll(); } catch (_) {} }
+        if (shouldOpen) { 
+          dropdown.classList.add('show'); 
+          try { 
+            const currentUserIndex = currentQueueData?.current_user;
+            restoreQueueDropdownScroll(currentUserIndex); 
+          } catch (_) {} 
+        }
         else dropdown.classList.remove('show');
 
         dropdown.addEventListener('scroll', () => {
           if (queueScrollSaveRaf) return;
           queueScrollSaveRaf = requestAnimationFrame(() => {
             queueScrollSaveRaf = null;
-            try { saveQueueDropdownScroll(); } catch (_) {}
+            try { 
+              const currentUserIndex = currentQueueData?.current_user;
+              saveQueueDropdownScroll(currentUserIndex); 
+            } catch (_) {}
           });
         }, { passive: true });
       }
@@ -3924,7 +4003,7 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
                                                 <path fill="#ced8ed" d="M25 55L15 55 10 17 24 17 25 55z"></path>
                                                 <path fill="#b5c4e0" d="M11,17v2a3,3 0,0,0 3,3H38L37,55H47l5-38Z"></path>
                                                 <path fill="#8d6c9f" d="M16 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 16 10zM11 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 11 10zM21 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 21 10zM26 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 26 10zM31 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 31 10zM36 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 36 10zM41 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 41 10zM46 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 46 10zM51 10a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V11A1 1 0 0 0 51 10z"></path>
-                                                <path fill="#8d6c9f" d="M53,6H9A3,3 0 0 0 6,9v6a3,3 0,0,0 3,3c0,.27 4.89 36.22 4.89 36.22A3 3 0 0 0 15 60H47a3,3 0 0 0 1.11 -5.78l2.28 -17.3a1 1 0 0 0 .06 -.47L52.92 18H53a3,3 0 0 0 3 -3V9A3,3 0 0 0 53 6ZM24.59 18l5 5 -4.78 4.78a1 1 0 1 0 1.41 1.41L31 24.41 37.59 31 31 37.59l-7.29 -7.29h0l-5.82 -5.82a1 1 0 0 0 -1.41 1.41L21.41 31l-7.72 7.72L12.33 27.08 21.41 18Zm16 0 3.33 3.33a1 1 0 0 0 1.41 -1.41L43.41 18h7.17L39 29.59 32.41 23l5 -5Zm-11 21L23 45.59l-5.11 -5.11a1 1 0 0 0 -1.41 1.41L21.59 47l-5.86 5.86L14.2 41.22l8.8 -8.8Zm7.25 4.42L32.41 39 39 32.41l5.14 5.14a1 1 0 0 0 1.41 -1.41L40.41 31 47 24.41l2.67 2.67 -1.19 9L38.3 46.28h0L31 53.59 24.41 47 31 40.41l4.42 4.42a1 1 0 0 0 1.41 -1.41ZM23 48.41 28.59 54H17.41Zm16 0L44.59 54H33.41ZM40.41 47 48 39.37 46.27 52.86ZM50 24.58 48.41 23l2.06 -2.06Zm-19-3L27.41 18h7.17Zm-19.47 -.64L13.59 23 12 24.58Zm3.47 .64L11.41 18h7.17ZM47 58H15a1,1 0,0,1 0 -2H47a1,1 0,0,1 0 2Zm7-43a1,1 0,0,1-1 1H9a1,1 0,0,1-1-1V9A3,3 0,0,1 9 8H53a1,1 0,0,1 1 1Z"></path>
+                                                <path fill="#8d6c9f" d="M53,6H9A3,3 0 0 0 6,9v6a3,3 0,0,0 3,3c0,.27 4.89 36.22 4.89 36.22A3 3 0 0 0 15 60H47a3,3 0 0 0 1.11 -5.78l2.28 -17.3a1 1 0 0 0 .06 -.47L52.92 18H53a3,3 0 0 0 3 -3V9A3,3 0 0 0 53 6ZM24.59 18l5 5 -4.78 4.78a1 1 0 1 0 1.41 1.41L31 24.41 37.59 31 31 37.59l-7.29 -7.29h0l-5.82 -5.82a1 1 0 0 0 -1.41 1.41L21.41 31l-7.72 7.72L12.33 27.08 21.41 18Zm16 0 3.33 3.33a1 1 0 0 0 1.41 -1.41L43.41 18h7.17L39 29.59 32.41 23l5 -5Zm-11 21L23 45.59l-5.11 -5.11a1 1 0 0 0 -1.41 1.41L21.59 47l-5.86 5.86L14.2 41.22l8.8 -8.8Zm7.25 4.42L32.41 39 39 32.41l5.14 5.14a1 1 0 0 0 1.41 -1.41L40.41 31 47 24.41l2.67 2.67 -1.19 9L38.3 46.28h0L31 53.59 24.41 47 31 40.41l4.42 4.42a1 1 0 0 0 1.41 -1.41ZM23 48.41 28.59 54H17.41Zm16 0L44.59 54H33.41ZM40.41 47 48 39.37 46.27 52.86ZM50 24.58 48.41 23l2.06 -2.06Zm-19-3L27.41 18h7.17Zm-19.47 -.64L13.59 23 12 24.58Zm3.47 .64L11.41 18h7.17ZM47 58H15a1,1 0,0,1 0 -2H47a1,1 0,0,1 0 2Zm7 -43a1,1 0,0,1 -1 1H9a1,1 0,0,1 -1 -1V9A3,3 0,0,1 9 8H53a1,1 0,0,1 1 1Z"></path>
                                             </svg>
                                         </button>
                                     </div>
@@ -4017,7 +4096,7 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
                         if (typeof data.active_hint === 'string') {
                             currentQueueData.users[userIndex].active_hint = data.active_hint;
                         }
-                        // Immediately update active-hint-display in the queue header
+
                         const userButtonsDiv = document.getElementById('user-buttons');
                         if (userButtonsDiv) {
                             try {
@@ -4028,7 +4107,6 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
                 }
             } catch (_) {}
 
-            // Persist DOM/HTML right after deletion so it won't reappear on reload
             try {
                 await saveBetweenQueueUsers();
             } catch (err) {
@@ -4039,6 +4117,283 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
         }
     } catch (error) {
         console.error('Error deleting media:', error);
+    }
+  }
+
+  let draggedElement = null;
+  let draggedIndex = null;
+  let dropTarget = null;
+  let dragPlaceholder = null;
+  let dragOffsetX = 0;
+  let dragOffsetY = 0;
+  let dragContainer = null;
+  let isCustomDragging = false;
+  let dragRaf = 0;
+  let dragNextX = 0;
+  let dragNextY = 0;
+
+  function initializeDragAndDrop() {
+    const userButtonsDiv = document.getElementById('user-buttons');
+    if (!userButtonsDiv) return;
+
+    updateDragAndDropListeners();
+  }
+
+  function updateDragAndDropListeners() {
+    const userButtonsDiv = document.getElementById('user-buttons');
+    if (!userButtonsDiv) return;
+
+    const queueUsers = userButtonsDiv.querySelectorAll('.queue-user-item');
+
+    if (queueUsers.length === 0) {
+      return;
+    }
+
+    const firstUser = queueUsers[0];
+    if (firstUser && firstUser.hasAttribute('data-drag-listeners-attached')) {
+      return; 
+    }
+
+    queueUsers.forEach((userElement, index) => {
+      userElement.setAttribute('data-user-index', index);
+      userElement.setAttribute('data-drag-listeners-attached', 'true');
+      userElement.removeAttribute('draggable');
+      userElement.addEventListener('mousedown', startCustomDrag);
+      userElement.style.cursor = 'grab';
+    });
+  }
+
+  function startCustomDrag(e) {
+    if (e.button !== 0) return; 
+    const targetDeleteBtn = e.target.closest('.user-delete-btn');
+    if (targetDeleteBtn) return;
+
+    draggedElement = e.currentTarget.closest('.queue-user-item');
+    if (!draggedElement) return;
+
+    dragContainer = draggedElement.parentElement;
+    const rect = draggedElement.getBoundingClientRect();
+    draggedIndex = parseInt(draggedElement.getAttribute('data-user-index'));
+    if (!Number.isInteger(draggedIndex) || draggedIndex < 0) return;
+
+    isCustomDragging = true;
+    document.body.classList.add('drag-active-cursor');
+    draggedElement.classList.add('dragging');
+
+    dragOffsetX = e.clientX - rect.left;
+    dragOffsetY = e.clientY - rect.top;
+
+    dragPlaceholder = document.createElement('div');
+    dragPlaceholder.className = 'queue-user-placeholder';
+    dragPlaceholder.style.height = rect.height + 'px';
+    dragPlaceholder.style.marginBottom = getComputedStyle(draggedElement).marginBottom;
+
+    draggedElement.parentNode.insertBefore(dragPlaceholder, draggedElement.nextSibling);
+
+    draggedElement.style.width = rect.width + 'px';
+    draggedElement.style.position = 'fixed';
+    draggedElement.style.left = '0px';
+    draggedElement.style.top = '0px';
+    draggedElement.style.transform = `translate3d(${(e.clientX - dragOffsetX)}px, ${(e.clientY - dragOffsetY)}px, 0)`;
+    draggedElement.style.zIndex = '10001';
+    draggedElement.style.pointerEvents = 'none';
+    draggedElement.style.transition = 'none';
+    draggedElement.style.willChange = 'transform';
+
+    document.addEventListener('mousemove', onCustomDragMove);
+    document.addEventListener('mouseup', endCustomDrag);
+    e.preventDefault();
+  }
+
+  function onCustomDragMove(e) {
+    if (!isCustomDragging || !draggedElement) return;
+    dragNextX = e.clientX - dragOffsetX;
+    dragNextY = e.clientY - dragOffsetY;
+    if (!dragRaf) {
+      dragRaf = requestAnimationFrame(() => {
+        if (draggedElement) {
+          draggedElement.style.transform = `translate3d(${dragNextX}px, ${dragNextY}px, 0)`;
+        }
+        dragRaf = 0;
+      });
+    }
+
+    const siblings = Array.from(dragContainer.querySelectorAll('.queue-user-item')).filter(el => el !== draggedElement);
+      const mouseY = e.clientY;
+
+    let inserted = false;
+    for (let i = 0; i < siblings.length; i++) {
+      const r = siblings[i].getBoundingClientRect();
+      const centerY = r.top + r.height / 2;
+      if (mouseY < centerY) {
+        dragContainer.insertBefore(dragPlaceholder, siblings[i]);
+        inserted = true;
+        break;
+      }
+    }
+    if (!inserted) {
+      dragContainer.appendChild(dragPlaceholder);
+    }
+  }
+
+  function endCustomDrag() {
+    if (!isCustomDragging || !draggedElement) return;
+    document.removeEventListener('mousemove', onCustomDragMove);
+    document.removeEventListener('mouseup', endCustomDrag);
+    if (dragRaf) {
+      cancelAnimationFrame(dragRaf);
+      dragRaf = 0;
+    }
+
+    const newIndex = Array.from(dragContainer.children).indexOf(dragPlaceholder);
+
+    draggedElement.style.position = '';
+    draggedElement.style.left = '';
+    draggedElement.style.top = '';
+    draggedElement.style.width = '';
+    draggedElement.style.zIndex = '';
+    draggedElement.style.pointerEvents = '';
+    draggedElement.style.transform = '';
+    draggedElement.style.willChange = '';
+    draggedElement.style.transition = '';
+    draggedElement.classList.remove('dragging');
+    document.body.classList.remove('drag-active-cursor');
+
+    dragContainer.insertBefore(draggedElement, dragPlaceholder);
+    dragPlaceholder.remove();
+
+    isCustomDragging = false;
+
+    if (Number.isInteger(newIndex) && newIndex !== draggedIndex) {
+      try { showLoadingOverlay(); } catch (_) {}
+      reorderQueueUsers(draggedIndex, newIndex).catch(() => { try { hideLoadingOverlay(); } catch (_) {} });
+    }
+
+    draggedElement = null;
+    dragPlaceholder = null;
+    dragContainer = null;
+    draggedIndex = null;
+  }
+
+  async function reorderQueueUsers(fromIndex, toIndex) {
+    try {
+      const localUsers = (currentQueueData && Array.isArray(currentQueueData.users)) ? currentQueueData.users : null;
+
+      if (localUsers && localUsers.length > 0) {
+        if (fromIndex < 0 || fromIndex >= localUsers.length || toIndex < 0 || toIndex > localUsers.length) {
+          throw new Error(`Invalid indices: ${fromIndex} -> ${toIndex}`);
+        }
+        if (fromIndex === toIndex) return;
+
+        const newOrder = Array.from({ length: localUsers.length }, (_, i) => i);
+        const moved = newOrder.splice(fromIndex, 1)[0];
+        newOrder.splice(toIndex, 0, moved);
+
+        const reorderResponse = await fetch('/reorder-queue-users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ newOrder })
+        });
+        if (!reorderResponse.ok) throw new Error('Failed to reorder users');
+        const result = await reorderResponse.json();
+        if (result.success) {
+          await refreshQueueDisplay();
+          showStatus('Order was changed');
+          return;
+        }
+        throw new Error(result.message || 'Failed to reorder users');
+      }
+
+      const response = await fetch('/get-queue-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      if (!response.ok) throw new Error('Failed to get queue data from server');
+      const data = await response.json();
+      if (!data.success) throw new Error('Server returned unsuccessful response');
+      const queueData = data.queue_data;
+      if (!queueData) throw new Error('No queue_data in server response');
+
+      currentQueueData = JSON.parse(JSON.stringify(queueData));
+      const queueUsers = queueData.users || [];
+      if (queueUsers.length === 0) throw new Error('No users found in queue data');
+      if (fromIndex < 0 || fromIndex >= queueUsers.length || toIndex < 0 || toIndex >= queueUsers.length) {
+        throw new Error(`Invalid user indices: fromIndex=${fromIndex}, toIndex=${toIndex}, totalUsers=${queueUsers.length}`);
+      }
+      if (fromIndex === toIndex) return;
+
+      const newOrder = Array.from({ length: queueUsers.length }, (_, i) => i);
+      const draggedElementIndex = newOrder.splice(fromIndex, 1)[0];
+      newOrder.splice(toIndex, 0, draggedElementIndex);
+
+      const reorderResponse = await fetch('/reorder-queue-users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newOrder })
+      });
+      if (!reorderResponse.ok) throw new Error('Failed to reorder users');
+      const result = await reorderResponse.json();
+      if (result.success) {
+        await refreshQueueDisplay();
+        showStatus('Order was changed');
+      } else {
+        throw new Error(result.message || 'Failed to reorder users');
+      }
+    } catch (error) {
+      console.error('Error reordering queue users:', error);
+      showStatus('Error while changing order: ' + error.message);
+      try { hideLoadingOverlay(); } catch (_) {}
+    }
+  }
+
+  async function refreshQueueDisplay() {
+    try {
+
+      const response = await fetch('/get-queue-data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({})
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+
+        if (data && data.success) {
+          currentQueueData = JSON.parse(JSON.stringify(data.queue_data || {}));
+          currentBrowserData = JSON.parse(JSON.stringify(data.browser_data || {}));
+          updateQueueStatus(data.queue_data, data.browser_data || null);
+        }
+
+      }
+    } catch (error) {
+      console.error('Error refreshing queue display:', error);
+    }
+  }
+
+  function showLoadingOverlay() {
+    let overlay = document.getElementById('queue-loading-overlay');
+    if (overlay) return; 
+    overlay = document.createElement('div');
+    overlay.id = 'queue-loading-overlay';
+    overlay.className = 'loading-overlay';
+    overlay.innerHTML = `
+      <div class="loading-spinner" role="status" aria-live="polite" aria-label="Updating order">
+        <span class="ring"></span>
+        <span class="ring"></span>
+        <span class="ring"></span>
+        <span class="spinner-center-glow"></span>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+  }
+
+  function hideLoadingOverlay() {
+    const overlay = document.getElementById('queue-loading-overlay');
+    if (overlay && overlay.parentNode) {
+      overlay.parentNode.removeChild(overlay);
     }
   }
 
