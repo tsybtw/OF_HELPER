@@ -4167,6 +4167,8 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
     if (e.button !== 0) return; 
     const targetDeleteBtn = e.target.closest('.user-delete-btn');
     if (targetDeleteBtn) return;
+    const targetUserBtn = e.target.closest('.user-btn');
+    if (targetUserBtn) return;
 
     draggedElement = e.currentTarget.closest('.queue-user-item');
     if (!draggedElement) return;
@@ -4188,7 +4190,7 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
     dragPlaceholder.style.height = rect.height + 'px';
     dragPlaceholder.style.marginBottom = getComputedStyle(draggedElement).marginBottom;
 
-    draggedElement.parentNode.insertBefore(dragPlaceholder, draggedElement.nextSibling);
+    draggedElement.parentNode.insertBefore(dragPlaceholder, draggedElement);
 
     draggedElement.style.width = rect.width + 'px';
     draggedElement.style.position = 'fixed';
@@ -4245,7 +4247,11 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
       dragRaf = 0;
     }
 
-    const newIndex = Array.from(dragContainer.children).indexOf(dragPlaceholder);
+    const placeholderIndex = Array.from(dragContainer.children).indexOf(dragPlaceholder);
+    let targetIndex = placeholderIndex;
+    if (Number.isInteger(placeholderIndex) && Number.isInteger(draggedIndex) && placeholderIndex > draggedIndex) {
+      targetIndex = placeholderIndex - 1;
+    }
 
     draggedElement.style.position = '';
     draggedElement.style.left = '';
@@ -4264,9 +4270,9 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
 
     isCustomDragging = false;
 
-    if (Number.isInteger(newIndex) && newIndex !== draggedIndex) {
+    if (Number.isInteger(targetIndex) && targetIndex !== draggedIndex) {
       try { showLoadingOverlay(); } catch (_) {}
-      reorderQueueUsers(draggedIndex, newIndex).catch(() => { try { hideLoadingOverlay(); } catch (_) {} });
+      reorderQueueUsers(draggedIndex, targetIndex).catch(() => { try { hideLoadingOverlay(); } catch (_) {} });
     }
 
     draggedElement = null;
