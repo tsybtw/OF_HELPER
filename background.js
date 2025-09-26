@@ -70,7 +70,6 @@ let closedTabsCount = 0;
 let lastCheckTime = 0;
 let lastClosedTime = null;
 let isStop = false;
-const intervals = new Map();
 let processing = false;
 
 let currentBrowserNumber = 1; 
@@ -149,15 +148,16 @@ async function switchToTargetTab(which) {
   });
 }
 
-function checkAndCloseTab(tabId, serializedIntervals) {
-  const intervalsArray = Object.entries(serializedIntervals);
-  const hasInterval = intervalsArray.some(([key]) => key === tabId.toString());
+function checkAndCloseTab(tabId) {
+  const hasInterval = !!(window.__ofhIntervals && window.__ofhIntervals[tabId]);
 
     const cleanupInterval = (tabId) => {
-      chrome.runtime.sendMessage({
-        type: 'clearInterval',
-        tabId: tabId
-      });
+      try {
+        if (window.__ofhIntervals && window.__ofhIntervals[tabId]) {
+          clearInterval(window.__ofhIntervals[tabId]);
+          delete window.__ofhIntervals[tabId];
+        }
+      } catch (_) {}
     };
 
     if (hasInterval) {
@@ -200,11 +200,10 @@ function checkAndCloseTab(tabId, serializedIntervals) {
         }
       }, 5000);
 
-      chrome.runtime.sendMessage({
-        type: 'setInterval',
-        tabId: tabId,
-        intervalId: intervalId
-      });
+      try {
+        window.__ofhIntervals = window.__ofhIntervals || {};
+        window.__ofhIntervals[tabId] = intervalId;
+      } catch (_) {}
     };
 
     const mediaWrapperExists = document.querySelector('.b-make-post__media-wrapper');
@@ -367,7 +366,7 @@ function updateTabCounterOnActiveTab(isReset) {
                 chrome.scripting.executeScript({
                   target: { tabId: tab.id },
                   func: checkAndCloseTab,
-                  args: [tab.id, Object.fromEntries(intervals)],
+                  args: [tab.id],
                 });
               } else if (
                 tab.url.startsWith("https://onlyfans.com") &&
@@ -415,19 +414,7 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  switch (message.type) {
-    case 'setInterval':
-      intervals.set(message.tabId, message.intervalId);
-      break;
-    case 'clearInterval':
-      if (intervals.has(message.tabId)) {
-        clearInterval(intervals.get(message.tabId));
-        intervals.delete(message.tabId);
-      }
-      break;
-  }
 
-  // Page -> background relay for sending browser-data
   if (message && message.type === 'OFH_SEND_BROWSER_DATA_BG' && message.payload) {
     (async () => {
       try {
@@ -554,7 +541,11 @@ let lastMentionPos = null;
 
 function updateMentionPosition(newX, newY) {
   const canvas = document.querySelector(".upper-canvas");
+  if (!canvas) return;
   const canvasRect = canvas.getBoundingClientRect();
+  if (!lastMentionPos || typeof lastMentionPos.x !== 'number' || typeof lastMentionPos.y !== 'number') {
+    lastMentionPos = { x: canvasRect.width / 2, y: canvasRect.height / 2 };
+  }
   const startX = canvasRect.left + lastMentionPos.x;
   const startY = canvasRect.top + lastMentionPos.y;
   const endX = canvasRect.left + newX;
@@ -1068,26 +1059,25 @@ async function pasteBind() {
 
 async function createBrowser(browserType, index, totalIndex, repeat) {
   async function fetchWithRetry(resource, options, timeout = 5000, retries = 3) {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeout);
-
     for (let i = 0; i < retries; i++) {
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), timeout);
       try {
-        const response = await fetch(resource, {
-          ...options,
-          signal: controller.signal,
-        });
+        const response = await fetch(resource, { ...options, signal: controller.signal });
         clearTimeout(id);
         return response;
       } catch (e) {
-        if (e.name === "AbortError") {
-          console.log(`Fetch timed out. Retrying (${i + 1}/${retries})...`);
+        clearTimeout(id);
+        if (e.name === "AbortError" && i < retries - 1) {
           continue;
-        } 
+        }
+        if (i < retries - 1) {
+          await new Promise(r => setTimeout(r, 500));
+          continue;
+        }
         throw e;
       }
     }
-    throw new Error("Fetch failed after retries");
   }
 
   const number = parseInt(browserType.replace(/\D/g, "")) || 0;
@@ -1122,20 +1112,20 @@ async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht) 
   let isProcessing = false;
 
   async function fetchWithRetry(resource, options, timeout = 5000, retries = 3) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
-
     for (let i = 0; i < retries; i++) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
       try {
-        const response = await fetch(resource, {
-          ...options,
-          signal: controller.signal,
-        });
+        const response = await fetch(resource, { ...options, signal: controller.signal });
         clearTimeout(timeoutId);
         return response;
       } catch (e) {
-        if (i === retries - 1) throw e;
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        clearTimeout(timeoutId);
+        if (i < retries - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          continue;
+        }
+        throw e;
       }
     }
   }
@@ -2067,7 +2057,7 @@ chrome.tabs.onUpdated.addListener(function (tabId, changeInfo, tab) {
         chrome.scripting.executeScript({
           target: { tabId: tab.id },
           args: [currentTime.toString()],
-          function: function (currentTime) {
+          func: (currentTime) => {
             const observer = new MutationObserver(function () {
               const usernameDiv = document.querySelector(".g-user-username");
               if (usernameDiv) {
@@ -2232,6 +2222,7 @@ async function checkDataFile() {
 
     let browserType = "";
     var isApart = false;
+    let isDelete = false;
 
     if (lastEntry) {
 
@@ -2818,11 +2809,11 @@ async function checkDataFile() {
                           setTimeout(() => {
                               chrome.tabs.update(currentTabId, { active: true });
                           }, 1000);
-                          chrome.scripting.executeScript({
-                              target: { tabId: firstMatchingTab.id },
-                              func: checkAndCloseTab,
-                              args: [firstMatchingTab.id, Object.fromEntries(intervals)],
-                          });
+                              chrome.scripting.executeScript({
+                                  target: { tabId: firstMatchingTab.id },
+                                  func: checkAndCloseTab,
+                                  args: [firstMatchingTab.id],
+                              });
                       });
                   }
               }
@@ -2846,7 +2837,7 @@ async function checkDataFile() {
                               chrome.scripting.executeScript({
                                   target: { tabId: tab.id },
                                   func: checkAndCloseTab,
-                                  args: [tab.id, Object.fromEntries(intervals)],
+                                  args: [tab.id],
                               });
                           });
                       }
@@ -2947,12 +2938,17 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
                   "#ModalAlert___BV_modal_footer_ > button",
                 );
                 if (button) button.click();
+                try { observer.disconnect(); } catch (_) {}
               }
             }
           });
         });
 
         observer.observe(document.body, { childList: true, subtree: true });
+
+        try {
+          window.addEventListener('beforeunload', () => { try { observer.disconnect(); } catch(_) {} try { rootObserver && rootObserver.disconnect && rootObserver.disconnect(); } catch(_) {} }, { once: true });
+        } catch (_) {}
 
         async function animateButton(button, buttonText, callback) {
           button.style.transform = "scaleX(0.9)";
@@ -3432,7 +3428,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.8.5.5';
+            const VERSION = '5.8.5.6';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -3673,29 +3669,6 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             } else {
               fillElement.style.backgroundPosition = "100%";
               arrowPath.setAttribute("stroke", "#dddddd");
-            }
-          });
-
-          chrome.storage.onChanged.addListener((changes, namespace) => {
-            if (namespace === 'local' && changes.autoRestartEnabled) {
-              const enabled = changes.autoRestartEnabled.newValue;
-              if (fillElement && arrowPath && arrowButton) {
-                if (enabled) {
-                  fillElement.style.backgroundPosition = "0%";
-                  arrowPath.setAttribute("stroke", "#ffffff");
-                  arrowButton.style.transform = "scale(1.1)";
-                  setTimeout(() => {
-                    arrowButton.style.transform = "scale(1)";
-                  }, 150);
-                } else {
-                  fillElement.style.backgroundPosition = "100%";
-                  arrowPath.setAttribute("stroke", "#dddddd");
-                  arrowButton.style.transform = "scale(1.1)";
-                  setTimeout(() => {
-                    arrowButton.style.transform = "scale(1)";
-                  }, 150);
-                }
-              }
             }
           });
 
@@ -4034,8 +4007,6 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
   }
 }
 
-const processedTabs = new Set();
-
 chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
 
   function handleTabOpen() {
@@ -4059,7 +4030,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
                 if (info.status === "complete" && tabId === newTab.id) {
                   chrome.scripting.executeScript({
                     target: { tabId: newTab.id },
-                    function() {
+                    func: () => {
                       const selector1 = "#content > div.l-wrapper > div.l-wrapper__holder-content.m-inherit-zindex > div > div > div > div.g-page__header.m-real-sticky.js-sticky-header.m-nowrap > div > button.m-btn-clear-draft.g-btn.m-border.m-rounded.m-sm-width.m-reset-width";
                       const selector2 = "#content > div.l-wrapper > div > div > div > div > div.stories-list.g-negative-sides-gaps";
                       const observer = new MutationObserver((mutationsList) => {
@@ -4134,7 +4105,6 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
   }
 
   if (request.action === "clickAndMove") {
-    processedTabs.clear();
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
       if (tabs && tabs.length > 0) {
         const currentTabId = tabs[0].id;
@@ -4622,7 +4592,7 @@ function createNotification(tabId, message) {
       var activeTabId = tabs[0].id;
       chrome.scripting.executeScript({
         target: { tabId: activeTabId },
-        function: function () {
+        func: () => {
           var tabId = arguments[1];
           var notification = document.createElement("div");
           var closeButton = document.createElement("span");
@@ -4851,11 +4821,6 @@ function clickOnNewTab(tabId, callback) {
           return;
       }
 
-      if (processedTabs.has(tabId)) {
-        callback?.();
-        return;
-      }
-
       chrome.scripting.executeScript({
           target: { tabId: tabId },
           func: () => {
@@ -5054,7 +5019,7 @@ async function resetAllButtonStyles() {
               func: () => {
                 const button = document.getElementById("autopost-button");
                 if (button) {
-                  const oldStyle = document.querySelector('style');
+                  const oldStyle = document.getElementById('auto-post-styles');
                   if (oldStyle) {
                     oldStyle.remove();
                   }
@@ -5154,48 +5119,9 @@ function getNumberOfTabsToClick(currentTabId, callback) {
   });
 }
 
-chrome.storage.onChanged.addListener((changes, namespace) => {
-  if (namespace === 'local' && changes.autoRestartEnabled) {
-    const enabled = changes.autoRestartEnabled.newValue;
-    chrome.tabs.query({}, (tabs) => {
-      tabs.forEach(tab => {
-        if (tab.url && tab.url.includes("onlyfans.com")) {
-          chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            func: (newState) => {
-              const fillElement = document.getElementById("fill-animation");
-              const arrowPath = document.getElementById("arrow-path");
-              const arrowButton = document.getElementById("auto-restart-arrow");
-
-              if (fillElement && arrowPath && arrowButton) {
-                if (newState) {
-                  fillElement.style.backgroundPosition = "0%";
-                  arrowPath.setAttribute("stroke", "#ffffff");
-                  arrowButton.style.transform = "scale(1.1)";
-                  setTimeout(() => {
-                    arrowButton.style.transform = "scale(1)";
-                  }, 150);
-                } else {
-                  fillElement.style.backgroundPosition = "100%";
-                  arrowPath.setAttribute("stroke", "#dddddd");
-                  arrowButton.style.transform = "scale(1.1)";
-                  setTimeout(() => {
-                    arrowButton.style.transform = "scale(1)";
-                  }, 150);
-                }
-              }
-            },
-            args: [enabled]
-          });
-        }
-      });
-    });
-  }
-});
-
 async function collectOnlyfansData(tabId) {
   try {
-    // Collect UA, x-bc and username from page context
+
     const [inj] = await chrome.scripting.executeScript({
       target: { tabId },
       func: () => {
@@ -5209,7 +5135,6 @@ async function collectOnlyfansData(tabId) {
           const ua = navigator.userAgent || '';
           const xbc = (typeof localStorage !== 'undefined' && localStorage.getItem('bcTokenSha')) || '';
 
-          // Build overlay UI
           try { const ex = document.getElementById('ofh-overlay'); if (ex) ex.remove(); } catch (_) {}
           const overlay = document.createElement('div');
           overlay.id = 'ofh-overlay';
@@ -5271,11 +5196,10 @@ async function collectOnlyfansData(tabId) {
           panel.appendChild(buttons);
           overlay.appendChild(panel);
           (document.body || document.documentElement).appendChild(overlay);
-          // Force reflow to ensure transition runs
+
           void panel.offsetHeight;
           requestAnimationFrame(()=>{ try{ overlay.style.background='rgba(0,0,0,0.35)'; panel.style.opacity='1'; panel.style.transform='translateY(10px)'; }catch(_){} });
 
-          // Relay send to background via window.postMessage => content script
           try {
             window.addEventListener('message', (ev) => {
               try {
@@ -5297,7 +5221,6 @@ async function collectOnlyfansData(tabId) {
     const xbc = (inj && inj.result && inj.result.xbc) || '';
     const tag = (inj && inj.result && inj.result.tag) || '';
 
-    // Collect sess and auth_id via cookies API
     const sess = await new Promise((resolve) => {
       try { chrome.cookies.get({ url: 'https://onlyfans.com/', name: 'sess' }, c => resolve((c && c.value) || '')); } catch (_) { resolve(''); }
     });
@@ -5305,7 +5228,6 @@ async function collectOnlyfansData(tabId) {
       try { chrome.cookies.get({ url: 'https://onlyfans.com/', name: 'auth_id' }, c => resolve((c && c.value) || '')); } catch (_) { resolve(''); }
     });
 
-    // Wire Add and Close handlers; no auto-send, only on Add
     await chrome.scripting.executeScript({
       target: { tabId },
       func: (payload) => {
