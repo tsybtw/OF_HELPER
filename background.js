@@ -2937,28 +2937,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: function (DELAY_GREEN_BUTTON) {
-        let observer = new MutationObserver((mutations) => {
-          mutations.forEach((mutation) => {
-            if (mutation.addedNodes.length) {
-              let elements = document.querySelectorAll(
-                ".b-dropzone__preview__delete.g-btn.m-rounded.m-reset-width.m-thumb-r-corner-pos.m-btn-remove.m-sm-icon-size.has-tooltip",
-              );
-              if (elements.length) {
-                let button = document.querySelector(
-                  "#ModalAlert___BV_modal_footer_ > button",
-                );
-                if (button) button.click();
-                try { observer.disconnect(); } catch (_) {}
-              }
-            }
-          });
-        });
-
-        observer.observe(document.body, { childList: true, subtree: true });
-
-        try {
-          window.addEventListener('beforeunload', () => { try { observer.disconnect(); } catch(_) {} try { rootObserver && rootObserver.disconnect && rootObserver.disconnect(); } catch(_) {} }, { once: true });
-        } catch (_) {}
+        
 
         async function animateButton(button, buttonText, callback) {
           button.style.transform = "scaleX(0.9)";
@@ -3438,7 +3417,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.8.5.7';
+            const VERSION = '5.8.5.8';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -4735,6 +4714,14 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     tab.status === "complete" &&
     tab.url !== undefined
   ) {
+    try {
+      if (tab.url && tab.url.startsWith('https://onlyfans.com')) {
+        chrome.scripting.insertCSS({
+          target: { tabId },
+          css: "#ModalAlert___BV_modal_outer_{ display: none !important; visibility: hidden !important; opacity: 0 !important; position: fixed !important; top: -9999px !important; left: -9999px !important; z-index: -9999 !important; width: 0 !important; height: 0 !important; overflow: hidden !important; }"
+        });
+      }
+    } catch (_) {}
     chrome.storage.local.get("tabIds", function (data) {
       let tabIds = data.tabIds || [];
       if (!tabIds.includes(tabId)) {
@@ -4748,6 +4735,14 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
 chrome.tabs.onCreated.addListener(async (tab) => {
   if (tab.status === "complete" && tab.url !== undefined) {
+    try {
+      if (tab.url && tab.url.startsWith('https://onlyfans.com')) {
+        chrome.scripting.insertCSS({
+          target: { tabId: tab.id },
+          css: "#ModalAlert___BV_modal_outer_{ display: none !important; visibility: hidden !important; opacity: 0 !important; position: fixed !important; top: -9999px !important; left: -9999px !important; z-index: -9999 !important; width: 0 !important; height: 0 !important; overflow: hidden !important; }"
+        });
+      }
+    } catch (_) {}
     chrome.storage.local.get("tabIds", function (data) {
       let tabIds = data.tabIds || [];
       if (tabIds.includes(tab.id)) {
@@ -4771,6 +4766,12 @@ chrome.storage.local.remove("tabIds", function () {
 chrome.webNavigation.onCompleted.addListener(
   function (details) {
     if (details.url.startsWith("https://onlyfans.com/")) {
+      try {
+        chrome.scripting.insertCSS({
+          target: { tabId: details.tabId },
+          css: "#ModalAlert___BV_modal_outer_{ display: none !important; visibility: hidden !important; opacity: 0 !important; position: fixed !important; top: -9999px !important; left: -9999px !important; z-index: -9999 !important; width: 0 !important; height: 0 !important; overflow: hidden !important; }"
+        });
+      } catch (_) {}
       updateTabCounterOnActiveTab(false);
     }
   },
@@ -4779,6 +4780,12 @@ chrome.webNavigation.onCompleted.addListener(
 
 chrome.tabs.onCreated.addListener(function (tab) {
   if (tab.url && tab.url.startsWith("https://onlyfans.com/")) {
+    try {
+      chrome.scripting.insertCSS({
+        target: { tabId: tab.id },
+        css: "#ModalAlert___BV_modal_outer_{ display: none !important; visibility: hidden !important; opacity: 0 !important; position: fixed !important; top: -9999px !important; left: -9999px !important; z-index: -9999 !important; width: 0 !important; height: 0 !important; overflow: hidden !important; }"
+      });
+    } catch (_) {}
     updateTabCounterOnActiveTab(false);
   }
 });
@@ -4789,6 +4796,12 @@ chrome.tabs.onUpdated.addListener(function (tabId, changeInfo, tab) {
     tab.url.startsWith("https://onlyfans.com/") &&
     changeInfo.status === "complete"
   ) {
+    try {
+      chrome.scripting.insertCSS({
+        target: { tabId },
+        css: "#ModalAlert___BV_modal_outer_{ display: none !important; visibility: hidden !important; opacity: 0 !important; position: fixed !important; top: -9999px !important; left: -9999px !important; z-index: -9999 !important; width: 0 !important; height: 0 !important; overflow: hidden !important; }"
+      });
+    } catch (_) {}
     updateTabCounterOnActiveTab(false);
   }
 });
