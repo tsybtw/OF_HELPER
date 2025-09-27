@@ -1238,7 +1238,6 @@ async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht) 
               type: fileType,
             });
 
-            let dragAttempts = 0;
             let mediaInserted = false;
 
             const observer = new MutationObserver((mutations) => {
@@ -1256,8 +1255,25 @@ async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht) 
 
             observer.observe(document.body, { childList: true, subtree: true });
 
-            const tryInsertMedia = async () => {
-              if (mediaInserted || dragAttempts >= 3) {
+            const tryInsertMedia = () => {
+              if (mediaInserted) {
+                return;
+              }
+
+              const existingWrapper = document.querySelector(".b-make-post__media-wrapper");
+              if (existingWrapper) {
+                mediaInserted = true;
+                resolve();
+                observer.disconnect();
+                return;
+              }
+
+              const now = Date.now();
+              try { window.__ofhLastMediaAttemptAt = window.__ofhLastMediaAttemptAt || 0; } catch (_) {}
+              const lastAttemptAt = window.__ofhLastMediaAttemptAt || 0;
+              const elapsedSinceLastAttemptMs = now - lastAttemptAt;
+              if (elapsedSinceLastAttemptMs < 3000) {
+                setTimeout(tryInsertMedia, 3000 - elapsedSinceLastAttemptMs);
                 return;
               }
 
@@ -1265,33 +1281,27 @@ async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht) 
                 ".tiptap.ProseMirror.b-text-editor.js-text-editor.m-native-custom-scrollbar.m-scrollbar-y.m-scroll-behavior-auto.m-overscroll-behavior-auto"
               );
 
-              const mediaWrapper = document.querySelector(".b-make-post__media-wrapper");
-
-              if (editor && !mediaWrapper) {
+              if (editor) {
                 editor.focus();
                 simulateDragAndDrop(mediaElement, editor, file);
-                dragAttempts++;
-
-                setTimeout(() => {
-                  const updatedMediaWrapper = document.querySelector(".b-make-post__media-wrapper");
-                  if (updatedMediaWrapper) {
-                    mediaInserted = true;
-                    resolve();
-                    observer.disconnect();
-                  } else if (dragAttempts >= 3) {
-                    resolve();
-                    observer.disconnect();
-                  } else {
-                    setTimeout(tryInsertMedia, 1000);
-                  }
-                }, 500);
-              } else if (mediaWrapper) {
-                mediaInserted = true;
-                resolve();
-                observer.disconnect();
-              } else {
-                setTimeout(tryInsertMedia, 1000);
+                try { window.__ofhLastMediaAttemptAt = Date.now(); } catch (_) {}
               }
+
+              let checks = 0;
+              const pollId = setInterval(() => {
+                if (document.querySelector(".b-make-post__media-wrapper")) {
+                  mediaInserted = true;
+                  clearInterval(pollId);
+                  resolve();
+                  observer.disconnect();
+                } else {
+                  checks++;
+                  if (checks >= 5) {
+                    clearInterval(pollId);
+                    setTimeout(tryInsertMedia, 0);
+                  }
+                }
+              }, 1000);
             };
 
             tryInsertMedia();
@@ -3428,7 +3438,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.8.5.6';
+            const VERSION = '5.8.5.7';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -4442,32 +4452,55 @@ async function pressBindFix(tab, browserType) {
                           subtree: true,
                         });
 
-                        let dragAttempts = 0;
+                        const attemptInsert = () => {
+                          if (mediaInserted) return;
 
-                        const intervalId = setInterval(function () {
-                          let element = document.querySelector(
-                            ".tiptap.ProseMirror.b-text-editor.js-text-editor.m-native-custom-scrollbar.m-scrollbar-y.m-scroll-behavior-auto.m-overscroll-behavior-auto"
-                          );
-                          let el = document.querySelector(".b-make-post__media-wrapper");
-
-                          if (element && !el && dragAttempts === 0 && !mediaInserted) {
-                            element.focus();
-                            simulateDragAndDrop(mediaElement, element, file);
+                          const existing = document.querySelector(".b-make-post__media-wrapper");
+                          if (existing) {
                             mediaInserted = true;
-                            dragAttempts++;
+                            isUploading = false;
+                            resolve();
+                            observer.disconnect();
+                            return;
                           }
 
-                          setTimeout(function () {
-                            el = document.querySelector(".b-make-post__media-wrapper");
-                            if (el || dragAttempts >= 2) {
+                          const now = Date.now();
+                          try { window.__ofhLastMediaAttemptAt = window.__ofhLastMediaAttemptAt || 0; } catch (_) {}
+                          const lastAttemptAt = window.__ofhLastMediaAttemptAt || 0;
+                          const elapsed = now - lastAttemptAt;
+                          if (elapsed < 3000) {
+                            setTimeout(attemptInsert, 3000 - elapsed);
+                            return;
+                          }
+
+                          const editor = document.querySelector(
+                            ".tiptap.ProseMirror.b-text-editor.js-text-editor.m-native-custom-scrollbar.m-scrollbar-y.m-scroll-behavior-auto.m-overscroll-behavior-auto"
+                          );
+                          if (editor) {
+                            editor.focus();
+                            simulateDragAndDrop(mediaElement, editor, file);
+                            try { window.__ofhLastMediaAttemptAt = Date.now(); } catch (_) {}
+                          }
+
+                          let checks = 0;
+                          const poll = setInterval(() => {
+                            if (document.querySelector(".b-make-post__media-wrapper")) {
                               mediaInserted = true;
-                              clearInterval(intervalId);
+                              clearInterval(poll);
                               isUploading = false;
                               resolve();
                               observer.disconnect();
+                            } else {
+                              checks++;
+                              if (checks >= 5) {
+                                clearInterval(poll);
+                                setTimeout(attemptInsert, 0);
+                              }
                             }
-                          }, 500);
-                        }, 200);
+                          }, 1000);
+                        };
+
+                        attemptInsert();
                       });
                     } catch (error) {
                       console.error("Ошибка при обработке изображения:", error);
@@ -4592,8 +4625,7 @@ function createNotification(tabId, message) {
       var activeTabId = tabs[0].id;
       chrome.scripting.executeScript({
         target: { tabId: activeTabId },
-        func: () => {
-          var tabId = arguments[1];
+        func: function(message, tabId) {
           var notification = document.createElement("div");
           var closeButton = document.createElement("span");
           closeButton.innerText = "×";
@@ -4622,7 +4654,7 @@ function createNotification(tabId, message) {
           notification.appendChild(closeButton);
 
           var messageElement = document.createElement("span");
-          messageElement.innerText = arguments[0];
+          messageElement.innerText = message;
           notification.appendChild(messageElement);
 
           Object.assign(notification.style, {
