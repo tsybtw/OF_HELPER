@@ -1213,6 +1213,24 @@ async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht) 
 
     isUploading = true;
 
+    const waitForPageStability = () => {
+      return new Promise((resolve) => {
+        const checkStability = () => {
+          const editor = document.querySelector(".tiptap.ProseMirror");
+          const isStable = editor && editor.offsetHeight > 0 && document.readyState === 'complete';
+          
+          if (isStable) {
+            resolve();
+          } else {
+            setTimeout(checkStability, 100);
+          }
+        };
+        checkStability();
+      });
+    };
+
+    await waitForPageStability();
+
     try {
       const fileExtension = imageUrl.split(".").pop().toLowerCase();
       let fileType = "image/png";
@@ -1272,19 +1290,19 @@ async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht) 
               try { window.__ofhLastMediaAttemptAt = window.__ofhLastMediaAttemptAt || 0; } catch (_) {}
               const lastAttemptAt = window.__ofhLastMediaAttemptAt || 0;
               const elapsedSinceLastAttemptMs = now - lastAttemptAt;
-              if (elapsedSinceLastAttemptMs < 3000) {
-                setTimeout(tryInsertMedia, 3000 - elapsedSinceLastAttemptMs);
+              if (elapsedSinceLastAttemptMs < 1500) {
+                setTimeout(tryInsertMedia, 1500 - elapsedSinceLastAttemptMs);
                 return;
               }
 
               const editor = document.querySelector(
-                ".tiptap.ProseMirror.b-text-editor.js-text-editor.m-native-custom-scrollbar.m-scrollbar-y.m-scroll-behavior-auto.m-overscroll-behavior-auto"
+                  ".tiptap.ProseMirror.b-text-editor.js-text-editor.m-native-custom-scrollbar.m-scrollbar-y.m-scroll-behavior-auto.m-overscroll-behavior-auto"
               );
 
               if (editor) {
-                editor.focus();
-                simulateDragAndDrop(mediaElement, editor, file);
-                try { window.__ofhLastMediaAttemptAt = Date.now(); } catch (_) {}
+                  editor.focus();
+                  simulateDragAndDrop(mediaElement, editor, file);
+                  try { window.__ofhLastMediaAttemptAt = Date.now(); } catch (_) {}
               }
 
               let checks = 0;
@@ -1410,26 +1428,67 @@ async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht) 
         });
       };
 
+      const waitForPageReady = () => {
+        return new Promise((resolve) => {
+          const checkReady = () => {
+            const editor = document.querySelector(".tiptap.ProseMirror");
+            const expireButton = document.querySelector(".b-make-post__expire-period-btn");
+            const isPageReady = editor && expireButton && document.readyState === 'complete';
+            
+            if (isPageReady) {
+              resolve();
+            } else {
+              setTimeout(checkReady, 100);
+            }
+          };
+          checkReady();
+        });
+      };
+
+      await waitForPageReady();
+      
       const expireButton = await waitForElement(".b-make-post__expire-period-btn");
       if (!expireButton) {
         throw new Error("Expire period button not found");
       }
 
+      const promises = [];
+      
       if (imageUrl) {
-        await handleImageUpload(pht);
+        promises.push(handleImageUpload(pht));
       } else {
         imageInserted = true;
       }
 
-      const textarea = await waitForElement(".tiptap.ProseMirror");
-      if (textarea && txt) {
-        textarea.innerHTML = formatText(text);
-        textInserted = true;
-        await sendUpdateRequest();
+      if (txt) {
+        promises.push((async () => {
+          const textarea = await waitForElement(".tiptap.ProseMirror");
+          if (textarea) {
+            await new Promise(resolve => {
+              const checkTextareaReady = () => {
+                if (textarea.offsetHeight > 0 && textarea.offsetWidth > 0) {
+                  resolve();
+                } else {
+                  setTimeout(checkTextareaReady, 50);
+                }
+              };
+              checkTextareaReady();
+            });
+            
+            textarea.innerHTML = formatText(text);
+            textInserted = true;
+            await sendUpdateRequest();
+          } else {
+            textInserted = true;
+            await sendUpdateRequest();
+          }
+        })());
       } else {
         textInserted = true;
         await sendUpdateRequest();
       }
+
+      await Promise.all(promises);
 
       if (exp) {
         await new Promise(resolve => setTimeout(resolve, 500));
@@ -1460,10 +1519,7 @@ async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht) 
       isProcessing = false;
     }
   }
-
-  setTimeout(() => {
-    startProcessing();
-  }, 1000);
+  startProcessing();
 }
 
 function addTimeToPost(textInput, isApart, browserType) {
@@ -3417,7 +3473,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.8.5.8';
+            const VERSION = '5.8.5.9';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -4447,20 +4503,20 @@ async function pressBindFix(tab, browserType) {
                           try { window.__ofhLastMediaAttemptAt = window.__ofhLastMediaAttemptAt || 0; } catch (_) {}
                           const lastAttemptAt = window.__ofhLastMediaAttemptAt || 0;
                           const elapsed = now - lastAttemptAt;
-                          if (elapsed < 3000) {
-                            setTimeout(attemptInsert, 3000 - elapsed);
+                          if (elapsed < 1500) {
+                            setTimeout(attemptInsert, 1500 - elapsed);
                             return;
                           }
 
                           const editor = document.querySelector(
-                            ".tiptap.ProseMirror.b-text-editor.js-text-editor.m-native-custom-scrollbar.m-scrollbar-y.m-scroll-behavior-auto.m-overscroll-behavior-auto"
+                              ".tiptap.ProseMirror.b-text-editor.js-text-editor.m-native-custom-scrollbar.m-scrollbar-y.m-scroll-behavior-auto.m-overscroll-behavior-auto"
                           );
                           if (editor) {
-                            editor.focus();
-                            simulateDragAndDrop(mediaElement, editor, file);
-                            try { window.__ofhLastMediaAttemptAt = Date.now(); } catch (_) {}
+                              editor.focus();
+                              simulateDragAndDrop(mediaElement, editor, file);
+                              try { window.__ofhLastMediaAttemptAt = Date.now(); } catch (_) {}
                           }
-
+    
                           let checks = 0;
                           const poll = setInterval(() => {
                             if (document.querySelector(".b-make-post__media-wrapper")) {
