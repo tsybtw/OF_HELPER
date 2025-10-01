@@ -79,12 +79,29 @@ let switchTabsCurrentPhase = null;
 let switchTabsInFlight = false;
 let lastSwitchStateSignature = null;
 
+const DEDUPE_TTL_MS = 1000;
+const recentCommands = new Map();
+
 chrome.storage.local.get(['currentBrowserNumber'], (result) => {
   if (result.currentBrowserNumber) {
     currentBrowserNumber = result.currentBrowserNumber;
     console.log(`Browser number initialized: ${currentBrowserNumber}`);
   }
 });
+
+chrome.storage.local.get(['lastTabCount', 'timerVisibility'], (res) => {
+  if (typeof res.lastTabCount === 'number') {
+    lastTabCount = res.lastTabCount;
+  }
+  if (typeof res.timerVisibility === 'boolean') {
+    timerVisibility = res.timerVisibility;
+  }
+  try { updateTabCounterOnActiveTab(false); } catch (_) {}
+});
+
+function persistTabCount(count) {
+  chrome.storage.local.set({ lastTabCount: count });
+}
 
 setInterval(async () => {
   try {
@@ -114,6 +131,8 @@ setInterval(async () => {
     }
   } catch (e) {}
 }, 1000);
+
+// No need to persist seconds on suspend per requirement; rely on lastTabCount only
 
 async function performPhaseSwitch(phase) {
   if (!switchTabsEnabled) return;
@@ -283,6 +302,7 @@ function updateTabCounterOnActiveTab(isReset) {
       if (isReset) {
         lastClosedTime = new Date();
         closedTabsCount = 0;
+        chrome.storage.local.set({ timerVisibility });
       }
 
       if (lastClosedTime) {
@@ -332,6 +352,9 @@ function updateTabCounterOnActiveTab(isReset) {
         },
         args: [onlyFansTabsCount, closedTabsCount, timeSinceLastClosed, color]
       }).catch(console.error);
+
+      // persist last known tab count so we can restore after service worker restart
+      persistTabCount(onlyFansTabsCount);
     });
   });
 
@@ -378,6 +401,11 @@ function updateTabCounterOnActiveTab(isReset) {
                 chrome.tabs.remove(tab.id);
               }
             }
+
+            // after operations, persist current known number to survive restarts
+            chrome.tabs.query({ url: "https://onlyfans.com/*" }, (tbs) => {
+              persistTabCount(Array.isArray(tbs) ? tbs.length : onlyFansTabsCount);
+            });
           }
         );
       }
@@ -410,6 +438,12 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
   if (namespace === 'local' && changes.currentBrowserNumber) {
     currentBrowserNumber = changes.currentBrowserNumber.newValue || 1;
     console.log(`Browser number updated: ${currentBrowserNumber}`);
+  }
+  if (namespace === 'local' && changes.timerVisibility) {
+    if (typeof changes.timerVisibility.newValue === 'boolean') {
+      timerVisibility = changes.timerVisibility.newValue;
+      try { updateTabCounterOnActiveTab(false); } catch (_) {}
+    }
   }
 });
 
@@ -2324,6 +2358,7 @@ async function checkDataFile() {
     }
 
     if (lastEntry && (lastEntry.id === "23" || (lastEntry.id === "11" && lastEntry.textInput === "clear")) && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
       const activeTab = currentWindow.tabs.find((tab) => tab.active);
@@ -2335,6 +2370,7 @@ async function checkDataFile() {
     })}
 
     if (lastEntry && (lastEntry.id === "24" || (lastEntry.id === "11" && lastEntry.textInput === "reload")) && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
       const activeTab = currentWindow.tabs.find((tab) => tab.active);
@@ -2408,12 +2444,14 @@ async function checkDataFile() {
   }
 
     if (lastEntry && lastEntry.id === "25" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
       processTags().catch(error => console.error(error));
       return;
     }
 
     if (lastEntry && lastEntry.id === "26" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
@@ -2442,6 +2480,7 @@ async function checkDataFile() {
     }
 
     if (lastEntry && lastEntry.id === "27" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
       const activeTab = currentWindow.tabs.find((tab) => tab.active);
@@ -2454,6 +2493,7 @@ async function checkDataFile() {
     })}
 
     if (lastEntry && lastEntry.id === "11" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
@@ -2463,10 +2503,12 @@ async function checkDataFile() {
           return;
         } else if (lastEntry.textInput === "hide") {
           timerVisibility = false;
+          chrome.storage.local.set({ timerVisibility });
           return;
         } 
         else if (lastEntry.textInput === "show") {
           timerVisibility = true;
+          chrome.storage.local.set({ timerVisibility });
           return;
         } else if (lastEntry.textInput === "checkActivity") {
           sendActivityInfo(browserType);
@@ -2570,6 +2612,7 @@ async function checkDataFile() {
     }
 
     if (lastEntry && lastEntry.id === "12" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
 
       const text = lastEntry.textInput;
@@ -2632,6 +2675,7 @@ async function checkDataFile() {
     }
 
     if (lastEntry && lastEntry.id === "14" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
@@ -2645,6 +2689,7 @@ async function checkDataFile() {
     }
 
     if (lastEntry && lastEntry.id === "15" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
@@ -2658,6 +2703,7 @@ async function checkDataFile() {
     }
 
     if (lastEntry && lastEntry.id === "19" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
@@ -2672,6 +2718,7 @@ async function checkDataFile() {
     }
 
     if (lastEntry && lastEntry.id === "100" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
@@ -2685,6 +2732,7 @@ async function checkDataFile() {
     }
 
     if (lastEntry && lastEntry.id === "101" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
@@ -2698,6 +2746,7 @@ async function checkDataFile() {
     }
 
     if (lastEntry && lastEntry.id === "102" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
@@ -2711,6 +2760,7 @@ async function checkDataFile() {
     }
 
     if (lastEntry && lastEntry.id === "103" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
@@ -2724,6 +2774,7 @@ async function checkDataFile() {
     }
 
     if (lastEntry && lastEntry.id === "104" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
@@ -2746,6 +2797,7 @@ async function checkDataFile() {
     }
 
     if (lastEntry && lastEntry.id === "20" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
@@ -2762,6 +2814,7 @@ async function checkDataFile() {
     }
 
     if (lastEntry && lastEntry.id === "21" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
 
       chrome.storage.local.get(
@@ -2864,6 +2917,7 @@ async function checkDataFile() {
     }
 
     if (lastEntry && lastEntry.id === "22" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
       chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
           const currentTabId = tabs[0].id;
@@ -2889,6 +2943,7 @@ async function checkDataFile() {
     }
 
     if (lastEntry && lastEntry.id === "32" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
       chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
           const currentTabId = tabs[0].id;
@@ -2915,6 +2970,7 @@ async function checkDataFile() {
     }
 
     if (lastEntry && lastEntry.id === "16" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
@@ -2928,6 +2984,7 @@ async function checkDataFile() {
     }
 
     if (lastEntry && lastEntry.id === "117" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
@@ -2941,6 +2998,7 @@ async function checkDataFile() {
     }
 
     if (lastEntry && lastEntry.id === "118" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
@@ -2953,6 +3011,7 @@ async function checkDataFile() {
     }
 
     if (lastEntry && lastEntry.id === "18" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
@@ -2966,6 +3025,7 @@ async function checkDataFile() {
     }
 
     if (lastEntry && lastEntry.id === "13" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
       if (!isApart) {
         isApart = false;
@@ -3473,7 +3533,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.8.5.9';
+            const VERSION = '5.8.6';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -4867,6 +4927,7 @@ chrome.tabs.onRemoved.addListener(function (tabId) {
     closedTabIds.delete(tabId);
     closedTabsCount++;
     lastClosedTime = new Date();
+    // no-op persist for seconds per requirement
   }
   updateTabCounterOnActiveTab(false);
 });
@@ -4905,6 +4966,24 @@ async function sendTypeToServer(dataIndex, browserType) {
     }
   } catch (error) {
     console.error("Error:", error);
+  }
+}
+
+function shouldSkipDuplicate(entry, browserType) {
+  try {
+    const cmdKey = JSON.stringify({ id: entry.id, text: entry.textInput || null, browserType });
+    const now = Date.now();
+    for (const [k, ts] of recentCommands.entries()) {
+      if (now - ts > DEDUPE_TTL_MS) recentCommands.delete(k);
+    }
+    const lastTs = recentCommands.get(cmdKey);
+    if (lastTs && (now - lastTs) < DEDUPE_TTL_MS) {
+      return true;
+    }
+    recentCommands.set(cmdKey, now);
+    return false;
+  } catch (_) {
+    return false;
   }
 }
 
