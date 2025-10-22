@@ -3533,7 +3533,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.8.6';
+            const VERSION = '5.8.6.1';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -4230,18 +4230,33 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
   }
 
   if (request.action === "blacklist") {
-    chrome.tabs.query({ currentWindow: true }, function (tabs) {
-      let currentTab = tabs.find((tab) => tab.id === request.tabId);
-      let previousTab = tabs.find((tab) => tab.index === currentTab.index - 1);
-      if (previousTab && previousTab.url !== request.url) {
-        chrome.tabs.create({ 
-          url: request.url,
-          index: currentTab.index + 1,
-          active: false
-        });
-      }
-      chrome.storage.local.set({ [`blacklisted_${request.tabId}`]: true });
+    chrome.scripting.executeScript({
+      target: { tabId: request.tabId },
+      func: (url) => {
+        try {
+          let btn = document.getElementById('ofh-open-blacklist-btn');
+          if (btn) return;
+          btn = document.createElement('button');
+          btn.id = 'ofh-open-blacklist-btn';
+          btn.textContent = 'open blackliist';
+          btn.className = 'g-btn m-flat m-btn-gaps m-reset-width';
+          const style = btn.style;
+          style.position = 'fixed';
+          style.top = '10px';
+          style.left = '60%';
+          style.transform = 'translateX(-50%)';
+          style.zIndex = '2147483647';
+          style.padding = '8px 14px';
+          style.borderRadius = '10px';
+          style.fontWeight = 'bold';
+          style.cursor = 'pointer';
+          document.body.appendChild(btn);
+          btn.addEventListener('click', () => { window.open(url, '_blank'); });
+        } catch (e) { console.error(e); }
+      },
+      args: [request.url]
     });
+    chrome.storage.local.set({ [`blacklisted_${request.tabId}`]: true });
   }
 
   if (request.action === "closeTab" && sender.tab?.id) {
@@ -4397,8 +4412,7 @@ async function pressBindFix(tab, browserType) {
                 tabId: tab.id,
                 message: innerDiv.textContent,
               });
-              chrome.storage.local.set({ [`blacklisted_${tab.id}`]: true });
-              return;
+              await delay(60000);
             } 
             else if (/(attached|issue)/i.test(innerDiv.textContent)) {
 
