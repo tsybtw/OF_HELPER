@@ -82,6 +82,26 @@ let lastSwitchStateSignature = null;
 const DEDUPE_TTL_MS = 1000;
 const recentCommands = new Map();
 
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, ts] of recentCommands.entries()) {
+    if (now - ts > DEDUPE_TTL_MS) recentCommands.delete(k);
+  }
+}, DEDUPE_TTL_MS * 2); 
+
+const injectedTabs = new Set();
+
+async function injectCSSOnce(tabId) {
+  if (injectedTabs.has(tabId)) return;
+  try {
+    await chrome.scripting.insertCSS({
+      target: { tabId },
+      css: "#ModalAlert___BV_modal_outer_{ display: none !important; visibility: hidden !important; opacity: 0 !important; position: fixed !important; top: -9999px !important; left: -9999px !important; z-index: -9999 !important; width: 0 !important; height: 0 !important; overflow: hidden !important; }"
+    });
+    injectedTabs.add(tabId);
+  } catch (_) {}
+}
+
 chrome.storage.local.get(['currentBrowserNumber'], (result) => {
   if (result.currentBrowserNumber) {
     currentBrowserNumber = result.currentBrowserNumber;
@@ -99,8 +119,12 @@ chrome.storage.local.get(['lastTabCount', 'timerVisibility'], (res) => {
   try { updateTabCounterOnActiveTab(false); } catch (_) {}
 });
 
+let persistTimer = null;
 function persistTabCount(count) {
-  chrome.storage.local.set({ lastTabCount: count });
+  clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    chrome.storage.local.set({ lastTabCount: count });
+  }, 1000); 
 }
 
 setInterval(async () => {
@@ -131,8 +155,6 @@ setInterval(async () => {
     }
   } catch (e) {}
 }, 1000);
-
-// No need to persist seconds on suspend per requirement; rely on lastTabCount only
 
 async function performPhaseSwitch(phase) {
   if (!switchTabsEnabled) return;
@@ -1139,11 +1161,517 @@ async function createBrowser(browserType, index, totalIndex, repeat) {
   }
 }
 
-async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht) {
+async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht, blacklistTag, modelTags, timeTextInput, isApart) {
   let isUploading = false;
   let imageInserted = false;
   let textInserted = false;
   let isProcessing = false;
+
+  const waitForPageStability = () => {
+    return new Promise((resolve) => {
+      const checkStability = () => {
+        const editor = document.querySelector(".tiptap.ProseMirror");
+        const isStable = editor && editor.offsetHeight > 0 && document.readyState === 'complete';
+        
+        if (isStable) {
+          resolve();
+        } else {
+          setTimeout(checkStability, 100);
+        }
+      };
+      checkStability();
+    });
+  };
+
+  await waitForPageStability();
+
+  async function handleTimeInsertion(textInput, isApart, browserType) {
+    try {
+      const clickEvent = new Event("click", {
+        bubbles: true,
+        cancelable: true,
+      });
+  
+      function checkButtonsAndContinue() {
+        const button1 = document.querySelector(
+          ".g-btn.m-with-round-hover.m-icon.m-icon-only.m-gray.m-sm-size.b-make-post__datepicker-btn",
+        );
+        const button2 = document.querySelector(
+          ".g-btn.m-with-round-hover.m-icon.m-icon-only.m-gray.m-sm-size.b-make-post__datepicker-btn.has-tooltip",
+        );
+  
+        if (button1 || button2) {
+          continueExecution(textInput);
+        }
+      }
+  
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          if (document.querySelector(`script[src="${src}"]`)) {
+            resolve();
+            return;
+          }
+  
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = () => resolve();
+          script.onerror = (e) => reject(e);
+          document.head.appendChild(script);
+        });
+      }
+  
+      function checkIfQTimeInPastOrPresent(textInput) {
+        if (!textInput.startsWith('q')) {
+          return false;
+        }
+  
+        const currentDate = new Date();
+        const currentHours = currentDate.getHours();
+        const currentMinutes = currentDate.getMinutes();
+  
+        let hours, minutes, period;
+        const timeString = textInput.substring(1);
+  
+        period = timeString.charAt(timeString.length - 1);
+  
+        if (timeString.length === 4) { 
+          hours = parseInt(timeString.substring(0, 1));
+          minutes = parseInt(timeString.substring(1, 3));
+        } else if (timeString.length === 5) { 
+          hours = parseInt(timeString.substring(0, 2));
+          minutes = parseInt(timeString.substring(2, 4));
+        } else {
+          return false; 
+        }
+  
+        let hours24Format = hours;
+        if (period === 'a' && hours === 12) {
+          hours24Format = 0;
+        } else if (period === 's' && hours !== 12) {
+          hours24Format += 12;
+        }
+  
+        const currentTotalMinutes = currentHours * 60 + currentMinutes;
+        const inputTotalMinutes = hours24Format * 60 + minutes;
+  
+        return inputTotalMinutes <= currentTotalMinutes;
+      }
+  
+      async function continueExecution(textInput) {
+        let closeButton = document.querySelector(
+          "#make_post_form > div.b-make-post > div > div.b-dropzone__previews.b-make-post__schedule-expire-wrapper.g-sides-gaps > div.b-post-piece.b-dropzone__preview.m-schedule.m-loaded.g-pointer-cursor.m-row > button",
+        );
+        if (closeButton) {
+          closeButton.dispatchEvent(clickEvent);
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+  
+        if (textInput === "0" && (!isApart || browserType === "browser1")) {
+          return;
+        }
+  
+        if (textInput === "n") {
+          textInput = "0";
+        }
+  
+        if (checkIfQTimeInPastOrPresent(textInput)) {
+          return;
+        }
+  
+        if (textInput.length === 1 || textInput.length === 2 || textInput.length === 3 ) {
+           await loadScript(chrome.runtime.getURL('inject.js'));
+        }
+  
+        const button1 = document.querySelector(
+            ".g-btn.m-with-round-hover.m-icon.m-icon-only.m-gray.m-sm-size.b-make-post__datepicker-btn",
+          );
+        button1.dispatchEvent(clickEvent);
+  
+        let currentDate = new Date();
+  
+        currentDate.setMinutes(currentDate.getMinutes());
+  
+        let monthNames = [
+          "January",
+          "February",
+          "March",
+          "April",
+          "May",
+          "June",
+          "July",
+          "August",
+          "September",
+          "October",
+          "November",
+          "December",
+        ];
+  
+        let currentMonthIndex = currentDate.getMonth();
+  
+        let nextMonthIndex = (currentMonthIndex + 1) % 12;
+        var nextMonthName = monthNames[nextMonthIndex];
+  
+        let currentDayOfMonth = currentDate.getDate();
+        let currentTimeInHours = currentDate.getHours();
+        let currentTimeInMinutes = currentDate.getMinutes();
+  
+        let period = "";
+        let hours = 0;
+        let newHours = 0;
+        let newMinutes = "";
+  
+        let nextDate = new Date(currentDate);
+        nextDate.setDate(nextDate.getDate() + 1);
+  
+        let nextDayOfMonth = nextDate.getDate();
+  
+        let dayAfterTomorrow = new Date(currentDate);
+        dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 2);
+  
+        let dayAfterTomorrowDayOfMonth = dayAfterTomorrow.getDate();
+  
+        if (textInput.includes("-")) {
+          var parts = textInput.split("-");
+          var textInput = parseInt(parts[0]);
+          newMinutes = parseInt(parts[1]);
+          newMinutes = currentTimeInMinutes + newMinutes
+  
+          if (currentTimeInMinutes >= 50) {
+            newHours = newHours + 1
+          }
+  
+          if (newMinutes >= 60) {
+            newMinutes -= 60;
+            newHours = newHours + 1
+          }
+          if (newMinutes < 10) {
+            newMinutes = "0" + newMinutes;
+          }
+  
+          textInput = textInput.toString();
+          newMinutes = newMinutes.toString();
+        }
+  
+        if (
+          textInput.length === 1 ||
+          textInput.length === 2 ||
+          textInput.length === 3
+        ) {
+  
+          hours = currentTimeInHours + parseInt(textInput);
+          if (isApart) {
+            let number = parseInt(browserType.replace(/\D/g, ""));
+            hours = hours + number - 1;
+          }
+  
+          if (hours > 24) {
+            const additionalDays = Math.floor(hours / 24);
+            let futureDate = new Date(currentDate);
+            let currentMonth = currentDate.getMonth();
+  
+            futureDate.setDate(futureDate.getDate() + additionalDays);
+            currentDayOfMonth = futureDate.getDate();
+            newHours = hours % 24;
+  
+            if (newHours === 0) {
+              newHours = 12;
+              period = "a";
+            } else if (newHours === 12) {
+              period = "s";
+            } else if (newHours < 12) {
+              period = "a";
+            } else {
+              newHours = newHours - 12;
+              period = "s";
+            }
+  
+            setTimeout(() => {
+              const next = document.querySelector(
+                "#make_post_form > div.vdatetime.b-datepicker-input.custom-datepicker > div > div.vdatetime-popup.m-vdatetime-tabs > div.vdatetime-popup__body > div > div.vdatetime-calendar__navigation > div.vdatetime-calendar__navigation--next",
+              );
+  
+              const currentMonthElement = document.querySelector(
+                "#make_post_form > div.vdatetime.b-datepicker-input.custom-datepicker > div > div.vdatetime-popup.m-vdatetime-tabs > div.vdatetime-popup__body > div > div.vdatetime-calendar__navigation > div.vdatetime-calendar__current--month",
+              );
+  
+              if (next && currentMonthElement) {
+                if (futureDate.getMonth() !== currentMonth) {
+                  next.dispatchEvent(clickEvent);
+                }
+              }
+            }, 1000);
+          } 
+  
+          else if (hours === 24 ) {
+            currentDayOfMonth = currentDayOfMonth + 1
+            if (currentDayOfMonth !== nextDayOfMonth) {
+              currentDayOfMonth = nextDayOfMonth;
+              setTimeout(() => {
+                const next = document.querySelector(
+                  "#make_post_form > div.vdatetime.b-datepicker-input.custom-datepicker > div > div.vdatetime-popup.m-vdatetime-tabs > div.vdatetime-popup__body > div > div.vdatetime-calendar__navigation > div.vdatetime-calendar__navigation--next",
+                );
+                let currentMonthElement = document.querySelector(
+                  "#make_post_form > div.vdatetime.b-datepicker-input.custom-datepicker > div > div.vdatetime-popup.m-vdatetime-tabs > div.vdatetime-popup__body > div > div.vdatetime-calendar__navigation > div.vdatetime-calendar__current--month",
+                );
+                let currentMonthName =
+                  currentMonthElement.innerText.split(" ")[0];
+                if (nextMonthName !== currentMonthName) {
+                  next.dispatchEvent(clickEvent);
+                }
+              }, 1000);
+            }
+  
+            newHours = 12;
+  
+            period = "a";
+          } else if (hours < 24) {
+            newHours = hours;
+  
+            if (newHours < 12) {
+              period = "a";
+            }
+  
+            if (newHours == 12) {
+              period = "s";
+            }
+  
+            if (newHours == 0) {
+              newHours = 12;
+            }
+  
+            if (newHours > 12) {
+              newHours = newHours - 12;
+              period = "s";
+            }
+          }
+        } else if (textInput.length > 6) {
+          let parts = textInput.split("_");
+          if (parts.length === 3) {
+            let getMonth = parseInt(parts[0]);
+            currentDayOfMonth = parseInt(parts[1]);
+            newHours = parseInt(parts[2].slice(0, -3));
+            newMinutes = parts[2].slice(-3, -1);
+            period = textInput[textInput.length - 1];
+            let currentMonth = currentDate.getMonth() + 1;
+            let monthDifference = 0;
+            if (getMonth < currentMonth) {
+              monthDifference = 12 - currentMonth + getMonth;
+            } else {
+              monthDifference = getMonth - currentMonth;
+            }
+            setTimeout(function () {
+              const next3 = document.querySelector(
+                "#make_post_form > div.vdatetime.b-datepicker-input.custom-datepicker > div > div.vdatetime-popup.m-vdatetime-tabs > div.vdatetime-popup__body > div > div.vdatetime-calendar__navigation > div.vdatetime-calendar__navigation--next",
+              );
+              let i = 0;
+              function clickNext() {
+                if (i < monthDifference) {
+                  next3.dispatchEvent(clickEvent);
+                  i++;
+                  setTimeout(clickNext, 40);
+                }
+              }
+              clickNext();
+            }, 500);
+          }
+        } else if (textInput.length === 5 || textInput.length === 6) {
+          period = textInput[textInput.length - 1];
+          let increment = textInput[0] === "w" ? 1 : textInput[0] === "e" ? 2 : 0;
+          currentDayOfMonth += increment;
+  
+          let targetDayOfMonth =
+            increment === 1
+              ? nextDayOfMonth
+              : increment === 2
+                ? dayAfterTomorrowDayOfMonth
+                : currentDayOfMonth;
+  
+          if (currentDayOfMonth !== targetDayOfMonth) {
+            currentDayOfMonth = targetDayOfMonth;
+            setTimeout(() => {
+              const next = document.querySelector(
+                "#make_post_form > div.vdatetime.b-datepicker-input.custom-datepicker > div > div.vdatetime-popup.m-vdatetime-tabs > div.vdatetime-popup__body > div > div.vdatetime-calendar__navigation > div.vdatetime-calendar__navigation--next",
+              );
+              let currentMonthElement = document.querySelector(
+                "#make_post_form > div.vdatetime.b-datepicker-input.custom-datepicker > div > div.vdatetime-popup.m-vdatetime-tabs > div.vdatetime-popup__body > div > div.vdatetime-calendar__navigation > div.vdatetime-calendar__current--month",
+              );
+              let currentMonthName = currentMonthElement.innerText.split(" ")[0];
+              if (nextMonthName !== currentMonthName) {
+                next.dispatchEvent(clickEvent);
+              }
+            }, 1000);
+          }
+        }
+  
+        if (textInput.length === 5) {
+          newHours = parseInt(textInput.substring(1, 2));
+          newMinutes = textInput.substring(2, 4);
+        } else if (textInput.length === 6) {
+          newHours = parseInt(textInput.substring(1, 3));
+          newMinutes = textInput.substring(3, 5);
+        }
+  
+        if (isApart && textInput.length !== 1 && textInput.length !== 2) {
+          let number = parseInt(browserType.replace(/\D/g, ""));
+          newHours = newHours + number - 1;
+  
+          if (textInput[0] === "q" && newHours >= 12 && period === "s") {
+            currentDayOfMonth = currentDayOfMonth + 1;
+            if (currentDayOfMonth !== nextDayOfMonth) {
+              currentDayOfMonth = nextDayOfMonth;
+            }
+  
+            if (newHours != 12) {
+              newHours = newHours - 12;
+            }
+            period = "a";
+          }
+  
+          else if (textInput[0] === "w" && newHours >= 12 && period === "s") {
+            currentDayOfMonth = currentDayOfMonth + 2;
+            if (currentDayOfMonth !== dayAfterTomorrowDayOfMonth) {
+              currentDayOfMonth = dayAfterTomorrowDayOfMonth;
+            }
+  
+            if (newHours != 12) {
+              newHours = newHours - 12;
+            }
+            period = "a";
+          }
+          else if (newHours > 12) {
+            newHours = newHours - 12;
+            if (period === "a") {
+              period = "s";
+            }
+          }
+        }
+  
+        setTimeout(() => {
+          const divs = document.querySelectorAll(
+            ".vdatetime-calendar__month__day",
+          );
+          for (const div of divs) {
+            const span = div.querySelector("span span");
+            if (span && parseInt(span.innerText) === currentDayOfMonth) {
+              div.dispatchEvent(clickEvent);
+            }
+          }
+        }, 1000);
+  
+        setTimeout(() => {
+          const button4 = document.querySelector(
+            "#make_post_form > div.vdatetime.b-datepicker-input.custom-datepicker > div > div.vdatetime-popup.m-vdatetime-tabs > div.vdatetime-popup__tabs > div.vdatetime-popup__tab.time",
+          );
+          if (button4) {
+            button4.dispatchEvent(clickEvent);
+          }
+        }, 1000);
+  
+        setTimeout(() => {
+          const container = document.querySelector(
+            "#make_post_form > div.vdatetime.b-datepicker-input.custom-datepicker > div > div.vdatetime-popup.m-vdatetime-tabs > div.vdatetime-popup__body > div > div.vdatetime-time-picker__list.vdatetime-time-picker__list--suffix",
+          );
+          if (container) {
+            const divs = container.querySelectorAll(
+              ".vdatetime-time-picker__item",
+            );
+  
+            for (const div of divs) {
+              const text = div.innerText;
+              if (text === "AM" && period === "a") {
+                div.dispatchEvent(clickEvent);
+              }
+              if (text === "PM" && period === "s") {
+                div.dispatchEvent(clickEvent);
+              }
+            }
+          }
+        }, 1000);
+  
+        setTimeout(() => {
+          const container = document.querySelector(
+            "#make_post_form > div.vdatetime.b-datepicker-input.custom-datepicker > div > div.vdatetime-popup.m-vdatetime-tabs > div.vdatetime-popup__body > div > div.vdatetime-time-picker__list.vdatetime-time-picker__list--hours",
+          );
+  
+          if (container) {
+            const divs = container.querySelectorAll(
+              ".vdatetime-time-picker__item",
+            );
+  
+            for (const div of divs) {
+              const number = parseInt(div.innerText);
+  
+              if (!isNaN(number) && number === newHours) {
+                div.dispatchEvent(clickEvent);
+  
+                if (newMinutes !== "") {
+                  setTimeout(() => {
+                    const container2 = document.querySelector(
+                      "#make_post_form > div.vdatetime.b-datepicker-input.custom-datepicker > div > div.vdatetime-popup.m-vdatetime-tabs > div.vdatetime-popup__body > div > div.vdatetime-time-picker__list.vdatetime-time-picker__list--minutes",
+                    );
+                    if (container2) {
+                      const divs = container2.querySelectorAll(
+                        ".vdatetime-time-picker__item",
+                      );
+  
+                      for (const div of divs) {
+                        const text = div.innerText;
+                        if (text === newMinutes) {
+                          div.dispatchEvent(clickEvent);
+                        }
+                      }
+                    }
+                  }, 200);
+                }
+  
+                setTimeout(() => {
+                  const button5 = document.querySelector(
+                    "#make_post_form > div.vdatetime.b-datepicker-input.custom-datepicker > div > div.vdatetime-popup.m-vdatetime-tabs > div.vdatetime-popup__actions > div.vdatetime-popup__actions__button.vdatetime-popup__actions__button--confirm > button",
+                  );
+                  if (button5) {
+                    button5.click();
+                  }
+                }, 200);
+                break;
+              }
+            }
+          }
+        }, 1000);
+      }
+      
+      checkButtonsAndContinue();
+    } catch (error) {
+      console.log("Error: ", error);
+    }
+  }
+
+  const getCurrentUsername = () => {
+    const usernameElement = document.querySelector('.g-user-username');
+    if (usernameElement) {
+      const username = usernameElement.textContent.trim().replace(/^@/, '');
+      return username;
+    }
+    return null;
+  };
+
+  if (blacklistTag) {
+    if (modelTags.length === 0) {
+      imageInserted = true;
+      textInserted = true;
+      await sendUpdateRequest();
+      return;
+    }
+    
+    const currentUsername = getCurrentUsername();
+    if (currentUsername && modelTags.includes(currentUsername)) {
+      imageInserted = true;
+      textInserted = true;
+      await sendUpdateRequest();
+      return;
+    }
+  }
+
+  await handleTimeInsertion(timeTextInput, isApart, browserType).catch(err => console.error("Time insertion error:", err))
 
   async function fetchWithRetry(resource, options, timeout = 5000, retries = 3) {
     for (let i = 0; i < retries; i++) {
@@ -1246,24 +1774,6 @@ async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht) 
     }
 
     isUploading = true;
-
-    const waitForPageStability = () => {
-      return new Promise((resolve) => {
-        const checkStability = () => {
-          const editor = document.querySelector(".tiptap.ProseMirror");
-          const isStable = editor && editor.offsetHeight > 0 && document.readyState === 'complete';
-          
-          if (isStable) {
-            resolve();
-          } else {
-            setTimeout(checkStability, 100);
-          }
-        };
-        checkStability();
-      });
-    };
-
-    await waitForPageStability();
 
     try {
       const fileExtension = imageUrl.split(".").pop().toLowerCase();
@@ -1556,467 +2066,6 @@ async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht) 
   startProcessing();
 }
 
-function addTimeToPost(textInput, isApart, browserType) {
-
-  try {
-    const clickEvent = new Event("click", {
-      bubbles: true,
-      cancelable: true,
-    });
-
-    function checkButtonsAndContinue() {
-      const button1 = document.querySelector(
-        ".g-btn.m-with-round-hover.m-icon.m-icon-only.m-gray.m-sm-size.b-make-post__datepicker-btn",
-      );
-      const button2 = document.querySelector(
-        ".g-btn.m-with-round-hover.m-icon.m-icon-only.m-gray.m-sm-size.b-make-post__datepicker-btn.has-tooltip",
-      );
-
-      if (button1 || button2) {
-        clearInterval(intervalId);
-        continueExecution(textInput);
-      }
-    }
-
-    function loadScript(src) {
-      return new Promise((resolve, reject) => {
-        if (document.querySelector(`script[src="${src}"]`)) {
-          resolve();
-          return;
-        }
-
-        const script = document.createElement('script');
-        script.src = src;
-        script.onload = () => resolve();
-        script.onerror = (e) => reject(e);
-        document.head.appendChild(script);
-      });
-    }
-
-    function checkIfQTimeInPastOrPresent(textInput) {
-      if (!textInput.startsWith('q')) {
-        return false;
-      }
-
-      const currentDate = new Date();
-      const currentHours = currentDate.getHours();
-      const currentMinutes = currentDate.getMinutes();
-
-      let hours, minutes, period;
-      const timeString = textInput.substring(1);
-
-      period = timeString.charAt(timeString.length - 1);
-
-      if (timeString.length === 4) { 
-        hours = parseInt(timeString.substring(0, 1));
-        minutes = parseInt(timeString.substring(1, 3));
-      } else if (timeString.length === 5) { 
-        hours = parseInt(timeString.substring(0, 2));
-        minutes = parseInt(timeString.substring(2, 4));
-      } else {
-        return false; 
-      }
-
-      let hours24Format = hours;
-      if (period === 'a' && hours === 12) {
-        hours24Format = 0;
-      } else if (period === 's' && hours !== 12) {
-        hours24Format += 12;
-      }
-
-      const currentTotalMinutes = currentHours * 60 + currentMinutes;
-      const inputTotalMinutes = hours24Format * 60 + minutes;
-
-      return inputTotalMinutes <= currentTotalMinutes;
-    }
-
-    async function continueExecution(textInput) {
-      let closeButton = document.querySelector(
-        "#make_post_form > div.b-make-post > div > div.b-dropzone__previews.b-make-post__schedule-expire-wrapper.g-sides-gaps > div.b-post-piece.b-dropzone__preview.m-schedule.m-loaded.g-pointer-cursor.m-row > button",
-      );
-      if (closeButton) {
-        closeButton.dispatchEvent(clickEvent);
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-
-      if (textInput === "0" && (!isApart || browserType === "browser1")) {
-        return;
-      }
-
-      if (textInput === "n") {
-        textInput = "0";
-      }
-
-      if (checkIfQTimeInPastOrPresent(textInput)) {
-        return;
-      }
-
-      if (textInput.length === 1 || textInput.length === 2 || textInput.length === 3 ) {
-         await loadScript(chrome.runtime.getURL('inject.js'));
-      }
-
-      const button1 = document.querySelector(
-          ".g-btn.m-with-round-hover.m-icon.m-icon-only.m-gray.m-sm-size.b-make-post__datepicker-btn",
-        );
-      button1.dispatchEvent(clickEvent);
-
-      let currentDate = new Date();
-
-      currentDate.setMinutes(currentDate.getMinutes());
-
-      let monthNames = [
-        "January",
-        "February",
-        "March",
-        "April",
-        "May",
-        "June",
-        "July",
-        "August",
-        "September",
-        "October",
-        "November",
-        "December",
-      ];
-
-      let currentMonthIndex = currentDate.getMonth();
-
-      let nextMonthIndex = (currentMonthIndex + 1) % 12;
-      var nextMonthName = monthNames[nextMonthIndex];
-
-      let currentDayOfMonth = currentDate.getDate();
-      let currentTimeInHours = currentDate.getHours();
-      let currentTimeInMinutes = currentDate.getMinutes();
-
-      let period = "";
-      let hours = 0;
-      let newHours = 0;
-      let newMinutes = "";
-
-      let nextDate = new Date(currentDate);
-      nextDate.setDate(nextDate.getDate() + 1);
-
-      let nextDayOfMonth = nextDate.getDate();
-
-      let dayAfterTomorrow = new Date(currentDate);
-      dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 2);
-
-      let dayAfterTomorrowDayOfMonth = dayAfterTomorrow.getDate();
-
-      if (textInput.includes("-")) {
-        var parts = textInput.split("-");
-        var textInput = parseInt(parts[0]);
-        newMinutes = parseInt(parts[1]);
-        newMinutes = currentTimeInMinutes + newMinutes
-
-        if (currentTimeInMinutes >= 50) {
-          newHours = newHours + 1
-        }
-
-        if (newMinutes >= 60) {
-          newMinutes -= 60;
-          newHours = newHours + 1
-        }
-        if (newMinutes < 10) {
-          newMinutes = "0" + newMinutes;
-        }
-
-        textInput = textInput.toString();
-        newMinutes = newMinutes.toString();
-      }
-
-      if (
-        textInput.length === 1 ||
-        textInput.length === 2 ||
-        textInput.length === 3
-      ) {
-
-        hours = currentTimeInHours + parseInt(textInput);
-        if (isApart) {
-          let number = parseInt(browserType.replace(/\D/g, ""));
-          hours = hours + number - 1;
-        }
-
-        if (hours > 24) {
-          const additionalDays = Math.floor(hours / 24);
-          let futureDate = new Date(currentDate);
-          let currentMonth = currentDate.getMonth();
-
-          futureDate.setDate(futureDate.getDate() + additionalDays);
-          currentDayOfMonth = futureDate.getDate();
-          newHours = hours % 24;
-
-          if (newHours === 0) {
-            newHours = 12;
-            period = "a";
-          } else if (newHours === 12) {
-            period = "s";
-          } else if (newHours < 12) {
-            period = "a";
-          } else {
-            newHours = newHours - 12;
-            period = "s";
-          }
-
-          setTimeout(() => {
-            const next = document.querySelector(
-              "#make_post_form > div.vdatetime.b-datepicker-input.custom-datepicker > div > div.vdatetime-popup.m-vdatetime-tabs > div.vdatetime-popup__body > div > div.vdatetime-calendar__navigation > div.vdatetime-calendar__navigation--next",
-            );
-
-            const currentMonthElement = document.querySelector(
-              "#make_post_form > div.vdatetime.b-datepicker-input.custom-datepicker > div > div.vdatetime-popup.m-vdatetime-tabs > div.vdatetime-popup__body > div > div.vdatetime-calendar__navigation > div.vdatetime-calendar__current--month",
-            );
-
-            if (next && currentMonthElement) {
-              if (futureDate.getMonth() !== currentMonth) {
-                next.dispatchEvent(clickEvent);
-              }
-            }
-          }, 1000);
-        } 
-
-        else if (hours === 24 ) {
-          currentDayOfMonth = currentDayOfMonth + 1
-          if (currentDayOfMonth !== nextDayOfMonth) {
-            currentDayOfMonth = nextDayOfMonth;
-            setTimeout(() => {
-              const next = document.querySelector(
-                "#make_post_form > div.vdatetime.b-datepicker-input.custom-datepicker > div > div.vdatetime-popup.m-vdatetime-tabs > div.vdatetime-popup__body > div > div.vdatetime-calendar__navigation > div.vdatetime-calendar__navigation--next",
-              );
-              let currentMonthElement = document.querySelector(
-                "#make_post_form > div.vdatetime.b-datepicker-input.custom-datepicker > div > div.vdatetime-popup.m-vdatetime-tabs > div.vdatetime-popup__body > div > div.vdatetime-calendar__navigation > div.vdatetime-calendar__current--month",
-              );
-              let currentMonthName =
-                currentMonthElement.innerText.split(" ")[0];
-              if (nextMonthName !== currentMonthName) {
-                next.dispatchEvent(clickEvent);
-              }
-            }, 1000);
-          }
-
-          newHours = 12;
-
-          period = "a";
-        } else if (hours < 24) {
-          newHours = hours;
-
-          if (newHours < 12) {
-            period = "a";
-          }
-
-          if (newHours == 12) {
-            period = "s";
-          }
-
-          if (newHours == 0) {
-            newHours = 12;
-          }
-
-          if (newHours > 12) {
-            newHours = newHours - 12;
-            period = "s";
-          }
-        }
-      } else if (textInput.length > 6) {
-        let parts = textInput.split("_");
-        if (parts.length === 3) {
-          let getMonth = parseInt(parts[0]);
-          currentDayOfMonth = parseInt(parts[1]);
-          newHours = parseInt(parts[2].slice(0, -3));
-          newMinutes = parts[2].slice(-3, -1);
-          period = textInput[textInput.length - 1];
-          let currentMonth = currentDate.getMonth() + 1;
-          let monthDifference = 0;
-          if (getMonth < currentMonth) {
-            monthDifference = 12 - currentMonth + getMonth;
-          } else {
-            monthDifference = getMonth - currentMonth;
-          }
-          setTimeout(function () {
-            const next3 = document.querySelector(
-              "#make_post_form > div.vdatetime.b-datepicker-input.custom-datepicker > div > div.vdatetime-popup.m-vdatetime-tabs > div.vdatetime-popup__body > div > div.vdatetime-calendar__navigation > div.vdatetime-calendar__navigation--next",
-            );
-            let i = 0;
-            function clickNext() {
-              if (i < monthDifference) {
-                next3.dispatchEvent(clickEvent);
-                i++;
-                setTimeout(clickNext, 40);
-              }
-            }
-            clickNext();
-          }, 500);
-        }
-      } else if (textInput.length === 5 || textInput.length === 6) {
-        period = textInput[textInput.length - 1];
-        let increment = textInput[0] === "w" ? 1 : textInput[0] === "e" ? 2 : 0;
-        currentDayOfMonth += increment;
-
-        let targetDayOfMonth =
-          increment === 1
-            ? nextDayOfMonth
-            : increment === 2
-              ? dayAfterTomorrowDayOfMonth
-              : currentDayOfMonth;
-
-        if (currentDayOfMonth !== targetDayOfMonth) {
-          currentDayOfMonth = targetDayOfMonth;
-          setTimeout(() => {
-            const next = document.querySelector(
-              "#make_post_form > div.vdatetime.b-datepicker-input.custom-datepicker > div > div.vdatetime-popup.m-vdatetime-tabs > div.vdatetime-popup__body > div > div.vdatetime-calendar__navigation > div.vdatetime-calendar__navigation--next",
-            );
-            let currentMonthElement = document.querySelector(
-              "#make_post_form > div.vdatetime.b-datepicker-input.custom-datepicker > div > div.vdatetime-popup.m-vdatetime-tabs > div.vdatetime-popup__body > div > div.vdatetime-calendar__navigation > div.vdatetime-calendar__current--month",
-            );
-            let currentMonthName = currentMonthElement.innerText.split(" ")[0];
-            if (nextMonthName !== currentMonthName) {
-              next.dispatchEvent(clickEvent);
-            }
-          }, 1000);
-        }
-      }
-
-      if (textInput.length === 5) {
-        newHours = parseInt(textInput.substring(1, 2));
-        newMinutes = textInput.substring(2, 4);
-      } else if (textInput.length === 6) {
-        newHours = parseInt(textInput.substring(1, 3));
-        newMinutes = textInput.substring(3, 5);
-      }
-
-      if (isApart && textInput.length !== 1 && textInput.length !== 2) {
-        let number = parseInt(browserType.replace(/\D/g, ""));
-        newHours = newHours + number - 1;
-
-        if (textInput[0] === "q" && newHours >= 12 && period === "s") {
-          currentDayOfMonth = currentDayOfMonth + 1;
-          if (currentDayOfMonth !== nextDayOfMonth) {
-            currentDayOfMonth = nextDayOfMonth;
-          }
-
-          if (newHours != 12) {
-            newHours = newHours - 12;
-          }
-          period = "a";
-        }
-
-        else if (textInput[0] === "w" && newHours >= 12 && period === "s") {
-          currentDayOfMonth = currentDayOfMonth + 2;
-          if (currentDayOfMonth !== dayAfterTomorrowDayOfMonth) {
-            currentDayOfMonth = dayAfterTomorrowDayOfMonth;
-          }
-
-          if (newHours != 12) {
-            newHours = newHours - 12;
-          }
-          period = "a";
-        }
-        else if (newHours > 12) {
-          newHours = newHours - 12;
-          if (period === "a") {
-            period = "s";
-          }
-        }
-      }
-
-      setTimeout(() => {
-        const divs = document.querySelectorAll(
-          ".vdatetime-calendar__month__day",
-        );
-        for (const div of divs) {
-          const span = div.querySelector("span span");
-          if (span && parseInt(span.innerText) === currentDayOfMonth) {
-            div.dispatchEvent(clickEvent);
-          }
-        }
-      }, 1000);
-
-      setTimeout(() => {
-        const button4 = document.querySelector(
-          "#make_post_form > div.vdatetime.b-datepicker-input.custom-datepicker > div > div.vdatetime-popup.m-vdatetime-tabs > div.vdatetime-popup__tabs > div.vdatetime-popup__tab.time",
-        );
-        if (button4) {
-          button4.dispatchEvent(clickEvent);
-        }
-      }, 1000);
-
-      setTimeout(() => {
-        const container = document.querySelector(
-          "#make_post_form > div.vdatetime.b-datepicker-input.custom-datepicker > div > div.vdatetime-popup.m-vdatetime-tabs > div.vdatetime-popup__body > div > div.vdatetime-time-picker__list.vdatetime-time-picker__list--suffix",
-        );
-        if (container) {
-          const divs = container.querySelectorAll(
-            ".vdatetime-time-picker__item",
-          );
-
-          for (const div of divs) {
-            const text = div.innerText;
-            if (text === "AM" && period === "a") {
-              div.dispatchEvent(clickEvent);
-            }
-            if (text === "PM" && period === "s") {
-              div.dispatchEvent(clickEvent);
-            }
-          }
-        }
-      }, 1000);
-
-      setTimeout(() => {
-        const container = document.querySelector(
-          "#make_post_form > div.vdatetime.b-datepicker-input.custom-datepicker > div > div.vdatetime-popup.m-vdatetime-tabs > div.vdatetime-popup__body > div > div.vdatetime-time-picker__list.vdatetime-time-picker__list--hours",
-        );
-
-        if (container) {
-          const divs = container.querySelectorAll(
-            ".vdatetime-time-picker__item",
-          );
-
-          for (const div of divs) {
-            const number = parseInt(div.innerText);
-
-            if (!isNaN(number) && number === newHours) {
-              div.dispatchEvent(clickEvent);
-
-              if (newMinutes !== "") {
-                setTimeout(() => {
-                  const container2 = document.querySelector(
-                    "#make_post_form > div.vdatetime.b-datepicker-input.custom-datepicker > div > div.vdatetime-popup.m-vdatetime-tabs > div.vdatetime-popup__body > div > div.vdatetime-time-picker__list.vdatetime-time-picker__list--minutes",
-                  );
-                  if (container2) {
-                    const divs = container2.querySelectorAll(
-                      ".vdatetime-time-picker__item",
-                    );
-
-                    for (const div of divs) {
-                      const text = div.innerText;
-                      if (text === newMinutes) {
-                        div.dispatchEvent(clickEvent);
-                      }
-                    }
-                  }
-                }, 200);
-              }
-
-              setTimeout(() => {
-                const button5 = document.querySelector(
-                  "#make_post_form > div.vdatetime.b-datepicker-input.custom-datepicker > div > div.vdatetime-popup.m-vdatetime-tabs > div.vdatetime-popup__actions > div.vdatetime-popup__actions__button.vdatetime-popup__actions__button--confirm > button",
-                );
-                if (button5) {
-                  button5.click();
-                }
-              }, 200);
-              break;
-            }
-          }
-        }
-      }, 1000);
-    }
-    const intervalId = setInterval(checkButtonsAndContinue, 200);
-  } catch (error) {
-    console.log("Error: ", error);
-  }
-}
-
 function listenForButtonClicks(arg, tabId) {
   const button1 = document.querySelector(
     "#content > div.l-wrapper > div.l-wrapper__holder-content.m-inherit-zindex > div > div > div > div.g-page__header.m-real-sticky.js-sticky-header.m-nowrap > div > button:nth-child(2)",
@@ -2082,7 +2131,15 @@ function listenForButtonClicks(arg, tabId) {
 
 let lastTabId;
 
-chrome.tabs.onRemoved.addListener(function(tabId, removeInfo) {
+chrome.tabs.onRemoved.addListener(function(tabId) {
+  injectedTabs.delete(tabId);
+  
+  if (closedTabIds.has(tabId)) {
+    closedTabIds.delete(tabId);
+    closedTabsCount++;
+    lastClosedTime = new Date();
+  }
+  
   chrome.tabs.query({}, function(tabs) {
     const onlyFansTabsCount = tabs.filter(tab => 
       tab.url && tab.url.startsWith('https://onlyfans.com')
@@ -2093,12 +2150,15 @@ chrome.tabs.onRemoved.addListener(function(tabId, removeInfo) {
         .filter(key => key.startsWith('browser') && key.endsWith('Checked') && items[key])
         .map(key => parseInt(key.match(/\d+/)[0]))[0];
 
-      const browserNum = activeBrowser || items.currentBrowserNumber
+      const browserNum = activeBrowser || items.currentBrowserNumber;
       sendReadyRequest(browserNum, onlyFansTabsCount);
     });
     lastTabCount = onlyFansTabsCount;
   });
+  
+  updateTabCounterOnActiveTab(false);
 });
+
 
 chrome.tabs.onCreated.addListener(function(tab) {
   if (tab.url && tab.url.startsWith('https://onlyfans.com')) {
@@ -2120,75 +2180,7 @@ chrome.tabs.onCreated.addListener(function(tab) {
   }
 });
 
-chrome.tabs.onUpdated.addListener(function(tabId, changeInfo, tab) {
-  if (changeInfo.url && changeInfo.url.startsWith('https://onlyfans.com')) {
-    chrome.tabs.query({}, function(tabs) {
-      const onlyFansTabsCount = tabs.filter(tab => 
-        tab.url && tab.url.startsWith('https://onlyfans.com')
-      ).length;
 
-      chrome.storage.local.get(null, function(items) {
-        const activeBrowser = Object.keys(items)
-          .filter(key => key.startsWith('browser') && key.endsWith('Checked') && items[key])
-          .map(key => parseInt(key.match(/\d+/)[0]))[0];
-
-        const browserNum = activeBrowser || items.currentBrowserNumber
-        sendReadyRequest(browserNum, onlyFansTabsCount);
-      });
-      lastTabCount = onlyFansTabsCount;
-    });
-  }
-});
-
-chrome.tabs.onUpdated.addListener(function (tabId, changeInfo, tab) {
-  if (
-    changeInfo.status === "complete" &&
-    tab.url === "https://onlyfans.com/posts/create" &&
-    tabId !== lastTabId
-  ) {
-    lastTabId = tabId;
-    chrome.storage.local.get(["lastRequestTime"], function (result) {
-      var lastRequestTime = result.lastRequestTime
-        ? new Date(result.lastRequestTime)
-        : null;
-      var currentTime = new Date();
-      var timeDifference = currentTime - lastRequestTime;
-      if (!lastRequestTime || timeDifference >= 12 * 60 * 60 * 1000) {
-        chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          args: [currentTime.toString()],
-          func: (currentTime) => {
-            const observer = new MutationObserver(function () {
-              const usernameDiv = document.querySelector(".g-user-username");
-              if (usernameDiv) {
-                const username = usernameDiv.innerText;
-                if (username) {
-                  observer.disconnect();
-                  fetch("http://localhost:3000/checkInfo", {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({
-                      username: username,
-                    }),
-                  }).then((response) => {
-                    if (response.ok) {
-                      chrome.storage.local.set({
-                        lastRequestTime: currentTime,
-                      });
-                    }
-                  });
-                }
-              }
-            });
-            observer.observe(document.body, { childList: true, subtree: true });
-          },
-        });
-      }
-    });
-  }
-});
 
 function sendActivityInfo(browser) {
   fetch("http://localhost:3000/activity", {
@@ -2614,7 +2606,7 @@ async function checkDataFile() {
     if (lastEntry && lastEntry.id === "12" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
-
+      
       const text = lastEntry.textInput;
       let exp = lastEntry.exp;
       let txt = lastEntry.txt;
@@ -2665,10 +2657,11 @@ async function checkDataFile() {
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
+        
         await waitForTabAndExecute(
           activeTab.id, 
           addTextToPost, 
-          [text, imageUrl, index, browserType, exp, txt, pht]
+          [text, imageUrl, index, browserType, exp, txt, pht, lastEntry.blacklistTag, lastEntry.modelTags || [], lastEntry.timeInput || null, lastEntry.isApart || false]
         );
       });
       return
@@ -3024,23 +3017,6 @@ async function checkDataFile() {
       return
     }
 
-    if (lastEntry && lastEntry.id === "13" && browserType !== "") {
-      if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
-      if (!isApart) {
-        isApart = false;
-      }
-      const text = lastEntry.textInput;
-
-      chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
-        const activeTab = currentWindow.tabs.find((tab) => tab.active);
-        await waitForTabAndExecute(
-          activeTab.id, 
-          addTimeToPost, 
-          [text, isApart, browserType]
-        );
-      });
-    }
     return
   } catch (error) {
     console.error("Error: ", error);
@@ -3533,7 +3509,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.8.6.1';
+            const VERSION = '5.8.6.2';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -4839,19 +4815,16 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       }
     });
   }
-  if (
-    changeInfo.status === "complete" &&
-    tab.status === "complete" &&
-    tab.url !== undefined
-  ) {
+  
+  if (changeInfo.status === "complete" && tab.status === "complete" && tab.url) {
+
     try {
-      if (tab.url && tab.url.startsWith('https://onlyfans.com')) {
-        chrome.scripting.insertCSS({
-          target: { tabId },
-          css: "#ModalAlert___BV_modal_outer_{ display: none !important; visibility: hidden !important; opacity: 0 !important; position: fixed !important; top: -9999px !important; left: -9999px !important; z-index: -9999 !important; width: 0 !important; height: 0 !important; overflow: hidden !important; }"
-        });
+      if (tab.url.startsWith('https://onlyfans.com')) {
+        injectCSSOnce(tabId);
       }
     } catch (_) {}
+    
+    // setBind
     chrome.storage.local.get("tabIds", function (data) {
       let tabIds = data.tabIds || [];
       if (!tabIds.includes(tabId)) {
@@ -4860,6 +4833,70 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
         chrome.storage.local.set({ tabIds: tabIds });
       }
     });
+    
+    updateTabCounterOnActiveTab(false);
+    
+    if (changeInfo.url && changeInfo.url.startsWith('https://onlyfans.com')) {
+      chrome.tabs.query({}, function(tabs) {
+        const onlyFansTabsCount = tabs.filter(tab => 
+          tab.url && tab.url.startsWith('https://onlyfans.com')
+        ).length;
+
+        chrome.storage.local.get(null, function(items) {
+          const activeBrowser = Object.keys(items)
+            .filter(key => key.startsWith('browser') && key.endsWith('Checked') && items[key])
+            .map(key => parseInt(key.match(/\d+/)[0]))[0];
+
+          const browserNum = activeBrowser || items.currentBrowserNumber
+          sendReadyRequest(browserNum, onlyFansTabsCount);
+        });
+        lastTabCount = onlyFansTabsCount;
+      });
+    }
+    
+    if (tab.url === "https://onlyfans.com/posts/create" && tabId !== lastTabId) {
+      lastTabId = tabId;
+      chrome.storage.local.get(["lastRequestTime"], function (result) {
+        var lastRequestTime = result.lastRequestTime
+          ? new Date(result.lastRequestTime)
+          : null;
+        var currentTime = new Date();
+        var timeDifference = currentTime - lastRequestTime;
+        if (!lastRequestTime || timeDifference >= 12 * 60 * 60 * 1000) {
+          chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            args: [currentTime.toString()],
+            func: (currentTime) => {
+              const observer = new MutationObserver(function () {
+                const usernameDiv = document.querySelector(".g-user-username");
+                if (usernameDiv) {
+                  const username = usernameDiv.innerText;
+                  if (username) {
+                    observer.disconnect();
+                    fetch("http://localhost:3000/checkInfo", {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify({
+                        username: username,
+                      }),
+                    }).then((response) => {
+                      if (response.ok) {
+                        chrome.storage.local.set({
+                          lastRequestTime: currentTime,
+                        });
+                      }
+                    });
+                  }
+                }
+              });
+              observer.observe(document.body, { childList: true, subtree: true });
+            },
+          });
+        }
+      });
+    }
   }
 });
 
@@ -4867,10 +4904,7 @@ chrome.tabs.onCreated.addListener(async (tab) => {
   if (tab.status === "complete" && tab.url !== undefined) {
     try {
       if (tab.url && tab.url.startsWith('https://onlyfans.com')) {
-        chrome.scripting.insertCSS({
-          target: { tabId: tab.id },
-          css: "#ModalAlert___BV_modal_outer_{ display: none !important; visibility: hidden !important; opacity: 0 !important; position: fixed !important; top: -9999px !important; left: -9999px !important; z-index: -9999 !important; width: 0 !important; height: 0 !important; overflow: hidden !important; }"
-        });
+        injectCSSOnce(tab.id);
       }
     } catch (_) {}
     chrome.storage.local.get("tabIds", function (data) {
@@ -4897,10 +4931,7 @@ chrome.webNavigation.onCompleted.addListener(
   function (details) {
     if (details.url.startsWith("https://onlyfans.com/")) {
       try {
-        chrome.scripting.insertCSS({
-          target: { tabId: details.tabId },
-          css: "#ModalAlert___BV_modal_outer_{ display: none !important; visibility: hidden !important; opacity: 0 !important; position: fixed !important; top: -9999px !important; left: -9999px !important; z-index: -9999 !important; width: 0 !important; height: 0 !important; overflow: hidden !important; }"
-        });
+        injectCSSOnce(details.tabId);
       } catch (_) {}
       updateTabCounterOnActiveTab(false);
     }
@@ -4911,40 +4942,12 @@ chrome.webNavigation.onCompleted.addListener(
 chrome.tabs.onCreated.addListener(function (tab) {
   if (tab.url && tab.url.startsWith("https://onlyfans.com/")) {
     try {
-      chrome.scripting.insertCSS({
-        target: { tabId: tab.id },
-        css: "#ModalAlert___BV_modal_outer_{ display: none !important; visibility: hidden !important; opacity: 0 !important; position: fixed !important; top: -9999px !important; left: -9999px !important; z-index: -9999 !important; width: 0 !important; height: 0 !important; overflow: hidden !important; }"
-      });
+      injectCSSOnce(tab.id);
     } catch (_) {}
     updateTabCounterOnActiveTab(false);
   }
 });
 
-chrome.tabs.onUpdated.addListener(function (tabId, changeInfo, tab) {
-  if (
-    tab.url &&
-    tab.url.startsWith("https://onlyfans.com/") &&
-    changeInfo.status === "complete"
-  ) {
-    try {
-      chrome.scripting.insertCSS({
-        target: { tabId },
-        css: "#ModalAlert___BV_modal_outer_{ display: none !important; visibility: hidden !important; opacity: 0 !important; position: fixed !important; top: -9999px !important; left: -9999px !important; z-index: -9999 !important; width: 0 !important; height: 0 !important; overflow: hidden !important; }"
-      });
-    } catch (_) {}
-    updateTabCounterOnActiveTab(false);
-  }
-});
-
-chrome.tabs.onRemoved.addListener(function (tabId) {
-  if (closedTabIds.has(tabId)) {
-    closedTabIds.delete(tabId);
-    closedTabsCount++;
-    lastClosedTime = new Date();
-    // no-op persist for seconds per requirement
-  }
-  updateTabCounterOnActiveTab(false);
-});
 
 setInterval(() => updateTabCounterOnActiveTab(false), 1000);
 
@@ -4985,15 +4988,23 @@ async function sendTypeToServer(dataIndex, browserType) {
 
 function shouldSkipDuplicate(entry, browserType) {
   try {
-    const cmdKey = JSON.stringify({ id: entry.id, text: entry.textInput || null, browserType });
     const now = Date.now();
-    for (const [k, ts] of recentCommands.entries()) {
-      if (now - ts > DEDUPE_TTL_MS) recentCommands.delete(k);
+    
+    if (recentCommands.size >= 100) {
+      const oldestKey = Array.from(recentCommands.entries())
+        .reduce((oldest, current) => 
+          current[1] < oldest[1] ? current : oldest
+        )[0];
+      recentCommands.delete(oldestKey);
     }
+    
+    const cmdKey = JSON.stringify({ id: entry.id, text: entry.textInput || null, browserType });
     const lastTs = recentCommands.get(cmdKey);
+    
     if (lastTs && (now - lastTs) < DEDUPE_TTL_MS) {
       return true;
     }
+    
     recentCommands.set(cmdKey, now);
     return false;
   } catch (_) {
