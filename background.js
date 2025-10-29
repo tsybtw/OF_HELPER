@@ -469,30 +469,6 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
   }
 });
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-
-  if (message && message.type === 'OFH_SEND_BROWSER_DATA_BG' && message.payload) {
-    (async () => {
-      try {
-        await fetch('http://localhost:8765/browser-data', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(message.payload)
-        });
-      } catch (_) {}
-    })();
-    return true;
-  }
-
-  if (message.action === "toggleAutoRestartState") {
-    chrome.storage.local.get('autoRestartEnabled', (result) => {
-      const enabled = !result.autoRestartEnabled;
-      chrome.storage.local.set({ autoRestartEnabled: enabled });
-    });
-    return true;
-  }
-});
-
 function openNewTab() {
   chrome.runtime.sendMessage({ action: "openNewTab" });
 }
@@ -2938,30 +2914,50 @@ async function checkDataFile() {
     if (lastEntry && lastEntry.id === "32" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
-      chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
-          const currentTabId = tabs[0].id;
-          chrome.tabs.query({ url: "https://onlyfans.com/*" }, function(matchingTabs) {
-              if (matchingTabs.length > 0) {
-                  matchingTabs.forEach((tab, index) => {
-                      if (currentTabId !== tab.id) {
-                          chrome.tabs.update(tab.id, { active: true }, () => {
-                              setTimeout(() => {
-                                  chrome.tabs.update(currentTabId, { active: true });
-                              }, 1000);
-                              chrome.scripting.executeScript({
-                                  target: { tabId: tab.id },
-                                  func: checkAndCloseTab,
-                                  args: [tab.id],
-                              });
-                          });
-                      }
-                  });
-              }
-          });
+
+      const result = await new Promise((resolve) => {
+        chrome.storage.local.get(['singleStop'], resolve);
       });
+      
+      if (result.singleStop) {
+        chrome.tabs.query({ active: true, currentWindow: true }, function(activeTabs) {
+          const currentTabId = activeTabs[0].id;
+          chrome.tabs.query({ url: "https://onlyfans.com/*" }, function(ofTabs) {
+            const tabsToClose = ofTabs
+              .filter(tab => tab.id !== currentTabId)
+              .map(tab => tab.id);
+            
+            if (tabsToClose.length > 0) {
+              chrome.tabs.remove(tabsToClose);
+            }
+          });
+        });
+      } else {
+        chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
+            const currentTabId = tabs[0].id;
+            chrome.tabs.query({ url: "https://onlyfans.com/*" }, function(matchingTabs) {
+                if (matchingTabs.length > 0) {
+                    matchingTabs.forEach((tab, index) => {
+                        if (currentTabId !== tab.id) {
+                            chrome.tabs.update(tab.id, { active: true }, () => {
+                                setTimeout(() => {
+                                    chrome.tabs.update(currentTabId, { active: true });
+                                }, 1000);
+                                chrome.scripting.executeScript({
+                                    target: { tabId: tab.id },
+                                    func: checkAndCloseTab,
+                                    args: [tab.id],
+                                });
+                            });
+                        }
+                    });
+                }
+            });
+        });
+      }
       return;
     }
-
+    
     if (lastEntry && lastEntry.id === "16" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
@@ -3509,7 +3505,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.8.6.2';
+            const VERSION = '5.8.6.3';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -4090,6 +4086,27 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
 
 chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
 
+ if (request && request.type === 'OFH_SEND_BROWSER_DATA_BG' && request.payload) {
+   (async () => {
+     try {
+       await fetch('http://localhost:8765/browser-data', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify(message.payload)
+       });
+     } catch (_) {}
+   })();
+   return true;
+ }
+
+ if (request.action === "toggleAutoRestartState") {
+   chrome.storage.local.get('autoRestartEnabled', (result) => {
+     const enabled = !result.autoRestartEnabled;
+     chrome.storage.local.set({ autoRestartEnabled: enabled });
+   });
+   return true;
+ }
+
   function handleTabOpen() {
     return new Promise((resolve) => {
       chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
@@ -4632,6 +4649,7 @@ async function pressBindFix(tab, browserType) {
             }
           },
         );
+
         setTimeout(function () {
           let anchorElement = document.querySelector(
             'a[data-name="PostsCreate"][href="/posts/create"]',
