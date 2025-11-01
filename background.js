@@ -375,7 +375,6 @@ function updateTabCounterOnActiveTab(isReset) {
         args: [onlyFansTabsCount, closedTabsCount, timeSinceLastClosed, color]
       }).catch(console.error);
 
-      // persist last known tab count so we can restore after service worker restart
       persistTabCount(onlyFansTabsCount);
     });
   });
@@ -424,7 +423,6 @@ function updateTabCounterOnActiveTab(isReset) {
               }
             }
 
-            // after operations, persist current known number to survive restarts
             chrome.tabs.query({ url: "https://onlyfans.com/*" }, (tbs) => {
               persistTabCount(Array.isArray(tbs) ? tbs.length : onlyFansTabsCount);
             });
@@ -570,6 +568,7 @@ async function fakeColorsOff() {
 
 
 let lastMentionPos = null;
+let __textScaleOriginal = null;
 
 function updateMentionPosition(newX, newY) {
   const canvas = document.querySelector(".upper-canvas");
@@ -609,7 +608,30 @@ function updateMentionPosition(newX, newY) {
   lastMentionPos = { x: newX, y: newY };
 }
 
-async function processImageAndUpload(imageTag) {
+function updateTextScale(scalePercent) {
+  try {
+    const container = document.querySelector('.b-photo-editor__container');
+    if (!container) return;
+    const vue = container.__vue__;
+    if (!vue || !vue.$parent || !vue.$parent.$parent) return;
+    const canvas = vue.$parent.$parent.canvas;
+    if (!canvas) return;
+    const objects = canvas.getObjects();
+    if (!objects || objects.length < 2) return;
+    const targetObject = objects[1];
+    if (!targetObject || typeof targetObject.scaleX !== 'number') return;
+    if (__textScaleOriginal == null) {
+      __textScaleOriginal = targetObject.scaleX || 1;
+    }
+    const percent = Number(scalePercent);
+    if (!isFinite(percent) || percent <= 0) return;
+    const scale = (percent / 100) * (__textScaleOriginal || 1);
+    targetObject.set({ scaleX: scale, scaleY: scale });
+    canvas.renderAll();
+  } catch (_) {}
+}
+
+async function processImageAndUpload(imageTag, storyColor) {
   function sendJoystickData(newTagX, newTagY) {
     fetch("http://localhost:3000/joystick-data", {
       method: "POST",
@@ -841,10 +863,166 @@ async function processImageAndUpload(imageTag) {
       const inputEvent = new Event("input", { bubbles: true });
       textarea.dispatchEvent(inputEvent);
       await new Promise(resolve => setTimeout(resolve, 1000));
+      console.log("storyColor", storyColor);
+      try {
+        if (storyColor && typeof storyColor === 'string') {
+          const toRGB = (str) => {
+            try {
+              if (!str) return null;
+              const s = String(str).replace(/\s+/g, '');
+              const m = s.match(/rgba?\((\d+),(\d+),(\d+)/i);
+              if (!m) return null;
+              return `${parseInt(m[1],10)},${parseInt(m[2],10)},${parseInt(m[3],10)}`;
+            } catch (_) { return null; }
+          };
+          const targetRGB = toRGB(storyColor);
+
+          const controls = await waitForElement('.b-photo-editor__controls-editor');
+          const firstButton = controls.querySelector('button');
+          if (firstButton) {
+            firstButton.click();
+            await new Promise(r => setTimeout(r, 300));
+          }
+
+          const maxAttempts = 5;
+          let attempts = 0;
+          let clicked = false;
+          while (!clicked && attempts < maxAttempts) {
+            const container = document.querySelector('.b-tabs__nav.m-colorpicker-tabs');
+            const items = container ? container.querySelectorAll('.b-tabs__nav__item') : [];
+            if (items && items.length) {
+              for (const li of items) {
+                const bg = (li.style && li.style.backgroundColor) || window.getComputedStyle(li).backgroundColor;
+                const liRGB = toRGB(bg);
+                if (liRGB && targetRGB && liRGB === targetRGB) {
+                  const btn = li.querySelector('button') || li;
+                  try {
+                    btn.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+                    btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                    btn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+                  } catch (_) {}
+                  btn.click();
+                  let confirm = 0;
+                  while (confirm < 5) {
+                    const currentBtn = container.querySelector('button.m-current');
+                    if (currentBtn === btn || (btn.classList && btn.classList.contains('m-current'))) {
+                      clicked = true;
+                      break;
+                    }
+                    await new Promise(r => setTimeout(r, 100));
+                    confirm++;
+                  }
+                  if (clicked) break;
+                }
+              }
+            }
+            if (!clicked) await new Promise(r => setTimeout(r, 500)), attempts++;
+          }
+        }
+      } catch (e) { console.warn('Color selection skipped:', e); }
+
       const doneButton = await waitForButtonWithText(".g-btn.m-rounded.m-reset-width", "Done");
       doneButton.click();
       initializeLastMentionPos();
       createJoystick();
+      try {
+        const joy = document.getElementById('joy');
+        const joyRect = joy ? joy.getBoundingClientRect() : null;
+        const sliderContainer = document.createElement('div');
+        sliderContainer.id = 'text-size-slider';
+        sliderContainer.style.position = 'fixed';
+        sliderContainer.style.zIndex = '10001';
+        sliderContainer.style.background = 'rgb(90, 98, 104)';
+        sliderContainer.style.border = '2px solid #000';
+        sliderContainer.style.borderRadius = '10px';
+        sliderContainer.style.display = 'flex';
+        sliderContainer.style.alignItems = 'center';
+        sliderContainer.style.justifyContent = 'center';
+        sliderContainer.style.padding = '6px';
+        sliderContainer.style.pointerEvents = 'auto';
+        const containerHeight = joyRect ? joyRect.height : 100;
+        const containerTop = joyRect ? joyRect.top : 45;
+        const containerLeft = joyRect ? (joyRect.right + 10) : 120;
+        sliderContainer.style.top = containerTop + 'px';
+        sliderContainer.style.left = containerLeft + 'px';
+        sliderContainer.style.height = containerHeight + 'px';
+        sliderContainer.style.width = '44px';
+        const input = document.createElement('input');
+        input.type = 'range';
+        input.min = '50';
+        input.max = '500';
+        input.step = '10';
+        input.value = '100';
+        input.id = 'size-slider';
+        input.style.writingMode = 'vertical-lr';
+        input.style.direction = 'rtl';
+        input.style.appearance = 'none';
+        input.style.width = '20px';
+        input.style.height = Math.max(20, containerHeight - 12) + 'px';
+        input.style.padding = '0';
+        input.style.margin = '0';
+        input.style.pointerEvents = 'auto';
+        sliderContainer.appendChild(input);
+        document.body.appendChild(sliderContainer);
+        const styleId = 'text-size-slider-style';
+        if (!document.getElementById(styleId)) {
+          const style = document.createElement('style');
+          style.id = styleId;
+          style.textContent = `
+            #size-slider {
+              appearance: none;
+              writing-mode: vertical-lr;
+              direction: rtl;
+              background: transparent;
+              width: 20px;
+            }
+            #size-slider::-webkit-slider-runnable-track {
+              background: #cfd6dd; /* light track for contrast */
+              border-radius: 6px;
+              width: 6px;
+              margin: 0 auto;
+            }
+            #size-slider::-webkit-slider-thumb {
+              appearance: none;
+              background: #ffffff;
+              border-radius: 50%;
+              width: 10px; 
+              height: 10px;
+              margin-left: -2px; 
+            }
+            #size-slider::-moz-range-track {
+              background: #cfd6dd;
+              border-radius: 6px;
+              width: 6px;
+            }
+            #size-slider::-moz-range-thumb {
+              background: #ffffff;
+              border-radius: 50%;
+              width: 10px;
+              height: 10px;
+            }
+          `;
+          document.head.appendChild(style);
+        }
+
+        try { input.value = '100'; } catch (_) {}
+        input.addEventListener('input', function() {
+          try {
+            const percent = Number(this.value);
+            if (!isFinite(percent) || percent <= 0) return;
+          } catch (_) {}
+        });
+        input.addEventListener('change', function() {
+          try {
+            const percent = Number(this.value);
+            fetch('http://localhost:3000/text-scale', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ scalePercent: percent })
+            })
+          } catch (_) {}
+        });
+      } catch (_) {}
       resolve();
     } catch (error) {
       console.error(error);
@@ -2349,9 +2527,24 @@ async function checkDataFile() {
       return
     })}
 
-    async function processTags() {
+    async function processTags(selections, sequence) {
     const tagsFilePath = 'server/files/tags.txt';
     let firstCreatedTab = null;
+    let colorQueue = [];
+    try {
+      if (Array.isArray(sequence) && sequence.length > 0) {
+        colorQueue = sequence.slice();
+      } else if (Array.isArray(selections)) {
+        selections.forEach(sel => {
+          const cnt = Number(sel && sel.count);
+          const col = sel && sel.color;
+          if (cnt > 0 && typeof col === 'string') {
+            for (let i = 0; i < cnt; i++) colorQueue.push(col);
+          }
+        });
+      }
+    } catch (_) {}
+    try { chrome.storage.local.set({ storiesStop: false, storiesRunning: true }); } catch (_) {}
 
     try {
       const tagsResponse = await fetch(chrome.runtime.getURL(tagsFilePath));
@@ -2378,11 +2571,14 @@ async function checkDataFile() {
           chrome.tabs.onUpdated.addListener(listener);
         });
 
+        const stopState = await chrome.storage.local.get(['storiesStop']);
+        if (stopState && stopState.storiesStop) { break; }
+
         await new Promise(resolve => {
           chrome.scripting.executeScript({
             target: { tabId: tab.id },
             func: processImageAndUpload,
-            args: [tag]
+            args: [tag, colorQueue[i] || null]
           }, () => {
             resolve();
           });
@@ -2409,12 +2605,14 @@ async function checkDataFile() {
         await chrome.tabs.update(firstCreatedTab.id, { active: true });
       }
     }
+    try { chrome.storage.local.set({ storiesRunning: false }); } catch (_) {}
+    try { setStoriesDoneIcon('check'); } catch (_) {}
   }
 
     if (lastEntry && lastEntry.id === "25" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
-      processTags().catch(error => console.error(error));
+      processTags(lastEntry.selections || [], lastEntry.sequence || []).catch(error => console.error(error));
       return;
     }
 
@@ -2445,6 +2643,51 @@ async function checkDataFile() {
         }
       });
       return
+    }
+
+    if (lastEntry && lastEntry.id === "28" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
+      await sendTypeToServer(lastIndex, browserType);
+      try {
+        await chrome.storage.local.set({ storiesStop: true });
+      } catch (_) {}
+      return;
+    }
+
+    if (lastEntry && lastEntry.id === "29" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
+      await sendTypeToServer(lastIndex, browserType);
+      chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        const activeTab = currentWindow.tabs.find((tab) => tab.active);
+        await executeScriptIfValid(activeTab, {
+          target: { tabId: activeTab.id },
+          world: 'MAIN',
+          func: (p) => {
+            try {
+              var container = document.querySelector('.b-photo-editor__container');
+              if (!container) return;
+              var vue = container.__vue__;
+              console.log('vue', vue);
+              if (!vue || !vue.$parent || !vue.$parent.$parent) return;
+              var canvas = vue.$parent.$parent.canvas;
+              console.log('canvas', canvas);
+              if (!canvas) return;
+              var objects = canvas.getObjects();
+              if (!objects || objects.length < 2) return;
+              var target = objects[1];
+              if (!target || typeof target.scaleX !== 'number') return;
+              if (window.__OFH_TEXT_SCALE_BASE == null) {
+                window.__OFH_TEXT_SCALE_BASE = target.scaleX || 1;
+              }
+              var scale = (Number(p) / 100) * (window.__OFH_TEXT_SCALE_BASE || 1);
+              target.set({ scaleX: scale, scaleY: scale });
+              if (canvas.renderAll) canvas.renderAll();
+            } catch (_) {}
+          },
+          args: [lastEntry.scalePercent],
+        });
+        return
+      })
     }
 
     if (lastEntry && lastEntry.id === "27" && browserType !== "") {
@@ -2498,8 +2741,6 @@ async function checkDataFile() {
             try { myNumber = parseInt(String(browserType).replace(/\D/g, ''), 10) || 0; } catch (_) { myNumber = 0; }
             if (selected.length === 0 || (myNumber && selected.includes(myNumber))) {
               await collectFromSelectedBrowsers(selection);
-            } else {
-              // Not selected for this instance; no-op
             }
           } catch (_) {}
           return;
@@ -3102,11 +3343,236 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
         }
 
         async function quickStories() {
-          await makeRequest("http://localhost:3000/quickStories", 0);
+          try {
+            let picker = document.getElementById('story-color-picker');
+            if (!picker) {
+              const colors = [
+                'rgb(255, 255, 255)',
+                'rgb(0, 0, 0)',
+                'rgb(105, 129, 140)',
+                'rgb(255, 81, 220)',
+                'rgb(255, 64, 129)',
+                'rgb(250, 50, 64)',
+                'rgb(255, 128, 64)',
+                'rgb(252, 168, 0)',
+                'rgb(112, 207, 39)',
+                'rgb(0, 200, 100)',
+                'rgb(0, 177, 204)',
+                'rgb(33, 150, 243)',
+                'rgb(121, 83, 245)',
+                'rgb(168, 50, 191)'
+              ];
+
+              const state = {
+                colors,
+                perColorBadges: Array(colors.length).fill(null).map(() => []),
+                globalOrder: [],
+              };
+              window.__storyPickerState = state;
+
+              picker = document.createElement('div');
+              picker.id = 'story-color-picker';
+              picker.style.position = 'fixed';
+              picker.style.left = '50%';
+              picker.style.transform = 'translateX(-50%)';
+              picker.style.bottom = '145px';
+              picker.style.zIndex = '100000';
+              picker.style.display = 'flex';
+              picker.style.gap = '3px';
+              picker.style.alignItems = 'flex-end';
+
+              const badgeBaseBottom = 38;
+              const badgeStep = 30;
+              const highlightShadow = '0 0 0 2px #FFD700 inset, 0 0 8px rgba(255,215,0,0.7)';
+
+              function renumberAll() {
+                state.globalOrder.forEach((entry, idx) => {
+                  entry.el.textContent = String(idx + 1);
+                });
+              }
+
+              function repositionColor(ci) {
+                const arr = state.perColorBadges[ci] || [];
+                for (let j = 0; j < arr.length; j++) {
+                  const badge = arr[j];
+                  badge.style.bottom = `${badgeBaseBottom + j * badgeStep}px`;
+                }
+              }
+
+              colors.forEach((color, index) => {
+                const wrapper = document.createElement('div');
+                wrapper.style.position = 'relative';
+                wrapper.style.width = '34px';
+                wrapper.style.height = '34px';
+                wrapper.style.display = 'flex';
+                wrapper.style.alignItems = 'center';
+                wrapper.style.justifyContent = 'center';
+
+                const baseDot = document.createElement('div');
+                baseDot.style.width = '30px';
+                baseDot.style.height = '30px';
+                baseDot.style.borderRadius = '50%';
+                baseDot.style.backgroundColor = color;
+                baseDot.style.cursor = 'pointer';
+                baseDot.style.boxShadow = '0 0 0 2px rgba(0,0,0,0.35) inset, 0 1px 2px rgba(0,0,0,0.25)';
+                baseDot.style.transition = 'box-shadow 0.2s ease';
+                const baseDefaultShadow = baseDot.style.boxShadow;
+                baseDot.addEventListener('mouseenter', () => {
+                  baseDot.style.boxShadow = highlightShadow;
+                });
+                baseDot.addEventListener('mouseleave', () => {
+                  baseDot.style.boxShadow = baseDefaultShadow;
+                });
+
+                baseDot.addEventListener('click', () => {
+                  const badge = document.createElement('div');
+                  badge.textContent = '?';
+                  badge.style.position = 'absolute';
+                  const positionIndex = (state.perColorBadges[index] || []).length;
+                  badge.style.bottom = `${badgeBaseBottom + positionIndex * badgeStep}px`;
+                  badge.style.left = '50%';
+                  badge.style.transform = 'translateX(-50%)';
+                  badge.style.width = '24px';
+                  badge.style.height = '24px';
+                  badge.style.borderRadius = '50%';
+                  badge.style.background = color;
+                  badge.style.color = (color === 'rgb(255, 255, 255)') ? '#000' : '#fff';
+                  badge.style.fontSize = '12px';
+                  badge.style.fontFamily = '"Josefin Sans", sans-serif';
+                  badge.style.display = 'flex';
+                  badge.style.alignItems = 'center';
+                  badge.style.justifyContent = 'center';
+                  badge.style.boxShadow = '0 0 0 2px rgba(0,0,0,0.35) inset, 0 1px 2px rgba(0,0,0,0.25)';
+                  badge.style.transition = 'box-shadow 0.2s ease';
+                  badge.style.cursor = 'default';
+                  badge.setAttribute('data-color-index', String(index));
+
+                  const badgeDefaultShadow = badge.style.boxShadow;
+                  badge.addEventListener('mouseenter', () => {
+                    badge.style.boxShadow = highlightShadow;
+                  });
+                  badge.addEventListener('mouseleave', () => {
+                    badge.style.boxShadow = badgeDefaultShadow;
+                  });
+
+                  badge.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const ci = index;
+                    badge.remove();
+                    const arr = state.perColorBadges[ci];
+                    const arrIdx = arr ? arr.indexOf(badge) : -1;
+                    if (arr && arrIdx >= 0) arr.splice(arrIdx, 1);
+                    const goIdx = state.globalOrder.findIndex(entry => entry.el === badge);
+                    if (goIdx >= 0) state.globalOrder.splice(goIdx, 1);
+                    repositionColor(ci);
+                    renumberAll();
+                    updateStoriesDoneIconFromState();
+                  });
+
+                  wrapper.appendChild(badge);
+                  state.perColorBadges[index].push(badge);
+                  state.globalOrder.push({ colorIndex: index, el: badge });
+                  renumberAll();
+                  updateStoriesDoneIconFromState();
+                });
+
+                wrapper.appendChild(baseDot);
+                picker.appendChild(wrapper);
+              });
+
+              document.body.appendChild(picker);
+              try { chrome.storage.local.set({ storiesMenuOpen: true }); } catch (_) {}
+              updateStoriesDoneIconFromState();
+            } else {
+              const willShow = (picker.style.display === 'none');
+              picker.style.display = willShow ? 'flex' : 'none';
+              try { chrome.storage.local.set({ storiesMenuOpen: !!willShow }); } catch (_) {}
+              updateStoriesDoneIconFromState();
+            }
+          } catch (e) {
+            console.error('stories-button error:', e);
+          }
+        }
+
+        async function quickStoriesStart() {
+          const picker = document.getElementById('story-color-picker');
+          const state = window.__storyPickerState || {};
+          const colors = Array.isArray(state.colors) ? state.colors : [];
+          const perColorCounts = (state.perColorBadges || []).map(arr => (Array.isArray(arr) ? arr.length : 0));
+          const selections = colors.map((color, idx) => ({ color, count: perColorCounts[idx] || 0 }))
+            .filter(s => s.count > 0);
+          const sequence = (state.globalOrder || []).map(entry => colors[entry.colorIndex]).filter(Boolean);
+          await fetch("http://localhost:3000/quickStories", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ selections, sequence })
+          });
+          if (picker) picker.remove();
+          delete window.__storyPickerState;
+          chrome.storage.local.set({ storiesStop: false, storiesRunning: true, storiesMenuOpen: false }, () => {
+            setStoriesDoneIcon('stop');
+          });
         }
 
         async function quickStoriesDone() {
           await makeRequest("http://localhost:3000/quickStoriesDone", 0);
+        }
+
+        async function quickStoriesStop() {
+          await makeRequest("http://localhost:3000/quickStoriesStop", 0);
+          chrome.storage.local.set({ storiesStop: true }, () => {
+          });
+        }
+
+        async function handleStoriesAction() {
+          try {
+            const picker = document.getElementById('story-color-picker');
+            const menuOpen = !!(picker && picker.style.display !== 'none');
+            if (menuOpen) {
+              await quickStoriesStart();
+              return;
+            }
+            const res = await chrome.storage.local.get(['storiesRunning']);
+            if (res && res.storiesRunning) {
+              await quickStoriesStop();
+            } else {
+              await quickStoriesDone();
+            }
+          } catch (e) {
+            console.error('stories-done-button error:', e);
+          }
+        }
+
+        function setStoriesDoneIcon(mode) {
+          try {
+            const btn = document.getElementById('stories-done-button');
+            if (!btn) return;
+            const startSvg = `
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M8 5L19 12L8 19V5Z" fill="white"/>
+              </svg>`;
+            const checkSvg = `
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M5 14L8.23309 16.4248C8.66178 16.7463 9.26772 16.6728 9.60705 16.2581L18 6" stroke="white" stroke-width="2" stroke-linecap="round"/>
+              </svg>`;
+            const stopSvg = `
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="6" y="6" width="12" height="12" fill="white" rx="1.5"/>
+              </svg>`;
+            if (mode === 'start') btn.innerHTML = startSvg;
+            else if (mode === 'stop') btn.innerHTML = stopSvg;
+            else btn.innerHTML = checkSvg;
+          } catch (_) {}
+        }
+
+        function updateStoriesDoneIconFromState() {
+          try {
+            chrome.storage.local.get(['storiesRunning', 'storiesMenuOpen'], (res) => {
+              if (res && res.storiesRunning) { setStoriesDoneIcon('stop'); return; }
+              if (res && res.storiesMenuOpen) { setStoriesDoneIcon('start'); return; }
+              setStoriesDoneIcon('check');
+            });
+          } catch (_) {}
         }
 
         async function bindFixRequest() {
@@ -3505,7 +3971,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.8.6.4';
+            const VERSION = '5.8.7';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -3937,6 +4403,13 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
                updateRightActivationStyle();
              }
            });
+
+          chrome.storage.onChanged.addListener((changes, namespace) => {
+            if (namespace !== 'local') return;
+            if (changes.storiesRunning || changes.storiesMenuOpen) {
+              try { updateStoriesDoneIconFromState(); } catch (_) {}
+            }
+          });
            
            switchButton.addEventListener("contextmenu", (e) => {
              e.preventDefault();
@@ -3954,6 +4427,8 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
                  switchButton.dispatchEvent(up);
              }
            });
+
+          // text-scale is applied only on server broadcast (id 29)
 
           const clearButton = createActionButton(
             "clear-button",
@@ -4003,7 +4478,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M5 14L8.23309 16.4248C8.66178 16.7463 9.26772 16.6728 9.60705 16.2581L18 6" stroke="white" stroke-width="2" stroke-linecap="round"/>
             </svg>`,
-            quickStoriesDone
+            handleStoriesAction
           );
 
           const leftOffsetPercent = 32;
@@ -4077,6 +4552,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           document.body.appendChild(containerNew);
           document.body.appendChild(storiesContainer);
           window.buttonsAdded = true;
+          try { updateStoriesDoneIconFromState(); } catch (_) {}
         }
       },
       args: [DELAY_GREEN_BUTTON],
@@ -4842,7 +5318,6 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       }
     } catch (_) {}
     
-    // setBind
     chrome.storage.local.get("tabIds", function (data) {
       let tabIds = data.tabIds || [];
       if (!tabIds.includes(tabId)) {
