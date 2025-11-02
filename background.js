@@ -303,16 +303,19 @@ function updateTabCounterOnActiveTab(isReset) {
       chrome.scripting.executeScript({
         target: { tabId: activeTab.id },
         func: (isVisible) => {
-          const elements = [
-            "tabCounter", "cont1", "cont2", "cont3", 
-            "switch-button", "fakeMakeButton", "version", "clear-button", "reload-button", "stories-container", "bottom-overlay", "joy"
-          ].map(id => document.getElementById(id));
-
-          elements.forEach(el => {
-            if (el) {
-              el.style.opacity = isVisible ? "1" : "0";
-              el.style.pointerEvents = isVisible ? "auto" : "none";
+          const ids = [
+            "tabCounter", "cont1", "cont2", "cont3",
+            "switch-button", "fakeMakeButton", "version", "clear-button", "reload-button", "stories-container", "bottom-overlay", "joy", "text-size-slider"
+          ];
+          ids.forEach((id) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            let vis = isVisible;
+            if (id === 'joy' || id === 'text-size-slider') {
+              vis = (window.__OFH_JOY_VISIBLE !== false) && isVisible;
             }
+            el.style.opacity = vis ? '1' : '0';
+            el.style.pointerEvents = vis ? 'auto' : 'none';
           });
         },
         args: [timerVisibility]
@@ -655,8 +658,15 @@ async function processImageAndUpload(imageTag, storyColor) {
     joystickContainer.style.border = "2px solid #000";
     joystickContainer.style.boxSizing = "border-box";
     joystickContainer.style.zIndex = "10000";
-    joystickContainer.style.background = "rgb(90, 98, 104)";
+    joystickContainer.style.background = "rgba(28, 28, 28, 0.92)";
     joystickContainer.style.borderRadius = "10px";
+    joystickContainer.style.color = "#fff";
+    joystickContainer.style.boxShadow = "0 2px 8px rgba(0,0,0,0.35)";
+    joystickContainer.style.fontFamily = "'Josefin Sans', sans-serif";
+    joystickContainer.style.transition = "opacity 0.3s ease";
+    joystickContainer.style.color = "#fff";
+    joystickContainer.style.boxShadow = "0 2px 8px rgba(0,0,0,0.35)";
+    joystickContainer.style.fontFamily = "'Josefin Sans', sans-serif";
 
     const joystickHandle = document.createElement("div");
     joystickHandle.style.width = handleSize + "px";
@@ -932,7 +942,7 @@ async function processImageAndUpload(imageTag, storyColor) {
         sliderContainer.id = 'text-size-slider';
         sliderContainer.style.position = 'fixed';
         sliderContainer.style.zIndex = '10001';
-        sliderContainer.style.background = 'rgb(90, 98, 104)';
+        sliderContainer.style.background = 'rgba(28, 28, 28, 0.92)';
         sliderContainer.style.border = '2px solid #000';
         sliderContainer.style.borderRadius = '10px';
         sliderContainer.style.display = 'flex';
@@ -940,6 +950,10 @@ async function processImageAndUpload(imageTag, storyColor) {
         sliderContainer.style.justifyContent = 'center';
         sliderContainer.style.padding = '6px';
         sliderContainer.style.pointerEvents = 'auto';
+        sliderContainer.style.color = '#fff';
+        sliderContainer.style.boxShadow = '0 2px 8px rgba(0,0,0,0.35)';
+        sliderContainer.style.fontFamily = "'Josefin Sans', sans-serif";
+        sliderContainer.style.transition = 'opacity 0.3s ease';
         const containerHeight = joyRect ? joyRect.height : 100;
         const containerTop = joyRect ? joyRect.top : 45;
         const containerLeft = joyRect ? (joyRect.right + 10) : 120;
@@ -964,6 +978,43 @@ async function processImageAndUpload(imageTag, storyColor) {
         input.style.pointerEvents = 'auto';
         sliderContainer.appendChild(input);
         document.body.appendChild(sliderContainer);
+        try {
+          const initial = (window.__OFH_JOY_VISIBLE !== false);
+          const joy = document.getElementById('joy');
+          if (joy) { joy.style.opacity = initial ? '1' : '0'; joy.style.pointerEvents = initial ? 'auto' : 'none'; }
+          sliderContainer.style.opacity = initial ? '1' : '0';
+          sliderContainer.style.pointerEvents = initial ? 'auto' : 'none';
+        } catch (_) {}
+
+        try {
+          if (!window.__OFH_JOY_CTX_BOUND) {
+            window.__OFH_JOY_CTX_BOUND = true;
+            document.addEventListener('contextmenu', function(e) {
+              try {
+                const joy = document.getElementById('joy');
+                const slider = document.getElementById('text-size-slider');
+                const target = e.target;
+                const overJoy = joy && joy.contains(target);
+                const overSlider = slider && slider.contains(target);
+                const x = e.clientX, y = e.clientY;
+                const within = (el) => {
+                  try { if (!el) return false; const r = el.getBoundingClientRect(); return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom; } catch(_) { return false; }
+                };
+                const hit = overJoy || overSlider || within(joy) || within(slider);
+                if (hit) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.stopImmediatePropagation();
+                  const cur = (window.__OFH_JOY_VISIBLE !== false);
+                  const next = !cur;
+                  window.__OFH_JOY_VISIBLE = next;
+                  if (joy) { joy.style.opacity = next ? '1' : '0'; joy.style.pointerEvents = next ? 'auto' : 'none'; }
+                  if (slider) { slider.style.opacity = next ? '1' : '0'; slider.style.pointerEvents = next ? 'auto' : 'none'; }
+                }
+              } catch (_) {}
+            }, true);
+          }
+        } catch (_) {}
         const styleId = 'text-size-slider-style';
         if (!document.getElementById(styleId)) {
           const style = document.createElement('style');
@@ -2690,6 +2741,160 @@ async function checkDataFile() {
       })
     }
 
+    if (lastEntry && lastEntry.id === "30" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
+      await sendTypeToServer(lastIndex, browserType);
+      try {
+        const raw = (lastEntry.tag || '').toString();
+        const slug = raw.replace(/^@/, '').trim();
+        if (!slug) return;
+
+        const injectPassiveInterceptors = (tabId, slug) => {
+          try {
+            chrome.scripting.executeScript({
+              target: { tabId },
+              world: 'MAIN',
+              func: (slug) => {
+                try {
+                  if (window.__OFH_PASSIVE_HOOKED) return;
+                  window.__OFH_PASSIVE_HOOKED = true;
+
+                  const slugLc = String(slug || '').toLowerCase();
+                  const matchesTarget = (url) => {
+                    try {
+                      const u = String(url || '').toLowerCase();
+                      if (!u.includes('/api2/v2/users/')) return false;
+                      if (u.includes(`/api2/v2/users/${encodeURIComponent(slugLc)}`)) return true;
+                      const tail = u.split('/api2/v2/users/')[1] || '';
+                      const base = tail.split(/[?#]/)[0] || '';
+                      return /^([a-z0-9_.-]+|\d+)$/.test(base);
+                    } catch (_) { return false; }
+                  };
+
+                  const formatDate = (iso) => {
+                    try {
+                      const d = new Date(iso);
+                      if (isNaN(d)) return '';
+                      const day = d.getUTCDate();
+                      const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+                      const month = monthNames[d.getUTCMonth()];
+                      const year = d.getUTCFullYear();
+                      return `${day} ${month}, ${year}`;
+                    } catch (_) { return ''; }
+                  };
+
+                  const showBanner = (text) => {
+                    try {
+                      if (!text) return;
+                      if (window.__OFH_FIRST_SHOWN) return;
+                      window.__OFH_FIRST_SHOWN = true;
+                      if (!document.getElementById('ofh-josefin-link')) {
+                        const link = document.createElement('link');
+                        link.id = 'ofh-josefin-link';
+                        link.rel = 'stylesheet';
+                        link.href = 'https://fonts.googleapis.com/css2?family=Josefin+Sans&display=swap';
+                        document.head.appendChild(link);
+                      }
+                      let el = document.getElementById('ofh-first-published-banner');
+                      if (!el) {
+                        el = document.createElement('div');
+                        el.id = 'ofh-first-published-banner';
+                        Object.assign(el.style, {
+                          position: 'absolute', top: '60px', left: '50%', transform: 'translateX(-50%)',
+                          background: 'rgba(28,28,28,0.92)', color: '#fff', border: '2px solid #000', borderRadius: '10px',
+                          padding: '8px 14px', zIndex: '2147483647', fontFamily: '"Josefin Sans", sans-serif', fontSize: '16px',
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.35)'
+                        });
+                        document.body.appendChild(el);
+                      }
+                      el.textContent = text;
+                    } catch (_) {}
+                  };
+
+                  try {
+                    const originalFetch = window.fetch;
+                    window.fetch = async function(...args) {
+                      const response = await originalFetch.apply(this, args);
+                      try {
+                        const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
+                        if (matchesTarget(url)) {
+                          const clone = response.clone();
+                          clone.text().then(text => {
+                            try {
+                              const data = JSON.parse(text || '{}');
+                              if (data && data.firstPublishedPostDate) {
+                                const t = formatDate(data.firstPublishedPostDate);
+                                if (t) showBanner(t);
+                              }
+                            } catch (_) {}
+                          }).catch(() => {});
+                        }
+                      } catch (_) {}
+                      return response;
+                    };
+                  } catch (_) {}
+
+                  try {
+                    const XHR = XMLHttpRequest.prototype;
+                    const originalOpen = XHR.open;
+                    const originalSend = XHR.send;
+                    XHR.open = function(method, url) {
+                      try { this.__ofhUrl = url; } catch (_) {}
+                      return originalOpen.apply(this, arguments);
+                    };
+                    XHR.send = function(body) {
+                      try {
+                        const url = this.__ofhUrl || '';
+                        if (matchesTarget(url)) {
+                          this.addEventListener('load', function() {
+                            try {
+                              const text = String(this.responseText || '');
+                              const data = JSON.parse(text || '{}');
+                              if (data && data.firstPublishedPostDate) {
+                                const t = formatDate(data.firstPublishedPostDate);
+                                if (t) showBanner(t);
+                              }
+                            } catch (_) {}
+                          });
+                        }
+                      } catch (_) {}
+                      return originalSend.apply(this, arguments);
+                    };
+                  } catch (_) {}
+                } catch (_) {}
+              },
+              args: [slug]
+            });
+          } catch (_) {}
+        };
+
+        chrome.tabs.query({ url: "https://onlyfans.com/*" }, (tabs) => {
+          const existing = tabs.find(t => t.url && /https:\/\/onlyfans\.com\/[^\/?#]+/i.test(t.url) && t.url.replace(/\/?[#?].*$/, '').toLowerCase().endsWith(`/${slug.toLowerCase()}`));
+          if (existing) {
+            chrome.tabs.update(existing.id, { active: true }, () => {
+              injectPassiveInterceptors(existing.id, slug);
+            });
+          } else {
+            chrome.tabs.create({ url: `https://onlyfans.com/${encodeURIComponent(slug)}` }, (newTab) => {
+              injectPassiveInterceptors(newTab.id, slug);
+            });
+          }
+          
+          const onUpd = (tabId, changeInfo) => {
+            if (!changeInfo || (changeInfo.status !== 'loading' && changeInfo.status !== 'complete')) return;
+            const matchTab = existing ? existing.id : undefined;
+            if (matchTab && tabId !== matchTab) return;
+            injectPassiveInterceptors(tabId, slug);
+            if (changeInfo.status === 'complete') {
+              chrome.tabs.onUpdated.removeListener(onUpd);
+            }
+          };
+          try { chrome.tabs.onUpdated.addListener(onUpd); } catch (_) {}
+        });
+      } catch (_) {}
+      return;
+    }
+
     if (lastEntry && lastEntry.id === "27" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
@@ -3971,7 +4176,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.8.7';
+            const VERSION = '5.8.7.1';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 

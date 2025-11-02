@@ -44,6 +44,24 @@ function copyToClipboard(text, event) {
     }
   }
 
+  async function openTagPage(tag, event) {
+    try {
+      if (event) {
+        const btn = event.target && event.target.closest('button');
+        if (btn) {
+          btn.classList.add('animate');
+          setTimeout(() => btn.classList.remove('animate'), 200);
+        }
+      }
+      const clean = (tag || '').toString().trim().replace(/^@/, '');
+      await fetch('/open-tag', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tag: clean })
+      });
+    } catch (_) {}
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
     const tagButtons = document.querySelectorAll('.copy-button.tag-button');
 
@@ -97,6 +115,24 @@ function copyToClipboard(text, event) {
         button.addEventListener('pointercancel', () => {
             button.classList.remove('holding','animate','completed');
         });
+    });
+
+    const openButtons = document.querySelectorAll('.copy-button.open-button');
+    openButtons.forEach(button => {
+      button.removeAttribute('onclick');
+      button.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const textButton = button.previousElementSibling && button.previousElementSibling.previousElementSibling;
+        if (textButton && textButton.classList && textButton.classList.contains('text-button')) {
+          const content = textButton.textContent || '';
+          const idx = content.indexOf('@');
+          if (idx !== -1) {
+            const tag = content.slice(idx);
+            openTagPage(tag, e);
+          }
+        }
+      });
     });
   });
 
