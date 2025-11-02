@@ -1103,6 +1103,10 @@ function postStories() {
     if (joyElement) {
       joyElement.style.display = 'none';
     }
+    const sliderElement = document.getElementById('text-size-slider');
+    if (sliderElement) {
+      sliderElement.style.display = 'none';
+    }
   }
   return true;
 }
@@ -4176,7 +4180,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.8.7.1';
+            const VERSION = '5.8.7.2';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
