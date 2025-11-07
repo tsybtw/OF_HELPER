@@ -57,6 +57,11 @@ const protectedTabs = {
     return tabIdStr;
   },
 
+  delete: function(tabId) {
+    const tabIdStr = String(tabId);
+    this.ids.delete(tabIdStr);
+  },
+
   has: function(tabId) {
     const tabIdStr = String(tabId);
     const isProtected = this.ids.has(tabIdStr);
@@ -2342,12 +2347,30 @@ let lastTabId;
 
 chrome.tabs.onRemoved.addListener(function(tabId) {
   injectedTabs.delete(tabId);
+  protectedTabs.delete(tabId);
   
   if (closedTabIds.has(tabId)) {
     closedTabIds.delete(tabId);
     closedTabsCount++;
     lastClosedTime = new Date();
   }
+  
+  const tabIdStr = String(tabId);
+  const keysToRemove = [
+    tabIdStr, 
+    `blacklisted_${tabIdStr}` 
+  ];
+  
+  chrome.storage.local.remove(keysToRemove, function() {});
+  
+  chrome.storage.local.get("tabIds", function (data) {
+    const tabIds = data.tabIds || [];
+    const index = tabIds.indexOf(tabId);
+    if (index > -1) {
+      tabIds.splice(index, 1);
+      chrome.storage.local.set({ tabIds: tabIds });
+    }
+  });
   
   chrome.tabs.query({}, function(tabs) {
     const onlyFansTabsCount = tabs.filter(tab => 
@@ -4180,7 +4203,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.8.7.2';
+            const VERSION = '5.8.7.3';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -4636,9 +4659,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
                  switchButton.dispatchEvent(up);
              }
            });
-
-          // text-scale is applied only on server broadcast (id 29)
-
+           
           const clearButton = createActionButton(
             "clear-button",
             { bottom: "105px", right: "calc(((100% - 8px) / 3 * 4 / 5) - 24px)" },
@@ -5375,6 +5396,28 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
 
 chrome.runtime.onInstalled.addListener(function (details) {
   if (details.reason === "install") {
+    chrome.storage.local.get(null, function(allItems) {
+      const keysToRemove = [];
+      
+      for (const key in allItems) {
+
+        if (key.startsWith('blacklisted_')) {
+          keysToRemove.push(key);
+        }
+
+        else if (/^\d+$/.test(key)) {
+          keysToRemove.push(key);
+        }
+      }
+      
+      keysToRemove.push('tabIds');
+      
+      if (keysToRemove.length > 0) {
+        chrome.storage.local.remove(keysToRemove, function() {
+        });
+      }
+    });
+    
     chrome.tabs.create({ url: "chrome://extensions/" });
 
     const targetUrl = "https://onlyfans.com/posts/create";
@@ -5649,7 +5692,6 @@ chrome.tabs.onCreated.addListener(function (tab) {
     updateTabCounterOnActiveTab(false);
   }
 });
-
 
 setInterval(() => updateTabCounterOnActiveTab(false), 1000);
 
