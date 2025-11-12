@@ -2112,8 +2112,6 @@ async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht, 
   const formatText = (text) => {
     if (!text) return '';
 
-    let formattedText = text.split('\n').join('<br>');
-
     const patterns = [
       {
         regex: /\*{3}(.*?)\*{3}/g,
@@ -2130,20 +2128,10 @@ async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht, 
     ];
 
     patterns.forEach(({ regex, replacement }) => {
-      formattedText = formattedText.replace(regex, replacement);
+      text = text.replace(regex, replacement);
     });
 
-    const segments = formattedText.split('<br>');
-    formattedText = segments
-      .map(segment => {
-        if (segment.trim().startsWith('<') && segment.trim().endsWith('>')) {
-          return segment;
-        }
-        return `<p>${segment}</p>`;
-      })
-      .join('');
-
-    return formattedText;
+    return text
   };
 
   const clickEvent = new Event("click", {
@@ -4203,7 +4191,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.8.7.4';
+            const VERSION = '5.8.7.5';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
