@@ -96,12 +96,12 @@ setInterval(() => {
 
 const injectedTabs = new Set();
 
-async function injectCSSOnce(tabId) {
+async function injectCSS(tabId) {
   if (injectedTabs.has(tabId)) return;
   try {
     await chrome.scripting.insertCSS({
       target: { tabId },
-      css: "#ModalAlert___BV_modal_outer_{ display: none !important; visibility: hidden !important; opacity: 0 !important; position: fixed !important; top: -9999px !important; left: -9999px !important; z-index: -9999 !important; width: 0 !important; height: 0 !important; overflow: hidden !important; }"
+      css: "#ModalAlert, #ModalAlert___BV_modal_outer_{ display: none !important; visibility: hidden !important; opacity: 0 !important; position: fixed !important; top: -9999px !important; left: -9999px !important; z-index: -9999 !important; width: 0 !important; height: 0 !important; overflow: hidden !important; }"
     });
     injectedTabs.add(tabId);
   } catch (_) {}
@@ -4191,7 +4191,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.8.7.5';
+            const VERSION = '5.8.7.6';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -5540,6 +5540,7 @@ function createNotification(tabId, message) {
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === "loading") {
+    injectedTabs.delete(tabId);
     chrome.storage.local.get("tabIds", function (data) {
       let tabIds = data.tabIds || [];
       const index = tabIds.indexOf(tabId);
@@ -5554,7 +5555,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
     try {
       if (tab.url.startsWith('https://onlyfans.com')) {
-        injectCSSOnce(tabId);
+        injectCSS(tabId);
       }
     } catch (_) {}
     
@@ -5637,7 +5638,7 @@ chrome.tabs.onCreated.addListener(async (tab) => {
   if (tab.status === "complete" && tab.url !== undefined) {
     try {
       if (tab.url && tab.url.startsWith('https://onlyfans.com')) {
-        injectCSSOnce(tab.id);
+        injectCSS(tab.id);
       }
     } catch (_) {}
     chrome.storage.local.get("tabIds", function (data) {
@@ -5664,7 +5665,7 @@ chrome.webNavigation.onCompleted.addListener(
   function (details) {
     if (details.url.startsWith("https://onlyfans.com/")) {
       try {
-        injectCSSOnce(details.tabId);
+        injectCSS(details.tabId);
       } catch (_) {}
       updateTabCounterOnActiveTab(false);
     }
@@ -5675,7 +5676,7 @@ chrome.webNavigation.onCompleted.addListener(
 chrome.tabs.onCreated.addListener(function (tab) {
   if (tab.url && tab.url.startsWith("https://onlyfans.com/")) {
     try {
-      injectCSSOnce(tab.id);
+      injectCSS(tab.id);
     } catch (_) {}
     updateTabCounterOnActiveTab(false);
   }
