@@ -43,7 +43,7 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
 });
 
 async function executeScriptIfValid(activeTab, details) {
-  if (activeTab && !activeTab.url.startsWith("chrome://")) {
+  if (activeTab && activeTab.url && !activeTab.url.startsWith("chrome://")) {
     await chrome.scripting.executeScript(details);
   }
 }
@@ -83,6 +83,7 @@ let switchTabsEnabled = false;
 let switchTabsCurrentPhase = null;
 let switchTabsInFlight = false;
 let lastSwitchStateSignature = null;
+let switchStateFetchInProgress = false;
 
 const DEDUPE_TTL_MS = 1000;
 const recentCommands = new Map();
@@ -133,6 +134,8 @@ function persistTabCount(count) {
 }
 
 setInterval(async () => {
+  if (switchStateFetchInProgress) return;
+  switchStateFetchInProgress = true;
   try {
     const resp = await fetch('http://localhost:8765/switch-tabs-state');
     const state = await resp.json();
@@ -158,7 +161,9 @@ setInterval(async () => {
       switchTabsInFlight = true;
       performPhaseSwitch(active).finally(() => { switchTabsInFlight = false; });
     }
-  } catch (e) {}
+  } catch (e) {} finally {
+    switchStateFetchInProgress = false;
+  }
 }, 1000);
 
 async function performPhaseSwitch(phase) {
@@ -292,16 +297,14 @@ setInterval(() => {
 }, 2000);
 
 function updateTabCounterOnActiveTab(isReset) {
-  chrome.tabs.query({}, function (allTabs) { 
-    const onlyFansTabsCount = allTabs.filter(tab => 
-      tab.url && tab.url.startsWith('https://onlyfans.com')
-    ).length;
+  chrome.tabs.query({ url: "https://onlyfans.com/*" }, function (ofTabs) { 
+    const onlyFansTabsCount = Array.isArray(ofTabs) ? ofTabs.length : 0;
 
     chrome.tabs.query({ active: true, currentWindow: true }, function (activeTabs) {
-      if (activeTabs.length === 0) return;
+      if (!activeTabs || activeTabs.length === 0) return;
       const activeTab = activeTabs[0];
 
-      if (!activeTab.url.startsWith('https://onlyfans.com')) {
+      if (!activeTab || !activeTab.url || !activeTab.url.startsWith('https://onlyfans.com')) {
         return;
       }
 
@@ -376,9 +379,16 @@ function updateTabCounterOnActiveTab(isReset) {
             counter.textContent = `${count} / ${closedCount} / ${time}`;
           };
 
-          document.readyState === "loading"
-            ? document.addEventListener("DOMContentLoaded", update)
-            : update();
+          if (document.readyState === "loading") {
+            if (!window.__OFH_TAB_COUNTER_LISTENER) {
+              window.__OFH_TAB_COUNTER_LISTENER = true;
+              document.addEventListener("DOMContentLoaded", () => {
+                update();
+              }, { once: true });
+            }
+          } else {
+            update();
+          }
         },
         args: [onlyFansTabsCount, closedTabsCount, timeSinceLastClosed, color]
       }).catch(console.error);
@@ -4191,7 +4201,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.8.7.6';
+            const VERSION = '5.8.7.7';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -5441,6 +5451,9 @@ chrome.runtime.onInstalled.addListener(function (details) {
 function createNotification(tabId, message) {
   if (timerVisibility) {
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+      if (!tabs || tabs.length === 0 || !tabs[0] || !tabs[0].id) {
+        return;
+      }
       var activeTabId = tabs[0].id;
       chrome.scripting.executeScript({
         target: { tabId: activeTabId },
@@ -5685,9 +5698,15 @@ chrome.tabs.onCreated.addListener(function (tab) {
 setInterval(() => updateTabCounterOnActiveTab(false), 1000);
 
 function checkDataFileAndSetTimeout() {
-  checkDataFile().then(() => {
+  try {
+    Promise.resolve(checkDataFile())
+      .catch(() => {})
+      .finally(() => {
+        setTimeout(checkDataFileAndSetTimeout, ALL_ACTIONS_MONITOR);
+      });
+  } catch (_) {
     setTimeout(checkDataFileAndSetTimeout, ALL_ACTIONS_MONITOR);
-  });
+  }
 }
 
 checkDataFileAndSetTimeout();
