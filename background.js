@@ -4201,7 +4201,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.8.7.8';
+            const VERSION = '5.8.7.9';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -4796,7 +4796,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
        await fetch('http://localhost:8765/browser-data', {
          method: 'POST',
          headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify(message.payload)
+         body: JSON.stringify(request.payload)
        });
      } catch (_) {}
    })();
