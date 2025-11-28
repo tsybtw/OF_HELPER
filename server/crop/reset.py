@@ -1,6 +1,7 @@
 import os
 import shutil
 import json
+import re
 from typing import Any, Dict
 
 
@@ -20,8 +21,144 @@ def safe_write_json(path: str, data: Dict[str, Any]) -> None:
     os.replace(tmp, path)
 
 
+def extract_valid_entries(content: str) -> Dict[str, Any]:
+    pattern = r'"(\d+)":\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}'
+    
+    matches = re.finditer(pattern, content, re.DOTALL)
+    result = {}
+    
+    for match in matches:
+        chat_id = match.group(1)
+        entry_content = match.group(2)
+        
+        try:
+            entry_json = '{' + entry_content + '}'
+            entry_data = json.loads(entry_json)
+            result[chat_id] = entry_data
+        except json.JSONDecodeError:
+            try:
+                lines = entry_content.split('\n')
+                cleaned_lines = []
+                for line in lines:
+                    line = line.strip()
+                    if line and re.match(r'"[^"]+"\s*:\s*.+', line):
+                        if not line.endswith(','):
+                            line += ','
+                        cleaned_lines.append(line)
+                
+                if cleaned_lines:
+                    if cleaned_lines[-1].endswith(','):
+                        cleaned_lines[-1] = cleaned_lines[-1][:-1]
+                
+                cleaned_content = '{' + ''.join(cleaned_lines) + '}'
+                entry_data = json.loads(cleaned_content)
+                result[chat_id] = entry_data
+            except:
+                continue
+    
+    return result
+
+
+def load_and_fix_json(path: str, default_value: Any) -> Any:
+    if not os.path.exists(path):
+        return default_value
+    
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except json.JSONDecodeError:
+        pass
+    
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        if isinstance(default_value, dict) and path.endswith('hints.json'):
+            extracted = extract_valid_entries(content)
+            if extracted:
+                return extracted
+        
+        if isinstance(default_value, dict) and 'hints' in default_value:
+            try:
+                hints_match = re.search(r'"hints"\s*:\s*(\[.*?\])', content, re.DOTALL)
+                checkbox_match = re.search(r'"checkbox"\s*:\s*"([^"]*)"', content)
+                
+                hints_list = []
+                checkbox_val = ''
+                
+                if hints_match:
+                    try:
+                        hints_list = json.loads(hints_match.group(1))
+                    except:
+                        pass
+                
+                if checkbox_match:
+                    checkbox_val = checkbox_match.group(1)
+                
+                return {'hints': hints_list, 'checkbox': checkbox_val}
+            except:
+                pass
+        
+        return default_value
+    except Exception:
+        pass
+    
+    return default_value
+
+
+def validate_and_fix_hints() -> None:
+    os.makedirs(HINTS_DIR, exist_ok=True)
+    hints_path = os.path.join(HINTS_DIR, 'hints.json')
+    allhints_path = os.path.join(HINTS_DIR, 'allhints.json')
+
+    hints = load_and_fix_json(hints_path, {})
+    
+    if not isinstance(hints, dict):
+        hints = {}
+    
+    fixed_hints: Dict[str, Any] = {}
+    for key, value in hints.items():
+        if not isinstance(value, dict):
+            continue
+        
+        fixed_entry = {}
+        for k, v in value.items():
+            if k == 'checkbox':
+                fixed_entry[k] = str(v) if v is not None else ''
+            elif k == 'now':
+                fixed_entry[k] = bool(v)
+            else:
+                fixed_entry[k] = v
+        
+        if 'checkbox' not in fixed_entry:
+            fixed_entry['checkbox'] = ''
+        if 'now' not in fixed_entry:
+            fixed_entry['now'] = False
+            
+        fixed_hints[str(key)] = fixed_entry
+    
+    safe_write_json(hints_path, fixed_hints)
+
+    allhints = load_and_fix_json(allhints_path, {'hints': [], 'checkbox': ''})
+    
+    if not isinstance(allhints, dict):
+        allhints = {'hints': [], 'checkbox': ''}
+    
+    hints_list = allhints.get('hints', [])
+    if not isinstance(hints_list, list):
+        hints_list = []
+    
+    checkbox = allhints.get('checkbox', '')
+    if not isinstance(checkbox, str):
+        checkbox = str(checkbox) if checkbox is not None else ''
+    
+    safe_write_json(allhints_path, {
+        'hints': hints_list,
+        'checkbox': checkbox
+    })
+
+
 def reset_queue_state() -> None:
-    # Clear queue_state.json and app_state.json flags
     queue_state_path = os.path.join(FILES_DIR, 'queue_state.json')
     app_state_path = os.path.join(FILES_DIR, 'app_state.json')
 
@@ -33,14 +170,12 @@ def reset_queue_state() -> None:
         'queue_status': {'current_user_loaded': False}
     })
 
-    # Disable queue and features in app state
     safe_write_json(app_state_path, {
         'queue_mode_enabled': False,
         'auto_delete_enabled': False,
         'auto_send_enabled': False
     })
 
-    # Remove all per-user HTML templates
     if os.path.isdir(TEMPLATES_DIR):
         for name in os.listdir(TEMPLATES_DIR):
             if name.startswith('queue_user_') and name.endswith('.html'):
@@ -49,7 +184,6 @@ def reset_queue_state() -> None:
                 except FileNotFoundError:
                     pass
 
-    # Remove queue_states folder entirely
     if os.path.isdir(QUEUE_STATES_DIR):
         shutil.rmtree(QUEUE_STATES_DIR, ignore_errors=True)
 
@@ -57,7 +191,6 @@ def reset_queue_state() -> None:
 def reset_files_folder() -> None:
     os.makedirs(FILES_DIR, exist_ok=True)
 
-    # Files used by crop.py that we should clear
     blanks: Dict[str, Any] = {
         'posts.txt': '',
         'tags.txt': '',
@@ -78,64 +211,7 @@ def reset_files_folder() -> None:
             safe_write_json(path, content)
 
 
-def validate_and_fix_hints() -> None:
-    os.makedirs(HINTS_DIR, exist_ok=True)
-    hints_path = os.path.join(HINTS_DIR, 'hints.json')
-    allhints_path = os.path.join(HINTS_DIR, 'allhints.json')
-
-    # hints.json should be an object: { "<chat_id>": { ... , "checkbox": "<active>" } }
-    def load_or_default_hints(path: str) -> Dict[str, Any]:
-        try:
-            if os.path.exists(path):
-                with open(path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                if isinstance(data, dict):
-                    return data
-        except Exception:
-            pass
-        return {}
-
-    # allhints.json should be an object: { "hints": [ ... ], "checkbox": "<active>" }
-    def load_or_default_allhints(path: str) -> Dict[str, Any]:
-        try:
-            if os.path.exists(path):
-                with open(path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                if isinstance(data, dict):
-                    return data
-        except Exception:
-            pass
-        return { 'hints': [], 'checkbox': '' }
-
-    hints = load_or_default_hints(hints_path)
-    # Ensure each entry is a dict and optionally has 'checkbox' string
-    fixed_hints: Dict[str, Any] = {}
-    for key, value in hints.items():
-        if not isinstance(value, dict):
-            continue
-        checkbox = value.get('checkbox', '')
-        if checkbox is not None and not isinstance(checkbox, str):
-            checkbox = ''
-        fixed = dict(value)
-        fixed['checkbox'] = checkbox
-        fixed_hints[str(key)] = fixed
-    safe_write_json(hints_path, fixed_hints)
-
-    allhints = load_or_default_allhints(allhints_path)
-    hints_list = allhints.get('hints', [])
-    if not isinstance(hints_list, list):
-        hints_list = []
-    checkbox = allhints.get('checkbox', '')
-    if checkbox is not None and not isinstance(checkbox, str):
-        checkbox = ''
-    safe_write_json(allhints_path, {
-        'hints': hints_list,
-        'checkbox': checkbox
-    })
-
-
 def reset_splash_html() -> None:
-    # Minimal splash similar to crop.py boot splash
     os.makedirs(TEMPLATES_DIR, exist_ok=True)
     splash = """<!DOCTYPE html>
 <html>
@@ -177,14 +253,12 @@ def reset_splash_html() -> None:
 
 
 def reset_external_data_files() -> None:
-    # Reset files in sibling directory: server/files/data/*.json
     data_dir = os.path.abspath(os.path.join(PARENT_FILES_DIR, 'data'))
     os.makedirs(data_dir, exist_ok=True)
 
     data_json_path = os.path.join(data_dir, 'data.json')
     session_json_path = os.path.join(data_dir, 'session.json')
 
-    # Both should be JSON arrays
     tmp = data_json_path + '.tmp'
     with open(tmp, 'w', encoding='utf-8') as f:
         json.dump([], f, ensure_ascii=False, indent=2)
