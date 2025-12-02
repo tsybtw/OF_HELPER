@@ -2970,7 +2970,7 @@ async function checkDataFile() {
             let myNumber = 0;
             try { myNumber = parseInt(String(browserType).replace(/\D/g, ''), 10) || 0; } catch (_) { myNumber = 0; }
             if (selected.length === 0 || (myNumber && selected.includes(myNumber))) {
-              await collectFromSelectedBrowsers(selection);
+              await collectFromSelectedBrowsers();
             }
           } catch (_) {}
           return;
@@ -4201,7 +4201,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.8.8';
+            const VERSION = '5.8.8.1';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -4935,7 +4935,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
           if (btn) return;
           btn = document.createElement('button');
           btn.id = 'ofh-open-blacklist-btn';
-          btn.textContent = 'open blackliist';
+          btn.textContent = 'open blacklist';
           btn.className = 'g-btn m-flat m-btn-gaps m-reset-width';
           const style = btn.style;
           style.position = 'fixed';
@@ -6078,73 +6078,116 @@ function getNumberOfTabsToClick(currentTabId, callback) {
 
 async function collectOnlyfansData(tabId) {
   try {
-
     const [inj] = await chrome.scripting.executeScript({
       target: { tabId },
       func: () => {
         try {
-          let tag = '';
+          let tag = "";
           try {
-            const el = document.querySelector('.g-user-username');
+            const el = document.querySelector(".g-user-username");
             if (el && el.textContent) tag = String(el.textContent).trim();
           } catch (_) {}
-          if (tag && tag.startsWith('@')) tag = tag.slice(1);
-          const ua = navigator.userAgent || '';
-          const xbc = (typeof localStorage !== 'undefined' && localStorage.getItem('bcTokenSha')) || '';
 
-          try { const ex = document.getElementById('ofh-overlay'); if (ex) ex.remove(); } catch (_) {}
-          const overlay = document.createElement('div');
-          overlay.id = 'ofh-overlay';
-          overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483646;display:flex;align-items:flex-start;justify-content:flex-end;background:rgba(0,0,0,0);transition:background 220ms ease;';
-          const panel = document.createElement('div');
-          panel.id = 'ofh-panel';
-          panel.style.cssText = 'transform:translateY(-20px);transition:transform 260ms ease,opacity 240ms ease;opacity:0;background:#1e1e1e;color:#e0e0e0;border-radius:10px;padding:14px;max-width:160px;margin:16px;box-shadow:0 6px 18px rgba(0,0,0,.45);border:1px solid #2a2a2a;font-family:\'Josefin Sans\', sans-serif;';
-          const title = document.createElement('div');
-          title.textContent = 'Data collected';
-          title.style.cssText = 'font-weight:600;margin-bottom:10px;color:#8ab4f8;text-align:center;';
-          const buttons = document.createElement('div');
-          buttons.style.cssText = 'display:flex;flex-direction:column;gap:10px;justify-content:flex-start;align-items:stretch;';
+          if (tag.startsWith("@")) tag = tag.slice(1);
+
+          const ua = navigator.userAgent || "";
+
+          const xbc =
+            (typeof localStorage !== "undefined" &&
+              localStorage.getItem("bcTokenSha")) ||
+            "";
+
+          try {
+            const ex = document.getElementById("ofh-overlay");
+            if (ex) ex.remove();
+          } catch (_) {}
+
+          const overlay = document.createElement("div");
+          overlay.id = "ofh-overlay";
+          overlay.style.cssText =
+            "position:fixed;inset:0;z-index:2147483646;display:flex;align-items:flex-start;justify-content:flex-end;background:rgba(0,0,0,0);transition:background 220ms ease;";
+
+          const panel = document.createElement("div");
+          panel.id = "ofh-panel";
+          panel.style.cssText =
+            "transform:translateY(-20px);transition:transform 260ms ease,opacity 240ms ease;opacity:0;background:#1e1e1e;color:#e0e0e0;border-radius:10px;padding:14px;max-width:160px;margin:16px;box-shadow:0 6px 18px rgba(0,0,0,.45);border:1px solid #2a2a2a;font-family:'Josefin Sans', sans-serif;";
+
+          const title = document.createElement("div");
+          title.textContent = "Data collected";
+          title.style.cssText =
+            "font-weight:600;margin-bottom:10px;color:#8ab4f8;text-align:center;";
+
+          const buttons = document.createElement("div");
+          buttons.style.cssText =
+            "display:flex;flex-direction:column;gap:10px;justify-content:flex-start;align-items:stretch;";
 
           function makeBtn(id, label) {
-            const btn = document.createElement('button');
+            const btn = document.createElement("button");
             btn.id = id;
             btn.textContent = label;
             Object.assign(btn.style, {
-              backgroundColor: 'rgb(90, 98, 104)',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '10px',
-              padding: '8px 14px',
-              cursor: 'pointer',
-              transition: 'all 0.3s',
-              outline: 'none',
-              fontFamily: '\'Josefin Sans\', sans-serif'
+              backgroundColor: "rgb(90, 98, 104)",
+              color: "#ffffff",
+              border: "none",
+              borderRadius: "10px",
+              padding: "8px 14px",
+              cursor: "pointer",
+              transition: "all 0.3s",
+              outline: "none",
+              fontFamily: "'Josefin Sans', sans-serif"
             });
-            btn.addEventListener('mouseover', () => { btn.style.backgroundColor = '#e38571'; });
-            btn.addEventListener('mouseout', () => { btn.style.backgroundColor = 'rgb(90, 98, 104)'; btn.style.transform = 'scale(1)'; });
-            btn.addEventListener('mousedown', () => { btn.style.transform = 'scale(0.98)'; });
-            btn.addEventListener('mouseup', () => { btn.style.transform = 'scale(1)'; });
+            btn.addEventListener("mouseover", () => {
+              btn.style.backgroundColor = "#e38571";
+            });
+            btn.addEventListener("mouseout", () => {
+              btn.style.backgroundColor = "rgb(90, 98, 104)";
+              btn.style.transform = "scale(1)";
+            });
+            btn.addEventListener("mousedown", () => {
+              btn.style.transform = "scale(0.98)";
+            });
+            btn.addEventListener("mouseup", () => {
+              btn.style.transform = "scale(1)";
+            });
             return btn;
           }
 
-          const copyBtn = makeBtn('ofh-copy', 'copy');
-          const sendBtn = makeBtn('ofh-send', 'send');
-          const closeBtn = makeBtn('ofh-close', 'close');
+          const copyBtn = makeBtn("ofh-copy", "copy");
+          const sendBtn = makeBtn("ofh-send", "send");
+          const closeBtn = makeBtn("ofh-close", "close");
 
           function animateClose() {
             try {
-              panel.style.transform = 'translateY(-20px)';
-              panel.style.opacity = '0';
-              overlay.style.background = 'rgba(0,0,0,0)';
-              setTimeout(() => { try { overlay.remove(); } catch(_) {} }, 280);
+              panel.style.transform = "translateY(-20px)";
+              panel.style.opacity = "0";
+              overlay.style.background = "rgba(0,0,0,0)";
+              setTimeout(() => {
+                try {
+                  overlay.remove();
+                } catch (_) {}
+              }, 280);
             } catch (_) {}
           }
 
-          overlay.addEventListener('click',(e)=>{ if(e.target===overlay){ animateClose(); } });
-          const uaToken = String(ua).trim().replace(/\s+/g,'_');
-          const copyStr = [tag, uaToken, xbc].join(' ').trim();
-          copyBtn.addEventListener('click', async ()=>{ try{ await navigator.clipboard.writeText(copyStr); }catch(_){} });
-          closeBtn.addEventListener('click', (ev)=>{ ev.stopPropagation(); animateClose(); });
+          overlay.addEventListener("click", (e) => {
+            if (e.target === overlay) {
+              animateClose();
+            }
+          });
+
+          const uaToken = String(ua).trim().replace(/\s+/g, "_");
+          const copyStr = [tag, uaToken, xbc].join(" ").trim();
+
+          copyBtn.addEventListener("click", async () => {
+            try {
+              await navigator.clipboard.writeText(copyStr);
+            } catch (_) {}
+          });
+
+          closeBtn.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            animateClose();
+          });
 
           buttons.appendChild(copyBtn);
           buttons.appendChild(sendBtn);
@@ -6155,64 +6198,119 @@ async function collectOnlyfansData(tabId) {
           (document.body || document.documentElement).appendChild(overlay);
 
           void panel.offsetHeight;
-          requestAnimationFrame(()=>{ try{ overlay.style.background='rgba(0,0,0,0.35)'; panel.style.opacity='1'; panel.style.transform='translateY(10px)'; }catch(_){} });
+          requestAnimationFrame(() => {
+            try {
+              overlay.style.background = "rgba(0,0,0,0.35)";
+              panel.style.opacity = "1";
+              panel.style.transform = "translateY(10px)";
+            } catch (_) {}
+          });
 
-          try {
-            window.addEventListener('message', (ev) => {
+          window.addEventListener(
+            "message",
+            (ev) => {
               try {
                 const data = ev?.data;
-                if (data && data.type === 'OFH_SEND_BROWSER_DATA' && data.payload) {
-                  chrome.runtime.sendMessage({ type: 'OFH_SEND_BROWSER_DATA_BG', payload: data.payload });
+                if (
+                  data &&
+                  data.type === "OFH_SEND_BROWSER_DATA" &&
+                  data.payload
+                ) {
+                  chrome.runtime.sendMessage({
+                    type: "OFH_SEND_BROWSER_DATA_BG",
+                    payload: data.payload
+                  });
                 }
               } catch (_) {}
-            }, { once: true });
-          } catch (_) {}
+            },
+            { once: true }
+          );
 
           return { ua, xbc, tag, overlayPresent: true };
         } catch (e) {
-          return { ua: '', xbc: '', tag: '' };
+          return { ua: "", xbc: "", tag: "" };
         }
-      }
+      },
+      args: []
     });
-    const ua = (inj && inj.result && inj.result.ua) || '';
-    const xbc = (inj && inj.result && inj.result.xbc) || '';
-    const tag = (inj && inj.result && inj.result.tag) || '';
+
+    const ua = inj?.result?.ua || "";
+    const xbc = inj?.result?.xbc || "";
+    const tag = inj?.result?.tag || "";
 
     const sess = await new Promise((resolve) => {
-      try { chrome.cookies.get({ url: 'https://onlyfans.com/', name: 'sess' }, c => resolve((c && c.value) || '')); } catch (_) { resolve(''); }
+      try {
+        chrome.cookies.get(
+          { url: "https://onlyfans.com/", name: "sess" },
+          (c) => resolve(c?.value || "")
+        );
+      } catch (_) {
+        resolve("");
+      }
     });
+
     const authId = await new Promise((resolve) => {
-      try { chrome.cookies.get({ url: 'https://onlyfans.com/', name: 'auth_id' }, c => resolve((c && c.value) || '')); } catch (_) { resolve(''); }
+      try {
+        chrome.cookies.get(
+          { url: "https://onlyfans.com/", name: "auth_id" },
+          (c) => resolve(c?.value || "")
+        );
+      } catch (_) {
+        resolve("");
+      }
     });
 
     await chrome.scripting.executeScript({
       target: { tabId },
       func: (payload) => {
         try {
-          const overlay = document.getElementById('ofh-overlay');
-          const sendBtn = document.getElementById('ofh-send');
-          const closeBtn = document.getElementById('ofh-close');
+          const overlay = document.getElementById("ofh-overlay");
+          const sendBtn = document.getElementById("ofh-send");
+          const closeBtn = document.getElementById("ofh-close");
           if (!overlay || !sendBtn || !closeBtn) return;
+
           const animateClose = () => {
             try {
-              const panel = document.getElementById('ofh-panel');
-              const overlayEl = document.getElementById('ofh-overlay');
-              if (!panel || !overlayEl) { overlayEl?.remove(); return; }
-              panel.style.transform = 'translateY(-20px)';
-              panel.style.opacity = '0';
-              overlayEl.style.background = 'rgba(0,0,0,0)';
-              setTimeout(() => { try { overlayEl.remove(); } catch(_) {} }, 280);
-            } catch(_) {}
+              const panel = document.getElementById("ofh-panel");
+              const overlayEl = document.getElementById("ofh-overlay");
+              if (!panel || !overlayEl) {
+                overlayEl?.remove();
+                return;
+              }
+              panel.style.transform = "translateY(-20px)";
+              panel.style.opacity = "0";
+              overlayEl.style.background = "rgba(0,0,0,0)";
+              setTimeout(() => {
+                try {
+                  overlayEl.remove();
+                } catch (_) {}
+              }, 280);
+            } catch (_) {}
           };
 
-          sendBtn.addEventListener('click', async (ev) => {
-            ev.stopPropagation();
-            try {
-              window.postMessage({ type: 'OFH_SEND_BROWSER_DATA', payload }, '*');
-            } catch (_) {}
-            animateClose();
-          }, { once: true });
-          closeBtn.addEventListener('click', (ev) => { ev.stopPropagation(); animateClose(); }, { once: true });
+          sendBtn.addEventListener(
+            "click",
+            (ev) => {
+              ev.stopPropagation();
+              try {
+                window.postMessage(
+                  { type: "OFH_SEND_BROWSER_DATA", payload },
+                  "*"
+                );
+              } catch (_) {}
+              animateClose();
+            },
+            { once: true }
+          );
+
+          closeBtn.addEventListener(
+            "click",
+            (ev) => {
+              ev.stopPropagation();
+              animateClose();
+            },
+            { once: true }
+          );
         } catch (_) {}
       },
       args: [{ tag, userAgent: ua, xbc, sess, authId }]
@@ -6220,7 +6318,7 @@ async function collectOnlyfansData(tabId) {
   } catch (_) {}
 }
 
-async function collectFromSelectedBrowsers(selectedBrowsersRaw) {
+async function collectFromSelectedBrowsers() {
   try {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     const activeTab = tabs && tabs[0];
