@@ -3497,8 +3497,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
       target: { tabId: tab.id },
       func: function (DELAY_GREEN_BUTTON) {
         
-
-        async function animateButton(button, buttonText, callback) {
+        function animateButton(button, buttonText, callback) {
           button.style.transform = "scaleX(0.9)";
           buttonText.style.transform = "scaleX(1.1)";
           setTimeout(() => {
@@ -3931,6 +3930,44 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           return indicatorButton;
         }
 
+        function extractTagFromTextFields() {
+          try {
+            const editor = document.querySelector(
+              ".tiptap.ProseMirror.b-text-editor.js-text-editor.m-native-custom-scrollbar.m-scrollbar-y.m-scroll-behavior-auto.m-overscroll-behavior-auto"
+            );
+        
+            if (editor) {
+              let text = "";
+              if (editor.innerText) {
+                text = editor.innerText;
+              } else if (editor.textContent) {
+                text = editor.textContent;
+              }
+        
+              if (text) {
+                const match = text.match(/@([a-zA-Z0-9_.-]+)/);
+                if (match && match[1]) {
+                  return match[1];
+                }
+              }
+            }
+          } catch (e) {
+            console.error("extractTagFromTextFields error:", e);
+          }
+          return null;
+        }
+
+        async function sendAddMediaByTagRequest(tag) {
+          try {
+            chrome.runtime.sendMessage({
+              action: "addMediaByTag",
+              tag: tag
+            });
+          } catch (e) {
+            console.error("add-media-by-tag request error:", e);
+          }
+        }
+
         function addSplitButton(
           container,
           textLeft,
@@ -4072,13 +4109,38 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             button.disabled = true;
 
             if (clickX <= rect.width / 2) {
-              await animateButton(button, leftPart, callbackLeft);
+               animateButton(button, leftPart, callbackLeft);
             } else {
-              await animateButton(button, rightPart, callbackRight);
+               animateButton(button, rightPart, callbackRight);
             }
 
             button.disabled = false;
           });
+
+          if (id === "split-button1") {
+            button.addEventListener("contextmenu", async (event) => {
+              event.preventDefault();
+              try {
+                const rect = button.getBoundingClientRect();
+                const clickX = event.clientX - rect.left;
+
+                if (clickX <= rect.width / 2) {
+                  return;
+                }
+
+                const tag = extractTagFromTextFields();
+                if (!tag) {
+                  console.log("No @tag found in text fields for add media");
+                  return;
+                }
+
+                animateButton(button, rightPart);
+                await sendAddMediaByTagRequest(tag);
+              } catch (e) {
+                console.error("contextmenu add media error:", e);
+              }
+            });
+          }
 
           if (isStopButton) {
             chrome.storage.local.get(['singleStop', 'syncStop'], function(result) {
@@ -4201,7 +4263,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.8.8.1';
+            const VERSION = '5.8.8.2';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -4799,6 +4861,21 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
          body: JSON.stringify(request.payload)
        });
      } catch (_) {}
+   })();
+   return true;
+ }
+
+ if (request && request.action === 'addMediaByTag' && request.tag) {
+   (async () => {
+     try {
+       await fetch('http://localhost:8444/add-media-by-tag', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({ tag: request.tag })
+       });
+     } catch (e) {
+       console.error('add-media-by-tag request error:', e);
+     }
    })();
    return true;
  }
