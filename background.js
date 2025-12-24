@@ -1897,25 +1897,6 @@ async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht, 
 
   await handleTimeInsertion(timeTextInput, isApart, browserType).catch(err => console.error("Time insertion error:", err))
 
-  async function fetchWithRetry(resource, options, timeout = 5000, retries = 3) {
-    for (let i = 0; i < retries; i++) {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
-      try {
-        const response = await fetch(resource, { ...options, signal: controller.signal });
-        clearTimeout(timeoutId);
-        return response;
-      } catch (e) {
-        clearTimeout(timeoutId);
-        if (i < retries - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          continue;
-        }
-        throw e;
-      }
-    }
-  }
-
   function simulateDragAndDrop(sourceElement, targetElement, file) {
     try {
       const dataTransfer = new DataTransfer();
@@ -1973,18 +1954,11 @@ async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht, 
     };
 
     const url = "http://localhost:3000/update-browser";
-    const timeout = 5000;
 
     try {
-      await fetchWithRetry(url, requestConfig, timeout);
+      await fetch(url, requestConfig);
     } catch (error) {
-      setTimeout(async () => {
-        try {
-          await fetchWithRetry(url, requestConfig, timeout);
-        } catch (e) {
-          console.error("Failed to update browser after retry:", e);
-        }
-      }, 2000);
+      console.error("Failed to update browser:", error);
     }
   }
 
@@ -2024,78 +1998,16 @@ async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht, 
               type: fileType,
             });
 
-            let mediaInserted = false;
+            const editor = document.querySelector(
+                ".tiptap.ProseMirror.b-text-editor.js-text-editor.m-native-custom-scrollbar.m-scrollbar-y.m-scroll-behavior-auto.m-overscroll-behavior-auto"
+            );
 
-            const observer = new MutationObserver((mutations) => {
-              for (let mutation of mutations) {
-                if (mutation.type === "childList") {
-                  const mediaWrapper = document.querySelector(".b-make-post__media-wrapper");
-                  if (mediaWrapper && !mediaInserted) {
-                    mediaInserted = true;
-                    resolve();
-                    observer.disconnect();
-                  }
-                }
-              }
-            });
+            if (editor) {
+                editor.focus();
+                simulateDragAndDrop(mediaElement, editor, file);
+            }
 
-            observer.observe(document.body, { childList: true, subtree: true });
-
-            const tryInsertMedia = () => {
-              if (mediaInserted) {
-                return;
-              }
-
-              const existingWrapper = document.querySelector(".b-make-post__media-wrapper");
-              if (existingWrapper) {
-                mediaInserted = true;
-                resolve();
-                observer.disconnect();
-                return;
-              }
-
-              const now = Date.now();
-              try { window.__ofhLastMediaAttemptAt = window.__ofhLastMediaAttemptAt || 0; } catch (_) {}
-              const lastAttemptAt = window.__ofhLastMediaAttemptAt || 0;
-              const elapsedSinceLastAttemptMs = now - lastAttemptAt;
-              if (elapsedSinceLastAttemptMs < 1500) {
-                setTimeout(tryInsertMedia, 1500 - elapsedSinceLastAttemptMs);
-                return;
-              }
-
-              const editor = document.querySelector(
-                  ".tiptap.ProseMirror.b-text-editor.js-text-editor.m-native-custom-scrollbar.m-scrollbar-y.m-scroll-behavior-auto.m-overscroll-behavior-auto"
-              );
-
-              if (editor) {
-                  editor.focus();
-                  simulateDragAndDrop(mediaElement, editor, file);
-                  try { window.__ofhLastMediaAttemptAt = Date.now(); } catch (_) {}
-              }
-
-              let checks = 0;
-              const pollId = setInterval(() => {
-                if (document.querySelector(".b-make-post__media-wrapper")) {
-                  mediaInserted = true;
-                  clearInterval(pollId);
-                  resolve();
-                  observer.disconnect();
-                } else {
-                  checks++;
-                  if (checks >= 5) {
-                    clearInterval(pollId);
-                    setTimeout(tryInsertMedia, 0);
-                  }
-                }
-              }, 1000);
-            };
-
-            tryInsertMedia();
-
-            setTimeout(() => {
-              observer.disconnect();
-              resolve();
-            }, 30000);
+            resolve();
           } catch (e) {
             reject(e);
           }
@@ -4263,7 +4175,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.8.8.2';
+            const VERSION = '5.8.8.3';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -5312,79 +5224,16 @@ async function pressBindFix(tab, browserType) {
                       const file = new File([blob], `media.${extension}`, {
                         type: fileType,
                       });
-                      let mediaInserted = false;
 
-                      await new Promise((resolve) => {
-                        const observer = new MutationObserver((mutationsList, observer) => {
-                          for (let mutation of mutationsList) {
-                            if (mutation.type === "childList") {
-                              let el = document.querySelector(".b-make-post__media-wrapper");
-                              if (el && !mediaInserted) {
-                                mediaInserted = true;
-                                clearInterval(intervalId);
-                                isUploading = false;
-                                resolve();
-                                observer.disconnect();
-                              }
-                            }
-                          }
-                        });
-
-                        observer.observe(document.body, {
-                          childList: true,
-                          subtree: true,
-                        });
-
-                        const attemptInsert = () => {
-                          if (mediaInserted) return;
-
-                          const existing = document.querySelector(".b-make-post__media-wrapper");
-                          if (existing) {
-                            mediaInserted = true;
-                            isUploading = false;
-                            resolve();
-                            observer.disconnect();
-                            return;
-                          }
-
-                          const now = Date.now();
-                          try { window.__ofhLastMediaAttemptAt = window.__ofhLastMediaAttemptAt || 0; } catch (_) {}
-                          const lastAttemptAt = window.__ofhLastMediaAttemptAt || 0;
-                          const elapsed = now - lastAttemptAt;
-                          if (elapsed < 1500) {
-                            setTimeout(attemptInsert, 1500 - elapsed);
-                            return;
-                          }
-
-                          const editor = document.querySelector(
-                              ".tiptap.ProseMirror.b-text-editor.js-text-editor.m-native-custom-scrollbar.m-scrollbar-y.m-scroll-behavior-auto.m-overscroll-behavior-auto"
-                          );
-                          if (editor) {
-                              editor.focus();
-                              simulateDragAndDrop(mediaElement, editor, file);
-                              try { window.__ofhLastMediaAttemptAt = Date.now(); } catch (_) {}
-                          }
-    
-                          let checks = 0;
-                          const poll = setInterval(() => {
-                            if (document.querySelector(".b-make-post__media-wrapper")) {
-                              mediaInserted = true;
-                              clearInterval(poll);
-                              isUploading = false;
-                              resolve();
-                              observer.disconnect();
-                            } else {
-                              checks++;
-                              if (checks >= 5) {
-                                clearInterval(poll);
-                                setTimeout(attemptInsert, 0);
-                              }
-                            }
-                          }, 1000);
-                        };
-
-                        attemptInsert();
-                      });
+                      const editor = document.querySelector(
+                          ".tiptap.ProseMirror.b-text-editor.js-text-editor.m-native-custom-scrollbar.m-scrollbar-y.m-scroll-behavior-auto.m-overscroll-behavior-auto"
+                      );
+                      if (editor) {
+                          editor.focus();
+                          simulateDragAndDrop(mediaElement, editor, file);
+                      }
+                      
+                      isUploading = false;
                     } catch (error) {
                       console.error("Ошибка при обработке изображения:", error);
                       isUploading = false;
