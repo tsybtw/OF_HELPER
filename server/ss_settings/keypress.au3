@@ -2,7 +2,28 @@
 
 Local $isEnglishLayout = _IsEnglishKeyboardLayout()
 
-Local $filePath = @ScriptDir & "./keybind.txt"
+Local $delayPath = @ScriptDir & "\delay_win.toml"
+Local $lightshotDelay = 300
+
+Local $dFile = FileOpen($delayPath, 0)
+If $dFile <> -1 Then
+    While 1
+        Local $line = FileReadLine($dFile)
+        If @error = -1 Then ExitLoop
+        
+        ; Ищем строку lightshot_delay
+        If StringInStr($line, "lightshot_delay") Then
+            Local $parts = StringSplit($line, "=", 2)
+            If UBound($parts) > 1 Then
+                $lightshotDelay = Number(StringStripWS($parts[1], 8)) 
+            EndIf
+            ExitLoop 
+        EndIf
+    WEnd
+    FileClose($dFile)
+EndIf
+
+Local $filePath = @ScriptDir & "\keybind.txt"
 Local $file = FileOpen($filePath, 0)
 If $file = -1 Then
     Exit
@@ -28,7 +49,7 @@ If $i > 0 Then
     Else
         _SendKeyCombination($combos[0])
     EndIf
-    Sleep(300)
+    Sleep($lightshotDelay)
 EndIf
 
 If $i > 1 Then

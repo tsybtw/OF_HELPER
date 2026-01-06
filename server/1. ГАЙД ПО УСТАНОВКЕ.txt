@@ -11,7 +11,7 @@ https://github.com/tsybtw/OF_HELPER/releases
 Для Windows: 
 Скачайте файлы ffmpeg.exe и ffprobe.exe.
 
-3. Поместите 2 скачанных файла в папку ffmpeg.
+3. Поместите 2 скачанных файла в папку server -> crop -> ffmpeg.
 
 4. Перейдите в папку server, разархивируйте нужный zip архив в эту же папку так, чтобы в папке server был файл main.exe (main-intel/main-arm для macOS).
 
