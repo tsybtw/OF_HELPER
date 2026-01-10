@@ -32,7 +32,10 @@ If $CmdLine[1] = "list" Then
                 If Not StringInStr($title, "Dolphin{anty}") Then
                     Local $aPos = WinGetPos($handle)
                     If IsArray($aPos) Then
-                        If $aPos[0] > -5000 And $aPos[1] > -5000 And $aPos[2] > 0 And $aPos[3] > 0 Then
+                        Local $isMinimized = ($aPos[0] = $aPos[1]) And ($aPos[0] < -1000)
+                        Local $hasZeroSize = ($aPos[2] = 0) Or ($aPos[3] = 0)
+                        
+                        If Not $isMinimized And Not $hasZeroSize Then
                              If $first = 0 Then $sJSON &= ","
                              $title = StringReplace($title, '"', '\\"')
                              $title = StringReplace($title, '\\', '\\\\')
@@ -52,6 +55,36 @@ If $CmdLine[1] = "move" Then
     Local $hwnd = HWnd($CmdLine[2])
     If BitAND(WinGetState($hwnd), 16) Then
         WinSetState($hwnd, "", @SW_RESTORE)
+        Sleep(100)
     EndIf
     WinMove($hwnd, "", Number($CmdLine[3]), Number($CmdLine[4]), Number($CmdLine[5]), Number($CmdLine[6]))
+EndIf
+
+If $CmdLine[1] = "activate" Then
+    Local $hwnd = HWnd($CmdLine[2])
+    ; Разворачиваем если свернуто
+    If BitAND(WinGetState($hwnd), 16) Then
+        WinSetState($hwnd, "", @SW_RESTORE)
+        Sleep(100)
+    EndIf
+    ; Активируем окно
+    WinActivate($hwnd)
+EndIf
+
+If $CmdLine[1] = "activate_terminal" Then
+    Local $aList = WinList()
+    For $i = 1 To $aList[0][0]
+        Local $handle = $aList[$i][1]
+        Local $iPID = WinGetProcess($handle)
+        Local $sPath = _WinAPI_GetProcessFileName($iPID)
+        
+        If StringInStr($sPath, "WindowsTerminal") OR StringInStr($sPath, "wt.exe") Then
+            If BitAND(WinGetState($handle), 16) Then
+                WinSetState($handle, "", @SW_RESTORE)
+                Sleep(100)
+            EndIf
+            WinActivate($handle)
+            ExitLoop
+        EndIf
+    Next
 EndIf

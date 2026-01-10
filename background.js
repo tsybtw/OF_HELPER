@@ -3354,6 +3354,23 @@ async function checkDataFile() {
       });
       return
     }
+  
+  if (lastEntry && lastEntry.id === "116" && browserType !== "") {
+
+    if (shouldSkipDuplicate(lastEntry, browserType)) return;
+    await sendTypeToServer(lastIndex, browserType);
+
+    if (lastEntry.targetBrowser && lastEntry.targetBrowser === browserType) {
+        chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+          const activeTab = currentWindow.tabs.find((tab) => tab.active);
+          await executeScriptIfValid(activeTab, {
+            target: { tabId: activeTab.id },
+            func: pasteBind,
+          });
+        });
+    }
+    return;
+  }
 
     if (lastEntry && lastEntry.id === "117" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
@@ -4175,7 +4192,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '5.8.9';
+            const VERSION = '143';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -4778,19 +4795,21 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
  }
 
  if (request && request.action === 'addMediaByTag' && request.tag) {
-   (async () => {
-     try {
-       await fetch('http://localhost:8444/add-media-by-tag', {
-         method: 'POST',
-         headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({ tag: request.tag })
-       });
-     } catch (e) {
-       console.error('add-media-by-tag request error:', e);
-     }
-   })();
-   return true;
- }
+  (async () => {
+    try {
+      const browserId = "browser" + currentBrowserNumber; 
+      
+      await fetch('http://localhost:8444/add-media-by-tag', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tag: request.tag, browser: browserId })
+      });
+    } catch (e) {
+      console.error('add-media-by-tag request error:', e);
+    }
+  })();
+  return true;
+}
 
  if (request.action === "toggleAutoRestartState") {
    chrome.storage.local.get('autoRestartEnabled', (result) => {

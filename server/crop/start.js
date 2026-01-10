@@ -1,8 +1,10 @@
-const { createServer } = require('vite');
 const path = require('path');
 
 async function startServer() {
     try {
+  
+        const { createServer } = await import('vite');
+
         const server = await createServer({
             configFile: path.resolve(__dirname, 'vite.config.mjs'),
             logLevel: 'error',

@@ -7,29 +7,29 @@ const isWindows = process.platform === 'win32';
 let hasErrors = false;
 
 const dependencies = [
-   'vite'
+    'vite'
 ];
 
 function warn(message) {
-   console.log('\n\x1b[33m%s\x1b[0m\n', message);
+    console.log('\n\x1b[33m%s\x1b[0m\n', message);
 }
 
 function info(message) {
     console.log('\n\x1b[36m%s\x1b[0m\n', message);
- }
+}
 
 function fixNpmPermissions() {
-   if (!isWindows) {
-       try {
-           const npmCachePath = path.join(os.homedir(), '.npm');
-           console.log('Fixing npm permissions...');
-           execSync(`sudo chown -R ${process.getuid()}:${process.getgid()} "${npmCachePath}"`, { stdio: 'inherit' });
-           console.log('npm permissions fixed successfully');
-       } catch (error) {
-           hasErrors = true;
-           warn('Failed to fix npm permissions. You might need to run: sudo chown -R $(whoami) ~/.npm');
-       }
-   }
+    if (!isWindows) {
+        try {
+            const npmCachePath = path.join(os.homedir(), '.npm');
+            console.log('Fixing npm permissions...');
+            execSync(`sudo chown -R ${process.getuid()}:${process.getgid()} "${npmCachePath}"`, { stdio: 'inherit' });
+            console.log('npm permissions fixed successfully');
+        } catch (error) {
+            hasErrors = true;
+            warn('Failed to fix npm permissions. You might need to run: sudo chown -R $(whoami) ~/.npm');
+        }
+    }
 }
 
 function fixMacOSPermissions() {
@@ -176,58 +176,71 @@ function fixMacOSPermissions() {
 }
 
 function installDependencies() {
-   console.log('Installing dependencies...');
-   
-   try {
-       if (!isWindows) {
-           fixNpmPermissions();
-       }
+    
+    try {
+        if (!isWindows) {
+            fixNpmPermissions();
+        }
 
-       dependencies.forEach(dep => {
-           try {
-               console.log(`Installing ${dep}...`);
-               execSync(`npm install ${dep}`, { stdio: 'inherit' });
-           } catch (error) {
-               hasErrors = true;
-               if (!isWindows) {
-                   console.log('Trying with sudo...');
-                   try {
-                       execSync(`sudo npm install ${dep}`, { stdio: 'inherit' });
-                   } catch (sudoError) {
-                       warn(`Failed to install ${dep} even with sudo: ${sudoError}`);
-                   }
-               } else {
-                   warn(`Failed to install ${dep}: ${error}`);
-               }
-           }
-       });
+        dependencies.forEach(dep => {
+            try {
+                console.log(`Installing ${dep}...`);
+                if (isWindows) {
+                    execSync(`npm install ${dep}`, { stdio: 'inherit' });
+                } else {
+                    execSync(`sudo npm install ${dep}`, { stdio: 'inherit' });
+                }
+            } catch (error) {
+                hasErrors = true;
+                warn(`Failed to install ${dep}: ${error}`);
+            }
+        });
 
-       if (!hasErrors) {
-           console.log('Dependencies installed successfully');
-       }
+        if (isWindows) {
+            try {
+                process.chdir('..'); 
+                
+                console.log('Installing node-key-sender...');
+                execSync('npm i node-key-sender', { stdio: 'inherit' });
+                console.log('node-key-sender installed successfully!');
 
-   } catch (error) {
-       hasErrors = true;
-       warn(`Error installing dependencies: ${error}`);
-   }
+                process.chdir(currentPath);
+            } catch (error) {
+                hasErrors = true;
+                warn(`Failed to install node-key-sender in parent directory: ${error}`);
+                
+                try {
+                    process.chdir(currentPath);
+                } catch (e) {}
+            }
+        }
+
+        if (!hasErrors) {
+            console.log('Dependencies installed successfully!');
+        }
+
+    } catch (error) {
+        hasErrors = true;
+        warn(`Error installing dependencies: ${error}`);
+    }
 }
 
 function main() {
-   console.log('Starting setup...');
-   console.log(`Current path: ${currentPath}`);
-   console.log(`Operating System: ${isWindows ? 'Windows' : 'macOS'}`);
+    console.log('Starting setup...');
+    console.log(`Current path: ${currentPath}`);
+    console.log(`Operating System: ${isWindows ? 'Windows' : 'macOS'}`);
 
-   installDependencies();
-   
-   if (!isWindows) {
-       fixMacOSPermissions();
-   }
+    installDependencies();
+    
+    if (!isWindows) {
+        fixMacOSPermissions();
+    }
 
-   if (!hasErrors) {
-       console.log('Setup completed successfully!');
-   } else {
-       console.log('\nSetup completed with some errors. Please check the messages above.');
-   }
+    if (!hasErrors) {
+        console.log('Setup completed successfully!');
+    } else {
+        console.log('\nSetup completed with some errors. Please check the messages above.');
+    }
 }
 
 main();

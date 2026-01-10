@@ -13,7 +13,7 @@ body {
   .title {
     color:burlywood;
     font-size: 30px;
-    font-family: "Lacquer", system-ui;
+    font-family: "Josefin Sans", sans-serif;
   }
 
   ::-webkit-scrollbar {
@@ -21,14 +21,14 @@ body {
   }
 
   .switch-number {
-    height: 40px;
+    height: 25px;
     position: absolute;
     text-align: center;
     color: black;
     z-index: 9999;
     font-size: 30px;
     font-weight: bold;
-    font-family: "Lacquer", system-ui;
+    font-family: "Josefin Sans", sans-serif;
     pointer-events: none;
   }
 
@@ -47,21 +47,21 @@ body {
   .tag {
     font-size: 15px;
     color:burlywood;
-    font-family: "Lacquer", system-ui;
+    font-family: "Josefin Sans", sans-serif;
   }
   
   h1 {
     margin: 0px;
     margin-bottom: 5px;
     color: white;
-    font-family: "Lacquer", system-ui;
+    font-family: "Josefin Sans", sans-serif;
   }
 
   h2 {
     margin: 0px;
     margin-bottom: 5px;
     color: white;
-    font-family: "Lacquer", system-ui;
+    font-family: "Josefin Sans", sans-serif;
   }
   
   .switch-labels{
