@@ -649,7 +649,7 @@ function updateTextScale(scalePercent) {
   } catch (_) {}
 }
 
-async function processImageAndUpload(imageTag, storyColor) {
+async function processImageAndUpload(imageTag, storyColor, blacklistContent) {
   function sendJoystickData(newTagX, newTagY) {
     fetch("http://localhost:3000/joystick-data", {
       method: "POST",
@@ -807,11 +807,52 @@ async function processImageAndUpload(imageTag, storyColor) {
   });
 
   const cleanTag = imageTag.trim();
-  const userUsernameElement = await waitForElement(".g-user-username");
-  if (userUsernameElement) {
-    const username = userUsernameElement.textContent.trim().replace(/^@/, '');
-    if (username === cleanTag) {
-      return Promise.resolve();
+
+  let currentUsername = "";
+  try {
+    const userUsernameElement = await waitForElement(".g-user-username");
+    if (userUsernameElement) {
+      currentUsername = userUsernameElement.textContent.trim().replace(/^@/, '');
+    }
+  } catch (e) {
+    console.log("Could not find username, skipping blacklist check or proceeding cautiously");
+  }
+
+  if (currentUsername && currentUsername === cleanTag.replace(/^@/, '')) {
+    return Promise.resolve();
+  }
+
+  if (blacklistContent && currentUsername) {
+    const lines = blacklistContent.split(/\r?\n/);
+    const targetTagLower = cleanTag.toLowerCase().replace(/^@/, '');
+    const currentModelLower = currentUsername.toLowerCase();
+
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      if (!trimmedLine) continue;
+
+      if (trimmedLine.includes('-')) {
+        const parts = trimmedLine.split('-');
+        if (parts.length >= 2) {
+          const blacklistedTag = parts[0].trim().toLowerCase().replace(/^@/, '');
+
+          if (blacklistedTag === targetTagLower) {
+            const modelsPart = parts[1];
+            const bannedModels = modelsPart.split(',').map(m => m.trim().toLowerCase().replace(/^@/, ''));
+
+            if (bannedModels.includes(currentModelLower)) {
+              console.log(`[STORY SKIP] Tag @${blacklistedTag} is blacklisted for current model @${currentUsername}`);
+              return Promise.resolve();
+            }
+          }
+        }
+      } else {
+        const globalBanTag = trimmedLine.toLowerCase().replace(/^@/, '');
+        if (globalBanTag === targetTagLower) {
+          console.log(`[STORY SKIP] Tag @${globalBanTag} is globally blacklisted`);
+          return Promise.resolve();
+        }
+      }
     }
   }
 
@@ -2515,6 +2556,39 @@ async function checkDataFile() {
       return
     })}
 
+    if (lastEntry && lastEntry.id === "11" && lastEntry.textInput === "bl" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
+      await sendTypeToServer(lastIndex, browserType);
+      chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        const activeTab = currentWindow.tabs.find((tab) => tab.active);
+        
+        await executeScriptIfValid(activeTab, {
+          target: { tabId: activeTab.id },
+          func: () => {
+            try {
+              const usernameEl = document.querySelector(".g-user-username");
+              if (usernameEl && usernameEl.innerText) {
+                const username = usernameEl.innerText;
+                
+                fetch("http://localhost:3000/add-to-blacklist", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({ username: username }),
+                }).then(res => {
+                    if(res.ok) console.log("Sent to blacklist:", username);
+                }).catch(err => console.error("Error sending to blacklist:", err));
+              }
+            } catch (e) {
+              console.error("Error extracting username:", e);
+            }
+          },
+        });
+      });
+      return;
+    }
+
     async function processTags(selections, sequence) {
     const tagsFilePath = 'server/files/tags.txt';
     let firstCreatedTab = null;
@@ -2533,6 +2607,16 @@ async function checkDataFile() {
       }
     } catch (_) {}
     try { chrome.storage.local.set({ storiesStop: false, storiesRunning: true }); } catch (_) {}
+
+    let blacklistContent = "";
+    try {
+        const blResponse = await fetch('http://localhost:3000/get-blacklist');
+        if (blResponse.ok) {
+            blacklistContent = await blResponse.text();
+        }
+    } catch (e) {
+        console.error("Failed to fetch blacklist for stories:", e);
+    }
 
     try {
       const tagsResponse = await fetch(chrome.runtime.getURL(tagsFilePath));
@@ -2566,7 +2650,7 @@ async function checkDataFile() {
           chrome.scripting.executeScript({
             target: { tabId: tab.id },
             func: processImageAndUpload,
-            args: [tag, colorQueue[i] || null]
+            args: [tag, colorQueue[i] || null, blacklistContent]
           }, () => {
             resolve();
           });
@@ -4192,7 +4276,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '144';
+            const VERSION = '145';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
