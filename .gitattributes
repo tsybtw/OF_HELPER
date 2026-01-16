@@ -2,17 +2,22 @@
 
 *.js linguist-language=JavaScript
 *.mjs linguist-language=JavaScript
-
 *.au3 linguist-language=AutoIt
+*.py linguist-language=Python
 
-**/node_modules/** linguist-vendored
-**/AutoIt3/** linguist-vendored
+*.zip binary linguist-language=JavaScript
 
-*.exe binary
+server/AutoIt3/** linguist-vendored
+server/crop/ffmpeg/** linguist-vendored
 
 *.md linguist-documentation
 *.txt linguist-documentation
 
-crop binary linguist-language=Python
-upd binary linguist-language=Python
-main binary linguist-language=JavaScript
+*.png binary
+
+server/crop/crop-arm64 linguist-language=Python linguist-detectable=true
+server/crop/crop-x86_64 linguist-language=Python linguist-detectable=true
+server/crop/crop.exe linguist-language=Python linguist-detectable=true
+
+update/upd linguist-language=Python linguist-detectable=true
+update/upd.exe linguist-language=Python linguist-detectable=true
