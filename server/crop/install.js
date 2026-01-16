@@ -196,23 +196,31 @@ function installDependencies() {
             }
         });
 
-        if (isWindows) {
-            try {
-                process.chdir('..'); 
-                
+        try {
+            process.chdir('..'); 
+            
+            console.log('Installing node-clipboardy...');
+            if (isWindows) {
+                execSync('npm i node-clipboardy', { stdio: 'inherit' });
+            } else {
+                execSync('sudo npm i node-clipboardy', { stdio: 'inherit' });
+            }
+            console.log('node-clipboardy installed successfully!');
+
+            if (isWindows) {
                 console.log('Installing node-key-sender...');
                 execSync('npm i node-key-sender', { stdio: 'inherit' });
                 console.log('node-key-sender installed successfully!');
-
-                process.chdir(currentPath);
-            } catch (error) {
-                hasErrors = true;
-                warn(`Failed to install node-key-sender in parent directory: ${error}`);
-                
-                try {
-                    process.chdir(currentPath);
-                } catch (e) {}
             }
+
+            process.chdir(currentPath);
+        } catch (error) {
+            hasErrors = true;
+            warn(`Failed to install dependencies in parent directory: ${error}`);
+            
+            try {
+                process.chdir(currentPath);
+            } catch (e) {}
         }
 
         if (!hasErrors) {
