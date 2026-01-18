@@ -4276,7 +4276,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '146';
+            const VERSION = '147';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
