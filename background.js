@@ -3439,22 +3439,22 @@ async function checkDataFile() {
       return
     }
   
-  if (lastEntry && lastEntry.id === "116" && browserType !== "") {
+    if (lastEntry && lastEntry.id === "116" && browserType !== "") {
 
-    if (shouldSkipDuplicate(lastEntry, browserType)) return;
-    await sendTypeToServer(lastIndex, browserType);
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
+      await sendTypeToServer(lastIndex, browserType);
 
-    if (lastEntry.targetBrowser && lastEntry.targetBrowser === browserType) {
-        chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
-          const activeTab = currentWindow.tabs.find((tab) => tab.active);
-          await executeScriptIfValid(activeTab, {
-            target: { tabId: activeTab.id },
-            func: pasteBind,
+      if (lastEntry.targetBrowser && (lastEntry.targetBrowser === browserType || lastEntry.targetBrowser === "all")) {
+          chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+            const activeTab = currentWindow.tabs.find((tab) => tab.active);
+            await executeScriptIfValid(activeTab, {
+              target: { tabId: activeTab.id },
+              func: pasteBind,
+            });
           });
-        });
+      }
+      return;
     }
-    return;
-  }
 
     if (lastEntry && lastEntry.id === "117" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
@@ -3970,11 +3970,12 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           return null;
         }
 
-        async function sendAddMediaByTagRequest(tag) {
+        async function sendAddMediaByTagRequest(tag, target = null) {
           try {
             chrome.runtime.sendMessage({
               action: "addMediaByTag",
-              tag: tag
+              tag: tag,
+              target: target
             });
           } catch (e) {
             console.error("add-media-by-tag request error:", e);
@@ -4001,14 +4002,12 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           function updateStopButtonState(singleStopState, syncStopState) {
             const leftText = singleStopState ? "single resume" : "single stop";
             const rightText = syncStopState ? "sync resume" : "sync stop";
-
             const leftColor = singleStopState ? "rgb(120, 90, 90)" : "#5a6268";
             const rightColor = syncStopState ? "rgb(140, 110, 110)" : "#6c757d";
 
             button.style.background = `linear-gradient(to right, ${leftColor} 50%, ${rightColor} 50%)`;
             button.style.backgroundSize = "205% 100%";
             button.style.backgroundPosition = "center";
-
             updateButtonTexts(leftText, rightText);
           }
 
@@ -4016,23 +4015,15 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             if (splitText) {
               leftPart.innerHTML = '';
               rightPart.innerHTML = '';
-
               newLeftText.split(" ").forEach(word => {
                 const wordDiv = document.createElement("div");
-                wordDiv.style.cssText = `
-                  line-height: 1.2;
-                  text-align: center;
-                `;
+                wordDiv.style.cssText = `line-height: 1.2; text-align: center;`;
                 wordDiv.textContent = word;
                 leftPart.appendChild(wordDiv);
               });
-
               newRightText.split(" ").forEach(word => {
                 const wordDiv = document.createElement("div");
-                wordDiv.style.cssText = `
-                  line-height: 1.2;
-                  text-align: center;
-                `;
+                wordDiv.style.cssText = `line-height: 1.2; text-align: center;`;
                 wordDiv.textContent = word;
                 rightPart.appendChild(wordDiv);
               });
@@ -4067,6 +4058,24 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           leftPart = createButtonPart(textLeft, splitText);
           rightPart = createButtonPart(textRight, splitText);
 
+          let fillAnim = null;
+          if (id === "split-button1") {
+            fillAnim = document.createElement("div");
+            Object.assign(fillAnim.style, {
+              position: "absolute",
+              top: "0",
+              left: "0",
+              width: "0%", 
+              height: "100%",
+              backgroundColor: "rgba(160, 160, 160, 0.5)",
+              zIndex: "0",
+              pointerEvents: "none",
+              transition: "none"
+            });
+            rightPart.style.position = "relative";
+            rightPart.insertBefore(fillAnim, rightPart.firstChild);
+          }
+
           const divider = document.createElement("div");
           divider.style.cssText = `
             width: 2px;
@@ -4084,12 +4093,10 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           button.appendChild(divider);
 
           let animationTimeout;
-
           const handleHover = (side) => {
             clearTimeout(animationTimeout);
             button.style.backgroundPosition = side;
             divider.style.opacity = "0";
-
             if (side === "left") {
               leftPart.style.opacity = "1";
               rightPart.style.opacity = "0";
@@ -4107,59 +4114,89 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           };
 
           leftPart.addEventListener("mouseover", () => handleHover("left"));
-          leftPart.addEventListener("mouseout", () => {
-            animationTimeout = setTimeout(resetState, 100);
-          });
-
+          leftPart.addEventListener("mouseout", () => { animationTimeout = setTimeout(resetState, 100); });
           rightPart.addEventListener("mouseover", () => handleHover("right"));
-          rightPart.addEventListener("mouseout", () => {
-            animationTimeout = setTimeout(resetState, 100);
-          });
+          rightPart.addEventListener("mouseout", () => { animationTimeout = setTimeout(resetState, 100); });
 
-          button.addEventListener("click", async (event) => {
-            const rect = button.getBoundingClientRect();
-            const clickX = event.clientX - rect.left;
-            button.disabled = true;
-
-            if (clickX <= rect.width / 2) {
-               animateButton(button, leftPart, callbackLeft);
-            } else {
-               animateButton(button, rightPart, callbackRight);
-            }
-
-            button.disabled = false;
+          leftPart.addEventListener("click", (e) => {
+             e.stopPropagation();
+             animateButton(button, leftPart, callbackLeft);
           });
 
           if (id === "split-button1") {
-            button.addEventListener("contextmenu", async (event) => {
-              event.preventDefault();
-              try {
-                const rect = button.getBoundingClientRect();
-                const clickX = event.clientX - rect.left;
+             let holdTimer = null;
+             let holdTriggered = false;
 
-                if (clickX <= rect.width / 2) {
-                  return;
-                }
+             const startHold = (e) => {
+               if (e.button !== 0) return; 
+               holdTriggered = false;
+               
+               fillAnim.style.transition = "width 1s linear";
+               fillAnim.style.width = "100%";
 
-                const tag = extractTagFromTextFields();
-                if (!tag) {
-                  console.log("No @tag found in text fields for add media");
-                  return;
-                }
+               holdTimer = setTimeout(async () => {
+                 holdTriggered = true;
+                 
+                 const tag = extractTagFromTextFields();
+                 if (tag) {
+                   button.style.transform = "scale(1.05)";
+                   setTimeout(() => button.style.transform = "scale(1)", 100);
+                   
+                   await sendAddMediaByTagRequest(tag, "all"); 
+                 }
+                 resetHoldAnim();
+               }, 1000); 
+             };
 
-                animateButton(button, rightPart);
-                await sendAddMediaByTagRequest(tag);
-              } catch (e) {
-                console.error("contextmenu add media error:", e);
-              }
-            });
+             const endHold = (e) => {
+               if (e.button !== 0) return;
+               clearTimeout(holdTimer);
+               
+               if (!holdTriggered) {
+                 animateButton(button, rightPart, callbackRight); 
+               }
+               resetHoldAnim();
+             };
+             
+             const resetHoldAnim = () => {
+               fillAnim.style.transition = "width 0.2s ease-out";
+               fillAnim.style.width = "0%";
+               setTimeout(() => {
+                   if(fillAnim.style.width === "0%") fillAnim.style.transition = "none";
+               }, 200);
+             };
+
+             rightPart.addEventListener("mousedown", startHold);
+             rightPart.addEventListener("mouseup", endHold);
+             rightPart.addEventListener("mouseleave", () => {
+               clearTimeout(holdTimer);
+               resetHoldAnim();
+             });
+             rightPart.addEventListener("click", (e) => e.stopPropagation());
+
+             button.addEventListener("contextmenu", async (event) => {
+               event.preventDefault();
+               const rect = button.getBoundingClientRect();
+               if ((event.clientX - rect.left) > rect.width / 2) {
+                 const tag = extractTagFromTextFields();
+                 if (tag) {
+                   animateButton(button, rightPart);
+                   await sendAddMediaByTagRequest(tag, null);
+                 }
+               }
+             });
+
+          } else {
+             rightPart.addEventListener("click", (e) => {
+                e.stopPropagation();
+                animateButton(button, rightPart, callbackRight);
+             });
           }
 
           if (isStopButton) {
             chrome.storage.local.get(['singleStop', 'syncStop'], function(result) {
               updateStopButtonState(result.singleStop, result.syncStop);
             });
-
             chrome.storage.onChanged.addListener(function(changes, namespace) {
               if (namespace === 'local' && (changes.singleStop || changes.syncStop)) {
                 chrome.storage.local.get(['singleStop', 'syncStop'], function(result) {
@@ -4276,7 +4313,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '147';
+            const VERSION = '148';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -4881,7 +4918,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
  if (request && request.action === 'addMediaByTag' && request.tag) {
   (async () => {
     try {
-      const browserId = "browser" + currentBrowserNumber; 
+      const browserId = request.target ? request.target : ("browser" + currentBrowserNumber);
       
       await fetch('http://localhost:8444/add-media-by-tag', {
         method: 'POST',
