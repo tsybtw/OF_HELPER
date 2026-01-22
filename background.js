@@ -650,50 +650,43 @@ function updateTextScale(scalePercent) {
 }
 
 async function processImageAndUpload(imageTag, storyColor, blacklistContent) {
-  function sendJoystickData(newTagX, newTagY) {
-    fetch("http://localhost:3000/joystick-data", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ x: newTagX, y: newTagY })
-    }).catch(error => {
-      console.error("Error sending joystick data:", error);
-    });
-  }
-
   function createJoystick() {
-    const containerSize = 100; 
-    const handleSize = 10; 
+    const containerSize = 100;
+    const handleSize = 10;
     const joystickContainer = document.createElement("div");
-    joystickContainer.id = "joy"
-    joystickContainer.style.position = "fixed";
-    joystickContainer.style.top = "45px";
-    joystickContainer.style.left = "10px";
-    joystickContainer.style.width = containerSize + "px";
-    joystickContainer.style.height = containerSize + "px";
-    joystickContainer.style.border = "2px solid #000";
-    joystickContainer.style.boxSizing = "border-box";
-    joystickContainer.style.zIndex = "10000";
-    joystickContainer.style.background = "rgba(28, 28, 28, 0.92)";
-    joystickContainer.style.borderRadius = "10px";
-    joystickContainer.style.color = "#fff";
-    joystickContainer.style.boxShadow = "0 2px 8px rgba(0,0,0,0.35)";
-    joystickContainer.style.fontFamily = "'Josefin Sans', sans-serif";
-    joystickContainer.style.transition = "opacity 0.3s ease";
-    joystickContainer.style.color = "#fff";
-    joystickContainer.style.boxShadow = "0 2px 8px rgba(0,0,0,0.35)";
-    joystickContainer.style.fontFamily = "'Josefin Sans', sans-serif";
+    joystickContainer.id = "joy";
+    Object.assign(joystickContainer.style, {
+        position: "fixed",
+        top: "45px",
+        left: "10px",
+        width: containerSize + "px",
+        height: containerSize + "px",
+        border: "2px solid #000",
+        boxSizing: "border-box",
+        zIndex: "10000",
+        background: "rgba(28, 28, 28, 0.92)",
+        borderRadius: "10px",
+        color: "#fff",
+        boxShadow: "0 2px 8px rgba(0,0,0,0.35)",
+        fontFamily: "'Josefin Sans', sans-serif",
+        transition: "opacity 0.3s ease"
+    });
 
     const joystickHandle = document.createElement("div");
-    joystickHandle.style.width = handleSize + "px";
-    joystickHandle.style.height = handleSize + "px";
-    joystickHandle.style.borderRadius = "50%";
-    joystickHandle.style.background = "#fff";
-    joystickHandle.style.position = "absolute";
     const initialX = (containerSize - handleSize) / 2;
     const initialY = (containerSize - handleSize) / 2;
-    joystickHandle.style.left = initialX + "px";
-    joystickHandle.style.top = initialY + "px";
-    joystickHandle.style.zIndex = "10000";
+    
+    Object.assign(joystickHandle.style, {
+        width: handleSize + "px",
+        height: handleSize + "px",
+        borderRadius: "50%",
+        background: "#fff",
+        position: "absolute",
+        left: initialX + "px",
+        top: initialY + "px",
+        zIndex: "10000",
+        cursor: "pointer"
+    });
 
     joystickContainer.appendChild(joystickHandle);
     document.body.appendChild(joystickContainer);
@@ -703,39 +696,68 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent) {
     let currentX = initialX;
     let currentY = initialY;
     let dragging = false;
+    let containerRect = null;
+    let animationFrameId = null;
+
+    function sendJoystickData(newTagX, newTagY) {
+      fetch("http://localhost:3000/joystick-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ x: newTagX, y: newTagY })
+      }).catch(console.error);
+    }
 
     joystickHandle.addEventListener("pointerdown", function(e) {
       dragging = true;
-      offsetX = e.clientX - joystickHandle.getBoundingClientRect().left;
-      offsetY = e.clientY - joystickHandle.getBoundingClientRect().top;
+      containerRect = joystickContainer.getBoundingClientRect();
+      const handleRect = joystickHandle.getBoundingClientRect();
+      offsetX = e.clientX - handleRect.left;
+      offsetY = e.clientY - handleRect.top;
       joystickHandle.setPointerCapture(e.pointerId);
     });
 
     document.addEventListener("pointermove", function(e) {
       if (!dragging) return;
-      const containerRect = joystickContainer.getBoundingClientRect();
-      let newLeft = e.clientX - containerRect.left - offsetX;
-      let newTop = e.clientY - containerRect.top - offsetY;
-      newLeft = Math.max(0, Math.min(newLeft, containerSize - handleSize));
-      newTop = Math.max(0, Math.min(newTop, containerSize - handleSize));
-      currentX = newLeft;
-      currentY = newTop;
-      joystickHandle.style.left = currentX + "px";
-      joystickHandle.style.top = currentY + "px";
+      if (animationFrameId) return;
+
+      animationFrameId = requestAnimationFrame(() => {
+        if (!dragging || !containerRect) return;
+        
+        let newLeft = e.clientX - containerRect.left - offsetX;
+        let newTop = e.clientY - containerRect.top - offsetY;
+
+        newLeft = Math.max(0, Math.min(newLeft, containerSize - handleSize));
+        newTop = Math.max(0, Math.min(newTop, containerSize - handleSize));
+
+        currentX = newLeft;
+        currentY = newTop;
+
+        joystickHandle.style.left = currentX + "px";
+        joystickHandle.style.top = currentY + "px";
+        
+        animationFrameId = null;
+      });
     });
 
     document.addEventListener("pointerup", function(e) {
       if (!dragging) return;
       dragging = false;
+      if (animationFrameId) {
+          cancelAnimationFrame(animationFrameId);
+          animationFrameId = null;
+      }
+      
       const canvas = document.querySelector(".upper-canvas");
-      const canvasRect = canvas.getBoundingClientRect();
-      const whiteCenterX = currentX + handleSize / 2;
-      const whiteCenterY = currentY + handleSize / 2;
-      const percentX = whiteCenterX / containerSize;
-      const percentY = whiteCenterY / containerSize;
-      const newTagX = percentX * canvasRect.width;
-      const newTagY = percentY * canvasRect.height;
-      sendJoystickData(newTagX, newTagY);
+      if (canvas) {
+          const canvasRect = canvas.getBoundingClientRect();
+          const whiteCenterX = currentX + handleSize / 2;
+          const whiteCenterY = currentY + handleSize / 2;
+          const percentX = whiteCenterX / containerSize;
+          const percentY = whiteCenterY / containerSize;
+          const newTagX = percentX * canvasRect.width;
+          const newTagY = percentY * canvasRect.height;
+          sendJoystickData(newTagX, newTagY);
+      }
     });
   }
 
@@ -747,67 +769,63 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent) {
     }
   }
 
-  function waitForAnyElement(selectors, maxAttempts = 30, interval = 500) {
-    return new Promise((resolve, reject) => {
-      let attempts = 0;
-      const check = () => {
-        for (const selector of selectors) {
-          const el = typeof selector === 'string'
-            ? document.querySelector(selector)
-            : selector();
-          if (el) return resolve(el);
-        }
-        attempts++;
-        if (attempts >= maxAttempts) return reject(new Error('Elements not found'));
-        setTimeout(check, interval);
-      };
-      check();
-    });
-  }
-
   const waitForElement = (selector, maxAttempts = 30, interval = 500) => new Promise((resolve, reject) => {
     let attempts = 0;
     const checkElement = () => {
       const element = document.querySelector(selector);
       if (element) { resolve(element); return; }
       attempts++;
-      if (attempts >= maxAttempts) { reject(new Error(selector)); return; }
+      if (attempts >= maxAttempts) { reject(new Error(`Element not found: ${selector}`)); return; }
       setTimeout(checkElement, interval);
     };
     checkElement();
   });
 
-  const waitForElementWithText = (selector, text, maxAttempts = 30, interval = 500) => new Promise((resolve, reject) => {
+  const waitForAnyElement = (selectors, maxAttempts = 30, interval = 500) => new Promise((resolve, reject) => {
     let attempts = 0;
-    const checkElements = () => {
-      const elements = document.querySelectorAll(selector);
-      for (const element of elements) {
-        const textElement = element.querySelector(".b-stickers__text");
-        if (textElement && textElement.textContent.trim() === text) { resolve(element); return; }
+    const check = () => {
+      for (const selector of selectors) {
+        const el = typeof selector === 'string' ? document.querySelector(selector) : selector();
+        if (el) return resolve(el);
       }
       attempts++;
-      if (attempts >= maxAttempts) { reject(new Error(text)); return; }
-      setTimeout(checkElements, interval);
+      if (attempts >= maxAttempts) return reject(new Error('Elements not found'));
+      setTimeout(check, interval);
     };
-    checkElements();
+    check();
+  });
+
+  const waitForElementWithText = (selector, text, maxAttempts = 30, interval = 500) => new Promise((resolve, reject) => {
+      let attempts = 0;
+      const checkElements = () => {
+        const elements = document.querySelectorAll(selector);
+        for (const element of elements) {
+          const textElement = element.querySelector(".b-stickers__text");
+          if (textElement && textElement.textContent.trim() === text) { resolve(element); return; }
+        }
+        attempts++;
+        if (attempts >= maxAttempts) { reject(new Error(`Element with text "${text}" not found`)); return; }
+        setTimeout(checkElements, interval);
+      };
+      checkElements();
   });
 
   const waitForButtonWithText = (selector, text, maxAttempts = 30, interval = 500) => new Promise((resolve, reject) => {
-    let attempts = 0;
-    const checkButtons = () => {
-      const buttons = document.querySelectorAll(selector);
-      for (const button of buttons) {
-        if (button.textContent.trim() === text) { resolve(button); return; }
-      }
-      attempts++;
-      if (attempts >= maxAttempts) { reject(new Error(text)); return; }
-      setTimeout(checkButtons, interval);
-    };
-    checkButtons();
+      let attempts = 0;
+      const checkButtons = () => {
+        const buttons = document.querySelectorAll(selector);
+        for (const button of buttons) {
+          if (button.textContent.trim() === text) { resolve(button); return; }
+        }
+        attempts++;
+        if (attempts >= maxAttempts) { reject(new Error(`Button "${text}" not found`)); return; }
+        setTimeout(checkButtons, interval);
+      };
+      checkButtons();
   });
 
   const cleanTag = imageTag.trim();
-
+  
   let currentUsername = "";
   try {
     const userUsernameElement = await waitForElement(".g-user-username");
@@ -815,7 +833,7 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent) {
       currentUsername = userUsernameElement.textContent.trim().replace(/^@/, '');
     }
   } catch (e) {
-    console.log("Could not find username, skipping blacklist check or proceeding cautiously");
+    console.log("Could not find username, continuing...");
   }
 
   if (currentUsername && currentUsername === cleanTag.replace(/^@/, '')) {
@@ -835,13 +853,11 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent) {
         const parts = trimmedLine.split('-');
         if (parts.length >= 2) {
           const blacklistedTag = parts[0].trim().toLowerCase().replace(/^@/, '');
-
           if (blacklistedTag === targetTagLower) {
             const modelsPart = parts[1];
             const bannedModels = modelsPart.split(',').map(m => m.trim().toLowerCase().replace(/^@/, ''));
-
             if (bannedModels.includes(currentModelLower)) {
-              console.log(`[STORY SKIP] Tag @${blacklistedTag} is blacklisted for current model @${currentUsername}`);
+              console.log(`[STORY SKIP] Tag @${blacklistedTag} blacklisted for @${currentUsername}`);
               return Promise.resolve();
             }
           }
@@ -868,7 +884,7 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent) {
           const blob = await response.blob();
           return { blob: blob, filename: `${tag}${ext}`, extension: ext.substring(1) };
         }
-      } catch (error) { console.log(error); }
+      } catch (error) {}
     }
     try {
       const imageUrl = chrome.runtime.getURL(`server/crop/images/${tag}`);
@@ -877,40 +893,32 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent) {
         const blob = await response.blob();
         const mimeType = blob.type;
         let extension = "png";
-        if (mimeType.includes("jpeg") || mimeType.includes("jpg")) { extension = "jpg"; }
-        else if (mimeType.includes("png")) { extension = "png"; }
-        else if (mimeType.includes("heic")) { extension = "heic"; }
+        if (mimeType.includes("jpeg") || mimeType.includes("jpg")) extension = "jpg";
+        else if (mimeType.includes("heic")) extension = "heic";
         return { blob: blob, filename: `${tag}.${extension}`, extension: extension };
       }
-    } catch (error) { console.log(error); }
+    } catch (error) {}
     return null;
   };
+
   return new Promise(async (resolve, reject) => {
     try {
       const button = await waitForElement("#add-story-btn");
       const imageData = await findAndLoadImage(fileSearchTag);
-      if (!imageData) { throw new Error(fileSearchTag); }
+      if (!imageData) throw new Error(`Image not found: ${fileSearchTag}`);
+
       let mimeType = "image/png";
-      switch (imageData.extension) {
-        case "jpg":
-        case "jpeg":
-          mimeType = "image/jpeg";
-          break;
-        case "png":
-          mimeType = "image/png";
-          break;
-        case "heic":
-          mimeType = "image/heic";
-          break;
-      }
+      if (imageData.extension === "jpg" || imageData.extension === "jpeg") mimeType = "image/jpeg";
+      else if (imageData.extension === "heic") mimeType = "image/heic";
+
       const file = new File([imageData.blob], imageData.filename, { type: mimeType });
       button.click();
+      
       const fileInput = await waitForElement('input[type="file"]');
       const dataTransfer = new DataTransfer();
       dataTransfer.items.add(file);
       fileInput.files = dataTransfer.files;
-      const event = new Event("change", { bubbles: true });
-      fileInput.dispatchEvent(event);
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }));
 
       let mentionButton = await waitForAnyElement([
         ".g-btn.m-with-round-hover.m-light.m-icon.m-icon-only.m-white.m-sm-size.has-tooltip",
@@ -918,18 +926,20 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent) {
           const btns = document.querySelectorAll(".g-btn.m-with-round-hover.m-light.m-icon.m-icon-only.m-white.m-sm-size");
           return btns.length > 3 ? btns[3] : null;
         }
-      ]);
+      ], 60, 500);
 
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise(resolve => setTimeout(resolve, 2000));
       mentionButton.click();
+
       const mentionLink = await waitForElementWithText(".b-stickers__link.d-flex.align-items-center.w-100.m-bg-light", "Mention");
       mentionLink.click();
+
       const textarea = await waitForElement('textarea[placeholder="Mention"]');
       textarea.value = cleanTag;
-      const inputEvent = new Event("input", { bubbles: true });
-      textarea.dispatchEvent(inputEvent);
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      
       await new Promise(resolve => setTimeout(resolve, 1000));
-      console.log("storyColor", storyColor);
+
       try {
         if (storyColor && typeof storyColor === 'string') {
           const toRGB = (str) => {
@@ -989,34 +999,36 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent) {
 
       const doneButton = await waitForButtonWithText(".g-btn.m-rounded.m-reset-width", "Done");
       doneButton.click();
+
       initializeLastMentionPos();
       createJoystick();
+      
       try {
         const joy = document.getElementById('joy');
         const joyRect = joy ? joy.getBoundingClientRect() : null;
         const sliderContainer = document.createElement('div');
         sliderContainer.id = 'text-size-slider';
-        sliderContainer.style.position = 'fixed';
-        sliderContainer.style.zIndex = '10001';
-        sliderContainer.style.background = 'rgba(28, 28, 28, 0.92)';
-        sliderContainer.style.border = '2px solid #000';
-        sliderContainer.style.borderRadius = '10px';
-        sliderContainer.style.display = 'flex';
-        sliderContainer.style.alignItems = 'center';
-        sliderContainer.style.justifyContent = 'center';
-        sliderContainer.style.padding = '6px';
-        sliderContainer.style.pointerEvents = 'auto';
-        sliderContainer.style.color = '#fff';
-        sliderContainer.style.boxShadow = '0 2px 8px rgba(0,0,0,0.35)';
-        sliderContainer.style.fontFamily = "'Josefin Sans', sans-serif";
-        sliderContainer.style.transition = 'opacity 0.3s ease';
-        const containerHeight = joyRect ? joyRect.height : 100;
-        const containerTop = joyRect ? joyRect.top : 45;
-        const containerLeft = joyRect ? (joyRect.right + 10) : 120;
-        sliderContainer.style.top = containerTop + 'px';
-        sliderContainer.style.left = containerLeft + 'px';
-        sliderContainer.style.height = containerHeight + 'px';
-        sliderContainer.style.width = '44px';
+        Object.assign(sliderContainer.style, {
+            position: 'fixed',
+            zIndex: '10001',
+            background: 'rgba(28, 28, 28, 0.92)',
+            border: '2px solid #000',
+            borderRadius: '10px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '6px',
+            pointerEvents: 'auto',
+            color: '#fff',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
+            fontFamily: "'Josefin Sans', sans-serif",
+            transition: 'opacity 0.3s ease',
+            top: (joyRect ? joyRect.top : 45) + 'px',
+            left: (joyRect ? (joyRect.right + 10) : 120) + 'px',
+            height: (joyRect ? joyRect.height : 100) + 'px',
+            width: '44px'
+        });
+
         const input = document.createElement('input');
         input.type = 'range';
         input.min = '50';
@@ -1024,112 +1036,39 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent) {
         input.step = '10';
         input.value = '100';
         input.id = 'size-slider';
-        input.style.writingMode = 'vertical-lr';
-        input.style.direction = 'rtl';
-        input.style.appearance = 'none';
-        input.style.width = '20px';
-        input.style.height = Math.max(20, containerHeight - 12) + 'px';
-        input.style.padding = '0';
-        input.style.margin = '0';
-        input.style.pointerEvents = 'auto';
+        Object.assign(input.style, {
+            writingMode: 'vertical-lr',
+            direction: 'rtl',
+            appearance: 'none',
+            width: '20px',
+            height: Math.max(20, (joyRect ? joyRect.height : 100) - 12) + 'px',
+            padding: '0',
+            margin: '0',
+            pointerEvents: 'auto'
+        });
+
         sliderContainer.appendChild(input);
         document.body.appendChild(sliderContainer);
-        try {
-          const initial = (window.__OFH_JOY_VISIBLE !== false);
-          const joy = document.getElementById('joy');
-          if (joy) { joy.style.opacity = initial ? '1' : '0'; joy.style.pointerEvents = initial ? 'auto' : 'none'; }
-          sliderContainer.style.opacity = initial ? '1' : '0';
-          sliderContainer.style.pointerEvents = initial ? 'auto' : 'none';
-        } catch (_) {}
-
-        try {
-          if (!window.__OFH_JOY_CTX_BOUND) {
-            window.__OFH_JOY_CTX_BOUND = true;
-            document.addEventListener('contextmenu', function(e) {
-              try {
-                const joy = document.getElementById('joy');
-                const slider = document.getElementById('text-size-slider');
-                const target = e.target;
-                const overJoy = joy && joy.contains(target);
-                const overSlider = slider && slider.contains(target);
-                const x = e.clientX, y = e.clientY;
-                const within = (el) => {
-                  try { if (!el) return false; const r = el.getBoundingClientRect(); return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom; } catch(_) { return false; }
-                };
-                const hit = overJoy || overSlider || within(joy) || within(slider);
-                if (hit) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  e.stopImmediatePropagation();
-                  const cur = (window.__OFH_JOY_VISIBLE !== false);
-                  const next = !cur;
-                  window.__OFH_JOY_VISIBLE = next;
-                  if (joy) { joy.style.opacity = next ? '1' : '0'; joy.style.pointerEvents = next ? 'auto' : 'none'; }
-                  if (slider) { slider.style.opacity = next ? '1' : '0'; slider.style.pointerEvents = next ? 'auto' : 'none'; }
-                }
-              } catch (_) {}
-            }, true);
-          }
-        } catch (_) {}
-        const styleId = 'text-size-slider-style';
-        if (!document.getElementById(styleId)) {
-          const style = document.createElement('style');
-          style.id = styleId;
-          style.textContent = `
-            #size-slider {
-              appearance: none;
-              writing-mode: vertical-lr;
-              direction: rtl;
-              background: transparent;
-              width: 20px;
-            }
-            #size-slider::-webkit-slider-runnable-track {
-              background: #cfd6dd; /* light track for contrast */
-              border-radius: 6px;
-              width: 6px;
-              margin: 0 auto;
-            }
-            #size-slider::-webkit-slider-thumb {
-              appearance: none;
-              background: #ffffff;
-              border-radius: 50%;
-              width: 10px; 
-              height: 10px;
-              margin-left: -2px; 
-            }
-            #size-slider::-moz-range-track {
-              background: #cfd6dd;
-              border-radius: 6px;
-              width: 6px;
-            }
-            #size-slider::-moz-range-thumb {
-              background: #ffffff;
-              border-radius: 50%;
-              width: 10px;
-              height: 10px;
-            }
-          `;
-          document.head.appendChild(style);
+        
+        if (!document.getElementById('text-size-slider-style')) {
+            const style = document.createElement('style');
+            style.id = 'text-size-slider-style';
+            style.textContent = `
+                #size-slider::-webkit-slider-runnable-track { background: #cfd6dd; border-radius: 6px; width: 6px; }
+                #size-slider::-webkit-slider-thumb { appearance: none; background: #ffffff; border-radius: 50%; width: 10px; height: 10px; margin-left: -2px; }
+            `;
+            document.head.appendChild(style);
         }
 
-        try { input.value = '100'; } catch (_) {}
-        input.addEventListener('input', function() {
-          try {
-            const percent = Number(this.value);
-            if (!isFinite(percent) || percent <= 0) return;
-          } catch (_) {}
-        });
         input.addEventListener('change', function() {
-          try {
-            const percent = Number(this.value);
             fetch('http://localhost:3000/text-scale', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ scalePercent: percent })
-            })
-          } catch (_) {}
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ scalePercent: Number(this.value) })
+            }).catch(() => {});
         });
       } catch (_) {}
+
       resolve();
     } catch (error) {
       console.error(error);
@@ -4313,7 +4252,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '148';
+            const VERSION = '149';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -5849,23 +5788,25 @@ function clickOnNewTab(tabId, callback) {
           func: () => {
               requestAnimationFrame(() => {
                   const splitButton = document.getElementById("split-button2");
-                  if (splitButton) {
-                      const rect = splitButton.getBoundingClientRect();
+                  const targetPart = splitButton ? splitButton.children[0] : null;
+
+                  if (targetPart) {
+                      const rect = targetPart.getBoundingClientRect();
                       const mouseOverEvent = new MouseEvent("mouseover", {
                           bubbles: true,
                           cancelable: true,
-                          clientX: rect.left + rect.width / 4,
+                          clientX: rect.left + rect.width / 2,
                           clientY: rect.top + rect.height / 2,
                       });
-                      splitButton.dispatchEvent(mouseOverEvent);
+                      targetPart.dispatchEvent(mouseOverEvent);
                       setTimeout(() => {
                           const clickEvent = new MouseEvent("click", {
                               bubbles: true,
                               cancelable: true,
-                              clientX: rect.left + rect.width / 4,
+                              clientX: rect.left + rect.width / 2,
                               clientY: rect.top + rect.height / 2,
                           });
-                          splitButton.dispatchEvent(clickEvent);
+                          targetPart.dispatchEvent(clickEvent);
                       }, 0);
                   }
               });
