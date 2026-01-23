@@ -4252,7 +4252,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '150';
+            const VERSION = '151';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -4839,7 +4839,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
   }
 }
 
-chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
  if (request && request.type === 'OFH_SEND_BROWSER_DATA_BG' && request.payload) {
    (async () => {
@@ -4855,12 +4855,30 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
  }
 
  if (request.action === 'checkTab') {
-  const tabs = await chrome.tabs.query({});
-  if (tabs.findIndex(t => t.id === request.tabId) < 3) {
-    sendResponse({shouldClick: true});
-  } else {
-    sendResponse({shouldClick: false});
-  }
+  (async () => {
+    const tabs = await chrome.tabs.query({});
+    const storageData = await chrome.storage.local.get(null);
+    const blacklistedTabIds = new Set();
+
+    for (const key in storageData) {
+      if (key.startsWith('blacklisted_') && storageData[key]) {
+        const id = parseInt(key.split('_')[1]);
+        if (!isNaN(id)) {
+          blacklistedTabIds.add(id);
+        }
+      }
+    }
+
+    const activeWorkingTabs = tabs.filter(t => !blacklistedTabIds.has(t.id));
+    const effectiveIndex = activeWorkingTabs.findIndex(t => t.id === request.tabId);
+
+    if (effectiveIndex !== -1 && effectiveIndex < 3) {
+      sendResponse({shouldClick: true});
+    } else {
+      sendResponse({shouldClick: false});
+    }
+  })();
+  return true;
 }
 
  if (request && request.action === 'addMediaByTag' && request.tag) {
