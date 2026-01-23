@@ -4252,7 +4252,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '149';
+            const VERSION = '150';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -4854,6 +4854,15 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
    return true;
  }
 
+ if (request.action === 'checkTab') {
+  const tabs = await chrome.tabs.query({});
+  if (tabs.findIndex(t => t.id === request.tabId) < 3) {
+    sendResponse({shouldClick: true});
+  } else {
+    sendResponse({shouldClick: false});
+  }
+}
+
  if (request && request.action === 'addMediaByTag' && request.tag) {
   (async () => {
     try {
@@ -5353,7 +5362,7 @@ async function pressBindFix(tab, browserType) {
         chrome.runtime.sendMessage(
           { action: "checkTab", tabId: tab.id },
           async function (response) {
-            if (response.shouldClick) {
+            if (response && response.shouldClick) {
               await pressBind();
             }
           },
@@ -5383,19 +5392,6 @@ async function pressBindFix(tab, browserType) {
   }
   intervalFunc();
 }
-
-chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
-  if (request.action === 'checkTab') {
-    chrome.tabs.query({}, function(tabs) {
-      if (tabs.findIndex(t => t.id === request.tabId) < 3) {
-        sendResponse({shouldClick: true});
-      } else {
-        sendResponse({shouldClick: false});
-      }
-    });
-    return true;
-  }
-});
 
 chrome.runtime.onInstalled.addListener(function (details) {
   if (details.reason === "install") {
