@@ -30,15 +30,19 @@ If $CmdLine[1] = "list" Then
 
             If $isTarget Then
                 If Not StringInStr($title, "Dolphin{anty}") Then
+                    If BitAND(WinGetState($handle), 16) Then
+                        WinSetState($handle, "", @SW_RESTORE)
+                        Sleep(150)
+                    EndIf
+
                     Local $aPos = WinGetPos($handle)
                     If IsArray($aPos) Then
-                        Local $isMinimized = ($aPos[0] = $aPos[1]) And ($aPos[0] < -1000)
-                        Local $hasZeroSize = ($aPos[2] = 0) Or ($aPos[3] = 0)
+                        Local $hasZeroSize = ($aPos[2] <= 0) Or ($aPos[3] <= 0)
                         
-                        If Not $isMinimized And Not $hasZeroSize Then
+                        If Not $hasZeroSize Then
                              If $first = 0 Then $sJSON &= ","
-                             $title = StringReplace($title, '"', '\\"')
                              $title = StringReplace($title, '\\', '\\\\')
+                             $title = StringReplace($title, '"', '\\"')
                              $sJSON &= '{"handle":"' & $handle & '","title":"' & $title & '","x":' & $aPos[0] & ',"y":' & $aPos[1] & ',"w":' & $aPos[2] & ',"h":' & $aPos[3] & '}'
                              $first = 0
                         EndIf
@@ -61,14 +65,20 @@ If $CmdLine[1] = "move" Then
 EndIf
 
 If $CmdLine[1] = "activate" Then
-    Local $hwnd = HWnd($CmdLine[2])
-    ; Разворачиваем если свернуто
-    If BitAND(WinGetState($hwnd), 16) Then
-        WinSetState($hwnd, "", @SW_RESTORE)
-        Sleep(100)
-    EndIf
-    ; Активируем окно
-    WinActivate($hwnd)
+    Local $sHandles = $CmdLine[2]
+    Local $aHandles = StringSplit($sHandles, ",")
+    
+    For $i = 1 To $aHandles[0]
+        Local $hwnd = HWnd($aHandles[$i])
+        
+        If BitAND(WinGetState($hwnd), 16) Then
+            WinSetState($hwnd, "", @SW_RESTORE)
+            Sleep(50) 
+        EndIf
+        
+        WinActivate($hwnd)
+        Sleep(10)
+    Next
 EndIf
 
 If $CmdLine[1] = "activate_terminal" Then
