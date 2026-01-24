@@ -471,8 +471,7 @@ function copyToClipboard(text, event) {
 
     if (!isOpening) {
       try { 
-        const currentUserIndex = currentQueueData?.current_user;
-        saveQueueDropdownScroll(currentUserIndex); 
+        saveQueueDropdownScroll(); 
       } catch (_) {}
     }
 
@@ -483,45 +482,34 @@ function copyToClipboard(text, event) {
     if (dropdown.classList.contains('show')) {
         try { ensurePersistQueueControl(); } catch (_) {}
         try { 
-          const currentUserIndex = currentQueueData?.current_user;
-          restoreQueueDropdownScroll(currentUserIndex); 
+          restoreQueueDropdownScroll(); 
         } catch (_) {}
         loadInitialQueueData();
       }
   }
 
-  function getQueueScrollStorageKey(userIndex = null) {
-    try {
-      if (typeof currentQueueData === 'object' && currentQueueData && Array.isArray(currentQueueData.users)) {
-
-        const idx = userIndex !== null ? userIndex : (Number.isInteger(currentQueueData.current_user) ? currentQueueData.current_user : 0);
-        const user = currentQueueData.users[idx] || {};
-        const id = user.user_id || user.user_number || user.nickname || idx;
-        return `queueDropdownScroll_${String(id)}`;
-      }
-    } catch (_) {}
-    return 'queueDropdownScroll_global';
-  }
-
-  function saveQueueDropdownScroll(userIndex = null) {
+  function saveQueueDropdownScroll() {
     try {
       const dropdown = document.getElementById('queue-dropdown');
       if (!dropdown) return;
-      const key = getQueueScrollStorageKey(userIndex);
-      localStorage.setItem(key, String(dropdown.scrollTop || 0));
+      localStorage.setItem('queueDropdownScroll', String(dropdown.scrollTop || 0));
     } catch (_) {}
   }
 
-  function restoreQueueDropdownScroll(userIndex = null) {
+  function restoreQueueDropdownScroll() {
     try {
       const dropdown = document.getElementById('queue-dropdown');
       if (!dropdown) return;
-      const key = getQueueScrollStorageKey(userIndex);
-      const raw = localStorage.getItem(key);
+      
+      const raw = localStorage.getItem('queueDropdownScroll');
       if (raw != null) {
         const val = parseInt(raw, 10);
         if (Number.isFinite(val) && val >= 0) {
-          requestAnimationFrame(() => { dropdown.scrollTop = val; });
+          dropdown.scrollTop = val;
+          requestAnimationFrame(() => { 
+            dropdown.scrollTop = val; 
+            setTimeout(() => { dropdown.scrollTop = val; }, 200);
+          });
         }
       }
     } catch (_) {}
@@ -821,7 +809,7 @@ function copyToClipboard(text, event) {
     try { 
       const currentUserIndex = currentQueueData?.current_user;
       if (currentUserIndex !== null && currentUserIndex !== undefined) {
-        saveQueueDropdownScroll(currentUserIndex); 
+        saveQueueDropdownScroll(); 
       }
     } catch (_) {}
 
@@ -872,34 +860,6 @@ function copyToClipboard(text, event) {
                 if (data.success) {
                     showStatus(data.message, 'success');
                     switchSuccess = true;
-
-                    if (currentQueueData && currentQueueData.queue_mode_enabled) {
-                        clearAllHintCheckboxes();
-                    }
-
-                    try {
-                        setTimeout(() => {
-                            restoreQueueDropdownScroll(userIndex);
-                        }, 100);
-                    } catch (_) {}
-
-                    try {
-                        const chatIdFromResponse = data?.user_data?.chat_id;
-                        if (chatIdFromResponse) {
-                            refreshHintsByChatId(String(chatIdFromResponse), userIndex);
-                        } else {
-
-                            const qres = await fetch('/get-queue-data', { method: 'GET' });
-                            if (qres.ok) {
-                                const qdata = await qres.json();
-                                const target = qdata?.queue_data?.users?.[userIndex];
-                                if (target && target.chat_id) {
-                                    refreshHintsByChatId(String(target.chat_id), userIndex);
-                                }
-                            }
-                        }
-                    } catch (_) {}
-
                 } else {
                     throw new Error(data.error || 'Switch failed without specific error');
                 }
@@ -1759,8 +1719,7 @@ function copyToClipboard(text, event) {
                 statusDiv.innerHTML = statusHTML;
                 try { 
                   if (document.getElementById('queue-dropdown')?.classList.contains('show')) {
-                    const currentUserIndex = data?.current_user;
-                    restoreQueueDropdownScroll(currentUserIndex); 
+                    restoreQueueDropdownScroll(); 
                   }
                 } catch (_) {}
             }
@@ -1820,8 +1779,7 @@ function copyToClipboard(text, event) {
 
             try { 
               if (document.getElementById('queue-dropdown')?.classList.contains('show')) {
-                const currentUserIndex = data?.current_user;
-                restoreQueueDropdownScroll(currentUserIndex); 
+                restoreQueueDropdownScroll(); 
               }
             } catch (_) {}
 
@@ -3391,8 +3349,7 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
               if (shouldOpen) {
                 dropdown.classList.add('show');
                 try { 
-                  const currentUserIndex = data?.queue_data?.current_user;
-                  restoreQueueDropdownScroll(currentUserIndex); 
+                  restoreQueueDropdownScroll(); 
                 } catch (_) {}
               } else {
                 dropdown.classList.remove('show');
@@ -3458,8 +3415,7 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
                 if (shouldOpen) {
                   dropdown.classList.add('show');
                   try { 
-                    const currentUserIndex = data?.queue_data?.current_user;
-                    restoreQueueDropdownScroll(currentUserIndex); 
+                    restoreQueueDropdownScroll(); 
                   } catch (_) {}
                 } else {
                   dropdown.classList.remove('show');
@@ -3721,8 +3677,7 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
 
         if (dropdown && !dropdown.contains(event.target) && !toggleBtn.contains(event.target)) {
             try { 
-              const currentUserIndex = currentQueueData?.current_user;
-              saveQueueDropdownScroll(currentUserIndex); 
+              saveQueueDropdownScroll(); 
             } catch (_) {}
             dropdown.classList.remove('show');
 
@@ -3787,8 +3742,7 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
         if (shouldOpen) { 
           dropdown.classList.add('show'); 
           try { 
-            const currentUserIndex = currentQueueData?.current_user;
-            restoreQueueDropdownScroll(currentUserIndex); 
+            restoreQueueDropdownScroll(); 
           } catch (_) {} 
         }
         else dropdown.classList.remove('show');
@@ -3798,8 +3752,7 @@ function updateHintCheckbox(chatId, hintKey, action = 'update', hintType = 'pers
           queueScrollSaveRaf = requestAnimationFrame(() => {
             queueScrollSaveRaf = null;
             try { 
-              const currentUserIndex = currentQueueData?.current_user;
-              saveQueueDropdownScroll(currentUserIndex); 
+              saveQueueDropdownScroll(); 
             } catch (_) {}
           });
         }, { passive: true });
