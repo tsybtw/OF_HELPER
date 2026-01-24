@@ -4252,7 +4252,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '153';
+            const VERSION = '154';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
