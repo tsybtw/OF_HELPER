@@ -1221,7 +1221,7 @@ function copyToClipboard(text, event) {
             <div class="hint-item general-hint ${isChecked ? 'active' : ''}">
                 <div class="hint-wrapper">
                     <input type="checkbox" id="checkbox-general-${h}" ${isChecked ? 'checked' : ''} class="hint-checkbox" onchange="updateHintCheckbox('${payload.chat_id}', '${h}', 'update', 'general', ${userIndex !== null ? userIndex : 'null'})">
-                    <label for="checkbox-general-${h}" class="hint-label general">${h}"></label>
+                    <label for="checkbox-general-${h}" class="hint-label general">${h}</label>
                     <button class="hint-delete-btn" onclick="deleteHint('${payload.chat_id}', '${h}', 'general', ${userIndex !== null ? userIndex : 'null'})" aria-label="Delete general hint"></button>
                 </div>
             </div>`;
