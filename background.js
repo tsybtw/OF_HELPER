@@ -318,12 +318,9 @@ function updateTabCounterOnActiveTab(isReset) {
           ids.forEach((id) => {
             const el = document.getElementById(id);
             if (!el) return;
-            let vis = isVisible;
-            if (id === 'joy' || id === 'text-size-slider') {
-              vis = (window.__OFH_JOY_VISIBLE !== false) && isVisible;
-            }
-            el.style.opacity = vis ? '1' : '0';
-            el.style.pointerEvents = vis ? 'auto' : 'none';
+    
+            el.style.opacity = isVisible ? '1' : '0';
+            el.style.pointerEvents = isVisible ? 'auto' : 'none';
           });
         },
         args: [timerVisibility]
@@ -3696,8 +3693,123 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
         }
 
         async function quickStoriesDone() {
-          await makeRequest("http://localhost:3000/quickStoriesDone", 0);
+          const settings = await chrome.storage.local.get(['storiesSwitchDelay', 'storiesScreenshotDelay']);
+          const switchDelay = settings.storiesSwitchDelay !== undefined ? parseInt(settings.storiesSwitchDelay) : 2000;
+          const screenshotDelay = settings.storiesScreenshotDelay !== undefined ? parseInt(settings.storiesScreenshotDelay) : 1000;
+
+          await fetch("http://localhost:3000/quickStoriesDone", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+                switchDelay: switchDelay,
+                screenshotDelay: screenshotDelay
+            })
+          });
         }
+
+        function createStoriesSettingsMenu() {
+          if (document.getElementById('stories-settings-menu')) return;
+
+          const menu = document.createElement('div');
+          menu.id = 'stories-settings-menu';
+          Object.assign(menu.style, {
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              backgroundColor: 'rgba(28, 28, 28, 0.95)',
+              border: '2px solid #000',
+              borderRadius: '10px',
+              padding: '20px',
+              zIndex: '2147483647',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '15px',
+              color: 'white',
+              fontFamily: "'Josefin Sans', sans-serif",
+              boxShadow: '0 4px 15px rgba(0,0,0,0.5)',
+              minWidth: '250px'
+          });
+
+          const title = document.createElement('div');
+          title.textContent = 'Stories Settings';
+          title.style.textAlign = 'center';
+          title.style.fontSize = '18px';
+          title.style.marginBottom = '10px';
+          menu.appendChild(title);
+
+          function createInput(labelText, storageKey, defaultValue) {
+              const container = document.createElement('div');
+              container.style.display = 'flex';
+              container.style.flexDirection = 'column';
+              container.style.gap = '5px';
+
+              const label = document.createElement('label');
+              label.textContent = labelText;
+              label.style.fontSize = '14px';
+              label.style.color = '#ccc';
+
+              const input = document.createElement('input');
+              input.type = 'number';
+              Object.assign(input.style, {
+                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid #444',
+                  borderRadius: '5px',
+                  padding: '8px',
+                  color: 'white',
+                  fontFamily: "'Josefin Sans', sans-serif",
+                  outline: 'none'
+              });
+
+              chrome.storage.local.get([storageKey], (res) => {
+                  input.value = res[storageKey] !== undefined ? res[storageKey] : defaultValue;
+              });
+
+              input.addEventListener('change', () => {
+                  chrome.storage.local.set({ [storageKey]: parseInt(input.value) || 0 });
+              });
+
+              container.appendChild(label);
+              container.appendChild(input);
+              return container;
+          }
+
+          menu.appendChild(createInput('Screenshot Delay (ms)', 'storiesScreenshotDelay', 1000));
+          menu.appendChild(createInput('Switch Delay (ms)', 'storiesSwitchDelay', 2000));
+
+          const closeBtn = document.createElement('button');
+          closeBtn.textContent = 'Close';
+          Object.assign(closeBtn.style, {
+              marginTop: '10px',
+              padding: '8px',
+              backgroundColor: 'rgb(221, 109, 85)',
+              border: 'none',
+              borderRadius: '5px',
+              color: 'white',
+              cursor: 'pointer',
+              fontFamily: "'Josefin Sans', sans-serif",
+              fontSize: '14px',
+              transition: 'background 0.3s'
+          });
+          
+          closeBtn.onmouseover = () => closeBtn.style.backgroundColor = '#e38571';
+          closeBtn.onmouseout = () => closeBtn.style.backgroundColor = 'rgb(221, 109, 85)';
+          
+          closeBtn.addEventListener('click', () => {
+              menu.remove();
+          });
+
+          menu.appendChild(closeBtn);
+          document.body.appendChild(menu);
+          
+          const clickOutside = (e) => {
+              if (!menu.contains(e.target) && e.target !== menu) {
+                  menu.remove();
+                  document.removeEventListener('mousedown', clickOutside);
+              }
+          };
+          setTimeout(() => document.addEventListener('mousedown', clickOutside), 0);
+      }
 
         async function quickStoriesStop() {
           await makeRequest("http://localhost:3000/quickStoriesStop", 0);
@@ -3709,16 +3821,33 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           try {
             const picker = document.getElementById('story-color-picker');
             const menuOpen = !!(picker && picker.style.display !== 'none');
+            
             if (menuOpen) {
               await quickStoriesStart();
               return;
             }
+
             const res = await chrome.storage.local.get(['storiesRunning']);
             if (res && res.storiesRunning) {
               await quickStoriesStop();
             } else {
               await quickStoriesDone();
             }
+
+            const idsToHide = [
+              "tabCounter", "cont1", "cont2", "cont3",
+              "switch-button", "fakeMakeButton", "version", "clear-button", 
+              "reload-button", "stories-container", "bottom-overlay", 
+              "joy", "text-size-slider"
+            ];
+
+            idsToHide.forEach(id => {
+              const el = document.getElementById(id);
+              if (el) {
+                el.style.display = 'none';
+              }
+            });
+
           } catch (e) {
             console.error('stories-done-button error:', e);
           }
@@ -4252,7 +4381,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '154';
+            const VERSION = '155';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -4759,6 +4888,11 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             </svg>`,
             handleStoriesAction
           );
+
+          storiesDoneButton.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            createStoriesSettingsMenu();
+        });
 
           const leftOffsetPercent = 32;
           const topOffsetPixels = 45;
