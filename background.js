@@ -2628,27 +2628,26 @@ async function checkDataFile() {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
       await sendTypeToServer(lastIndex, browserType);
 
+      const delay = lastEntry.switchDelay !== undefined ? lastEntry.switchDelay : 2000;
+
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const tabs = currentWindow.tabs;
         const currentTabIndex = tabs.findIndex(tab => tab.active);
-        const previousTabId = tabs[currentTabIndex].id;
+        const currentTab = tabs[currentTabIndex];
 
-        if (currentTabIndex < tabs.length - 1) {
-          const nextTabIndex = currentTabIndex + 1;
-          chrome.tabs.update(tabs[nextTabIndex].id, { active: true }, async () => {
-            await executeScriptIfValid(tabs[currentTabIndex], { 
-              target: { tabId: previousTabId }, 
-              func: postStories 
-            });
-          });
-        } else {
-          chrome.tabs.create({url: 'https://onlyfans.com'}, async (newTab) => {
-            await executeScriptIfValid(tabs[currentTabIndex], { 
-              target: { tabId: previousTabId }, 
-              func: postStories,
-            });
-          });
-        }
+        await executeScriptIfValid(currentTab, { 
+          target: { tabId: currentTab.id }, 
+          func: postStories 
+        });
+
+        setTimeout(() => {
+          if (currentTabIndex < tabs.length - 1) {
+            const nextTabIndex = currentTabIndex + 1;
+            chrome.tabs.update(tabs[nextTabIndex].id, { active: true });
+          } else {
+            chrome.tabs.create({url: 'https://onlyfans.com'});
+          }
+        }, delay);
       });
       return
     }
@@ -3693,23 +3692,25 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
         }
 
         async function quickStoriesDone() {
-          const settings = await chrome.storage.local.get(['storiesSwitchDelay', 'storiesScreenshotDelay']);
+          const settings = await chrome.storage.local.get(['storiesSwitchDelay', 'storiesScreenshotDelay', 'storiesScreenshotEnabled']);
           const switchDelay = settings.storiesSwitchDelay !== undefined ? parseInt(settings.storiesSwitchDelay) : 2000;
           const screenshotDelay = settings.storiesScreenshotDelay !== undefined ? parseInt(settings.storiesScreenshotDelay) : 1000;
-
+          const screenshotEnabled = settings.storiesScreenshotEnabled !== undefined ? settings.storiesScreenshotEnabled : true;
+        
           await fetch("http://localhost:3000/quickStoriesDone", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ 
                 switchDelay: switchDelay,
-                screenshotDelay: screenshotDelay
+                screenshotDelay: screenshotDelay,
+                screenshotEnabled: screenshotEnabled
             })
           });
         }
 
         function createStoriesSettingsMenu() {
           if (document.getElementById('stories-settings-menu')) return;
-
+        
           const menu = document.createElement('div');
           menu.id = 'stories-settings-menu';
           Object.assign(menu.style, {
@@ -3728,27 +3729,70 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
               color: 'white',
               fontFamily: "'Josefin Sans', sans-serif",
               boxShadow: '0 4px 15px rgba(0,0,0,0.5)',
-              minWidth: '250px'
+              minWidth: '280px'
           });
-
+        
           const title = document.createElement('div');
           title.textContent = 'Stories Settings';
           title.style.textAlign = 'center';
           title.style.fontSize = '18px';
-          title.style.marginBottom = '10px';
+          title.style.marginBottom = '5px';
           menu.appendChild(title);
-
+        
+          function createCheckbox(labelText, storageKey, defaultValue) {
+              const container = document.createElement('div');
+              Object.assign(container.style, {
+                  display: 'flex',
+                  alignItems: 'center', 
+                  justifyContent: 'space-between',
+                  gap: '10px',
+                  marginBottom: '5px'
+              });
+        
+              const label = document.createElement('label');
+              label.textContent = labelText;
+              label.style.fontSize = '15px'; 
+              label.style.color = '#fff';
+              label.style.cursor = 'pointer';
+              label.style.margin = '0'; 
+              label.style.lineHeight = '1';
+        
+              const input = document.createElement('input');
+              input.type = 'checkbox';
+              Object.assign(input.style, {
+                  width: '18px',
+                  height: '18px',
+                  cursor: 'pointer',
+                  accentColor: 'rgb(221, 109, 85)',
+                  margin: '0' 
+              });
+        
+              label.addEventListener('click', () => input.click());
+        
+              chrome.storage.local.get([storageKey], (res) => {
+                  input.checked = res[storageKey] !== undefined ? res[storageKey] : defaultValue;
+              });
+        
+              input.addEventListener('change', () => {
+                  chrome.storage.local.set({ [storageKey]: input.checked });
+              });
+        
+              container.appendChild(label);
+              container.appendChild(input);
+              return container;
+          }
+        
           function createInput(labelText, storageKey, defaultValue) {
               const container = document.createElement('div');
               container.style.display = 'flex';
               container.style.flexDirection = 'column';
               container.style.gap = '5px';
-
+        
               const label = document.createElement('label');
               label.textContent = labelText;
               label.style.fontSize = '14px';
               label.style.color = '#ccc';
-
+        
               const input = document.createElement('input');
               input.type = 'number';
               Object.assign(input.style, {
@@ -3760,23 +3804,24 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
                   fontFamily: "'Josefin Sans', sans-serif",
                   outline: 'none'
               });
-
+        
               chrome.storage.local.get([storageKey], (res) => {
                   input.value = res[storageKey] !== undefined ? res[storageKey] : defaultValue;
               });
-
+        
               input.addEventListener('change', () => {
                   chrome.storage.local.set({ [storageKey]: parseInt(input.value) || 0 });
               });
-
+        
               container.appendChild(label);
               container.appendChild(input);
               return container;
           }
-
+        
+          menu.appendChild(createCheckbox('Enable Screenshots', 'storiesScreenshotEnabled', true));
           menu.appendChild(createInput('Screenshot Delay (ms)', 'storiesScreenshotDelay', 1000));
           menu.appendChild(createInput('Switch Delay (ms)', 'storiesSwitchDelay', 2000));
-
+        
           const closeBtn = document.createElement('button');
           closeBtn.textContent = 'Close';
           Object.assign(closeBtn.style, {
@@ -3798,7 +3843,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           closeBtn.addEventListener('click', () => {
               menu.remove();
           });
-
+        
           menu.appendChild(closeBtn);
           document.body.appendChild(menu);
           
@@ -3809,7 +3854,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
               }
           };
           setTimeout(() => document.addEventListener('mousedown', clickOutside), 0);
-      }
+        }
 
         async function quickStoriesStop() {
           await makeRequest("http://localhost:3000/quickStoriesStop", 0);
@@ -3821,33 +3866,34 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           try {
             const picker = document.getElementById('story-color-picker');
             const menuOpen = !!(picker && picker.style.display !== 'none');
-            
+        
             if (menuOpen) {
               await quickStoriesStart();
               return;
             }
-
+        
             const res = await chrome.storage.local.get(['storiesRunning']);
+        
             if (res && res.storiesRunning) {
+              setStoriesDoneIcon('check');
               await quickStoriesStop();
             } else {
               await quickStoriesDone();
+        
+              const idsToHide = [
+                "tabCounter", "cont1", "cont2", "cont3",
+                "switch-button", "fakeMakeButton", "version", "clear-button", 
+                "reload-button", "stories-container", "bottom-overlay", 
+                "joy", "text-size-slider"
+              ];
+        
+              idsToHide.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                  el.style.display = 'none';
+                }
+              });
             }
-
-            const idsToHide = [
-              "tabCounter", "cont1", "cont2", "cont3",
-              "switch-button", "fakeMakeButton", "version", "clear-button", 
-              "reload-button", "stories-container", "bottom-overlay", 
-              "joy", "text-size-slider"
-            ];
-
-            idsToHide.forEach(id => {
-              const el = document.getElementById(id);
-              if (el) {
-                el.style.display = 'none';
-              }
-            });
-
           } catch (e) {
             console.error('stories-done-button error:', e);
           }
@@ -4381,7 +4427,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '155';
+            const VERSION = '156';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
