@@ -1091,14 +1091,20 @@ function postStories() {
 
   if (checkButtonExists()) { 
     clickButton();
-    const joyElement = document.getElementById('joy');
-    if (joyElement) {
-      joyElement.style.display = 'none';
-    }
-    const sliderElement = document.getElementById('text-size-slider');
-    if (sliderElement) {
-      sliderElement.style.display = 'none';
-    }
+    
+    const idsToHide = [
+      "tabCounter", "cont1", "cont2", "cont3",
+      "switch-button", "fakeMakeButton", "version", "clear-button", 
+      "reload-button", "stories-container", "bottom-overlay", 
+      "joy", "text-size-slider"
+    ];
+
+    idsToHide.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.style.display = 'none';
+      }
+    });
   }
   return true;
 }
@@ -3875,24 +3881,11 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             const res = await chrome.storage.local.get(['storiesRunning']);
         
             if (res && res.storiesRunning) {
+              await chrome.storage.local.set({ storiesRunning: false, storiesMenuOpen: false });
               setStoriesDoneIcon('check');
               await quickStoriesStop();
             } else {
               await quickStoriesDone();
-        
-              const idsToHide = [
-                "tabCounter", "cont1", "cont2", "cont3",
-                "switch-button", "fakeMakeButton", "version", "clear-button", 
-                "reload-button", "stories-container", "bottom-overlay", 
-                "joy", "text-size-slider"
-              ];
-        
-              idsToHide.forEach(id => {
-                const el = document.getElementById(id);
-                if (el) {
-                  el.style.display = 'none';
-                }
-              });
             }
           } catch (e) {
             console.error('stories-done-button error:', e);
@@ -4427,7 +4420,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '158';
+            const VERSION = '159';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
