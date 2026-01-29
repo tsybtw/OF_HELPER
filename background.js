@@ -4420,7 +4420,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '159';
+            const VERSION = '160';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
