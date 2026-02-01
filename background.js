@@ -2148,19 +2148,19 @@ async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht, 
         if (expireButtonAgain) {
           expireButtonAgain.dispatchEvent(clickEvent);
 
-          const button2 = await waitForElement(
-            "#ModalPostExpiration___BV_modal_body_ > div.b-tabs__nav.m-nv.m-tab-rounded.mb-0.m-single-current > ul > li:nth-child(2) > button"
+          const durationButton = await waitForElement(
+            "#post___BV_modal_body_ > div.b-tabs__nav.m-nv.m-tab-rounded.mb-0.m-single-current > ul > li:nth-child(2) > button"
           );
 
-          if (button2) {
-            button2.dispatchEvent(clickEvent);
+          if (durationButton) {
+            durationButton.dispatchEvent(clickEvent);
 
-            const confirmButton = await waitForElement(
-              "#ModalPostExpiration___BV_modal_footer_ > button:nth-child(2)"
+            const saveButton = await waitForElement(
+              "#post___BV_modal_footer_ > button:nth-child(2)"
             );
 
-            if (confirmButton) {
-              confirmButton.dispatchEvent(clickEvent);
+            if (saveButton) {
+              saveButton.dispatchEvent(clickEvent);
             }
           }
         }
@@ -4420,7 +4420,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '161';
+            const VERSION = '162';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
