@@ -258,20 +258,25 @@ function checkAndCloseTab(tabId) {
     };
 
     const mediaWrapperExists = document.querySelector('.b-make-post__media-wrapper');
+    const runPressBind = () => {
+      const secondTargetNode = document.querySelector(".b-reminder-form.m-error");
+      const innerDiv = secondTargetNode ? secondTargetNode.querySelector("div") : null;
+      if (!document.querySelector(".b-reminder-form.m-error") || (innerDiv && innerDiv.textContent.includes("10"))) {
+        pressBind();
+      }
+    };
+
     if (!mediaWrapperExists) {
-      return
+      chrome.storage.local.get('pht', (data) => {
+        const phtIds = Array.isArray(data.pht) ? data.pht : [];
+        const isWithoutPhoto = phtIds.some((id) => Number(id) === Number(tabId));
+        console.log(isWithoutPhoto)
+        if (isWithoutPhoto) runPressBind();
+      });
+      return;
     }
 
-    const secondTargetNode = document.querySelector(
-      ".b-reminder-form.m-error",
-    );
-    const innerDiv = secondTargetNode
-      ? secondTargetNode.querySelector("div")
-      : null;
-
-    if (!document.querySelector(".b-reminder-form.m-error") || (innerDiv && innerDiv.textContent.includes("10"))) {
-      pressBind();
-    }
+    runPressBind();
 }
 
 setInterval(() => {
@@ -517,33 +522,36 @@ async function toggleColors(noDelay = false) {
     element.style.opacity = ".4";
   });
 
-  if (noDelay) {
-    const elements = document.querySelectorAll(
-      ".b-dropzone__preview__delete.g-btn.m-rounded.m-reset-width.m-thumb-r-corner-pos.m-btn-remove.m-sm-icon-size"
-    );
+  const deleteButtonSelectors = [
+    ".b-dropzone__preview__delete.g-btn.m-rounded.m-reset-width.m-thumb-r-corner-pos.m-btn-remove.m-sm-icon-size",
+    "#make_post_form > div.b-make-post.m-with-free-options > div > div.b-dropzone__previews.b-make-post__schedule-expire-wrapper.g-sides-gaps > div > button"
+  ];
 
+  function getDeleteButtons() {
+    const set = new Set();
+    deleteButtonSelectors.forEach((sel) => {
+      document.querySelectorAll(sel).forEach((el) => set.add(el));
+    });
+    return [...set];
+  }
+
+  function styleDeleteButtons(elements) {
     elements.forEach((element) => {
       element.style.opacity = ".4";
       element.style.background = "rgba(138, 150, 163, .75)";
     });
+  }
+
+  if (noDelay) {
+    styleDeleteButtons(getDeleteButtons());
   } else {
     const checkDropzoneElements = setInterval(() => {
-      const elements = document.querySelectorAll(
-        ".b-dropzone__preview__delete.g-btn.m-rounded.m-reset-width.m-thumb-r-corner-pos.m-btn-remove.m-sm-icon-size"
-      );
-
+      const elements = getDeleteButtons();
       if (elements.length >= 2) {
         setTimeout(() => {
-          const updatedElements = document.querySelectorAll(
-            ".b-dropzone__preview__delete.g-btn.m-rounded.m-reset-width.m-thumb-r-corner-pos.m-btn-remove.m-sm-icon-size"
-          );
-
-          updatedElements.forEach((element) => {
-            element.style.opacity = ".4";
-            element.style.background = "rgba(138, 150, 163, .75)";
-          });
+          styleDeleteButtons(getDeleteButtons());
           clearInterval(checkDropzoneElements);
-        }, 1000); 
+        }, 1000);
       }
     }, 500);
   }
@@ -2286,6 +2294,16 @@ chrome.tabs.onRemoved.addListener(function(tabId) {
   updateTabCounterOnActiveTab(false);
 });
 
+chrome.tabs.onRemoved.addListener((tabId) => {
+  chrome.storage.local.get('pht', (data) => {
+    const pht = Array.isArray(data.pht) ? data.pht : [];
+    const tid = Number(tabId);
+    if (pht.some((id) => Number(id) === tid)) {
+      chrome.storage.local.set({ pht: pht.filter((id) => Number(id) !== tid) });
+    }
+  });
+});
+
 
 chrome.tabs.onCreated.addListener(function(tab) {
   if (tab.url && tab.url.startsWith('https://onlyfans.com')) {
@@ -3043,6 +3061,15 @@ async function checkDataFile() {
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
+
+        if ((!pht || !addPhoto) && activeTab) {
+          const { pht: phtIds = [] } = await chrome.storage.local.get('pht');
+          const arr = Array.isArray(phtIds) ? phtIds : [];
+          const id = Number(activeTab.id);
+          if (!arr.some((x) => Number(x) === id)) {
+            await chrome.storage.local.set({ pht: [...arr, id] });
+          }
+        }
         
         await waitForTabAndExecute(
           activeTab.id, 
@@ -3076,6 +3103,7 @@ async function checkDataFile() {
         await executeScriptIfValid(activeTab, {
           target: { tabId: activeTab.id },
           func: pressBind,
+          args: [activeTab.id],
         });
       });
       return
@@ -3087,6 +3115,13 @@ async function checkDataFile() {
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
+    
+        await chrome.scripting.executeScript({
+          target: { tabId: activeTab.id },
+          func: (tabId) => { window.__OFH_CURRENT_TAB_ID__ = tabId; },
+          args: [activeTab.id]
+        });
+        
         await executeScriptIfValid(activeTab, {
           target: { tabId: activeTab.id },
           func: pressBindFix,
@@ -5237,8 +5272,26 @@ async function rememberId(tab, prevTab) {
   chrome.storage.local.set({ deleteTabId: prevTab.id });
 }
 
-async function pressBind() {
+async function pressBind(tabIdFromArg) {
+
+  const currentTabId = tabIdFromArg !== undefined ? tabIdFromArg : window.__OFH_CURRENT_TAB_ID__;
+  
   const mediaWrapperExists = document.querySelector('.b-make-post__media-wrapper');
+  
+  const storageData = await new Promise(resolve => {
+    chrome.storage.local.get(['pht', 'syncStop', 'singleStop', `blacklisted_${window.location.href.split('/').pop()}`], resolve);
+  });
+  const phtIds = Array.isArray(storageData.pht) ? storageData.pht : [];
+  const isIntentionallyWithoutPhoto = currentTabId != null && phtIds.some((id) => Number(id) === Number(currentTabId));
+
+  const hasMedia = document.querySelector('.media-file.m-default-bg.m-media-el') !== null;
+  const shouldPost = isIntentionallyWithoutPhoto || hasMedia;
+
+  if (!shouldPost) {
+    console.log(`[OFH] Blocking post on tab ${currentTabId}: media expected but not found`);
+    return;
+  }
+
   if (mediaWrapperExists) {
     let selector =
       document.querySelector('[at-attr="submit_post"]') ||
@@ -5246,22 +5299,23 @@ async function pressBind() {
         "#content > div.l-wrapper > div > div > div > div > div.g-page__header.m-real-sticky.js-sticky-header.m-nowrap > div > button",
       );
     if (selector) {
-      const { syncStop = false, singleStop = false, [`blacklisted_${window.location.href.split('/').pop()}`]: isBlacklisted = false } = await new Promise(resolve => {
-        chrome.storage.local.get(['syncStop', 'singleStop', `blacklisted_${window.location.href.split('/').pop()}`], resolve);
-      });
+      const { syncStop = false, singleStop = false } = storageData;
+      const isBlacklisted = storageData[`blacklisted_${window.location.href.split('/').pop()}`] || false;
+      
       if (!syncStop && !singleStop && !isBlacklisted) {
 
       selector.click();
-      setTimeout(function () {
-        let buttons = document.querySelectorAll(
-          "button.g-btn.m-flat.m-btn-gaps.m-reset-width",
-        );
-        buttons.forEach(function (button) {
-          if (button.textContent.trim() === "Yes") {
-            button.click();
-          }
-        });
-      }, 500);
+
+        setTimeout(function () {
+          let buttons = document.querySelectorAll(
+            "button.g-btn.m-flat.m-btn-gaps.m-reset-width",
+          );
+          buttons.forEach(function (button) {
+            if (button.textContent.trim() === "Yes") {
+              button.click();
+            }
+          });
+        }, 500);
       }
     }
   }
@@ -5280,39 +5334,45 @@ async function pressBindFix(tab, browserType) {
   }
 
   async function pressBind() {
+    const currentTabId = window.__OFH_CURRENT_TAB_ID__;
     const mediaWrapperExists = document.querySelector('.b-make-post__media-wrapper');
+
+    const storageData = await new Promise((resolve) => {
+      chrome.storage.local.get(['pht', 'syncStop', 'singleStop'], resolve);
+    });
+    const phtIds = Array.isArray(storageData.pht) ? storageData.pht : [];
+    const isWithoutPhoto = currentTabId != null && phtIds.some((id) => Number(id) === Number(currentTabId));
+    const hasMedia = document.querySelector('.media-file.m-default-bg.m-media-el') !== null;
+    const shouldPost = isWithoutPhoto || hasMedia;
+
+    if (!shouldPost) return;
+
     if (mediaWrapperExists) {
-
       savedMediaLink = await getMediaLinkBeforeSubmit();
+    }
 
-      let selector =
-        document.querySelector('[at-attr="submit_post"]') ||
-        document.querySelector(
-          "#content > div.l-wrapper > div > div > div > div > div.g-page__header.m-real-sticky.js-sticky-header.m-nowrap > div > button",
-        );
-      if (selector) {
-        const { syncStop = false, singleStop = false } = await new Promise(resolve => {
-          chrome.storage.local.get(['syncStop', 'singleStop'], resolve);
-        });
-        if (!syncStop && !singleStop) {
-
+    const selector =
+      document.querySelector('[at-attr="submit_post"]') ||
+      document.querySelector(
+        "#content > div.l-wrapper > div > div > div > div > div.g-page__header.m-real-sticky.js-sticky-header.m-nowrap > div > button",
+      );
+    if (selector) {
+      const { syncStop = false, singleStop = false } = storageData;
+      if (!syncStop && !singleStop) {
         selector.click();
         setTimeout(function () {
-          let buttons = document.querySelectorAll(
-            "button.g-btn.m-flat.m-btn-gaps.m-reset-width",
-          );
+          const buttons = document.querySelectorAll("button.g-btn.m-flat.m-btn-gaps.m-reset-width");
           buttons.forEach(function (button) {
-            if (button.textContent.trim() === "Yes") {
-              button.click();
-            }
+            if (button.textContent.trim() === "Yes") button.click();
           });
         }, 500);
-        }
       }
     }
   }
 
   var tabId = tab.id;
+  
+  window.__OFH_CURRENT_TAB_ID__ = tabId;
 
   function delay(time) {
     return new Promise((resolve) => setTimeout(resolve, time));
