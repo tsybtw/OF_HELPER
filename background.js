@@ -2148,6 +2148,8 @@ async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht, 
         if (expireButtonAgain) {
           expireButtonAgain.dispatchEvent(clickEvent);
 
+          await new Promise(resolve => setTimeout(resolve, 500));
+
           const durationButton = await waitForElement(
             "#post___BV_modal_body_ > div.b-tabs__nav.m-nv.m-tab-rounded.mb-0.m-single-current > ul > li:nth-child(2) > button"
           );
@@ -4420,7 +4422,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '162';
+            const VERSION = '163';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
