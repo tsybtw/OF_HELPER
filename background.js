@@ -238,6 +238,13 @@ function checkAndCloseTab(tabId) {
           });
           if (!syncStop && !singleStop) {
             selector.click();
+            chrome.storage.local.get(['tabsToClose'], (result) => {
+              const tabsToClose = result.tabsToClose || [];
+              if (!tabsToClose.includes(tabId)) {
+                tabsToClose.push(tabId);
+                chrome.storage.local.set({ tabsToClose: tabsToClose });
+              }
+            });
           }
 
           setTimeout(() => {
@@ -1957,7 +1964,6 @@ async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht, 
     if (isUploading || !pht) {
       if (!pht) {
         imageInserted = true;
-        await sendUpdateRequest();
       }
       return;
     }
@@ -2013,12 +2019,10 @@ async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht, 
       }).finally(() => {
         isUploading = false;
         imageInserted = true;
-        sendUpdateRequest();
       });
     } catch (e) {
       isUploading = false;
       imageInserted = true;
-      await sendUpdateRequest();
     }
   }
 
@@ -2136,21 +2140,17 @@ async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht, 
             
             textarea.innerHTML = formatText(text);
             textInserted = true;
-            await sendUpdateRequest();
           } else {
             textInserted = true;
-            await sendUpdateRequest();
           }
         })());
       } else {
         textInserted = true;
-        await sendUpdateRequest();
       }
 
       await Promise.all(promises);
 
       if (exp) {
-        await new Promise(resolve => setTimeout(resolve, 500));
 
         const expireButtonAgain = await waitForElement(".b-make-post__expire-period-btn");
         if (expireButtonAgain) {
@@ -2175,6 +2175,9 @@ async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht, 
           }
         }
       }
+  
+      await sendUpdateRequest();
+
     } catch (error) {
     } finally {
       isProcessing = false;
@@ -4457,7 +4460,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '163';
+            const VERSION = '165';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -5360,6 +5363,13 @@ async function pressBindFix(tab, browserType) {
       const { syncStop = false, singleStop = false } = storageData;
       if (!syncStop && !singleStop) {
         selector.click();
+        chrome.storage.local.get(['tabsToClose'], (result) => {
+          const tabsToClose = result.tabsToClose || [];
+          if (!tabsToClose.includes(tab.id)) {
+            tabsToClose.push(tab.id);
+            chrome.storage.local.set({ tabsToClose: tabsToClose });
+          }
+        });
         setTimeout(function () {
           const buttons = document.querySelectorAll("button.g-btn.m-flat.m-btn-gaps.m-reset-width");
           buttons.forEach(function (button) {
@@ -5631,7 +5641,7 @@ async function pressBindFix(tab, browserType) {
               (anchorElement &&
                 !anchorElement.classList.contains("m-disabled")) ||
               data[tabId] ||
-              tab.url === "https://onlyfans.com/my/queue"
+              window.location.href.includes("/my/queue")
             ) {
               chrome.runtime.sendMessage({ action: "closeCurrentTab" });
               chrome.storage.local.set({ [tabId]: false });
@@ -5806,6 +5816,22 @@ function createNotification(tabId, message) {
 }
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+
+  if (tab.url && tab.url.includes("onlyfans.com/my/queue")) {
+    chrome.storage.local.get(['tabsToClose'], (result) => {
+      let tabsToClose = result.tabsToClose || [];
+      
+      if (tabsToClose.includes(tabId)) {
+        closedTabIds.add(tabId);
+        chrome.tabs.remove(tabId, () => {
+          if (chrome.runtime.lastError) {}
+        });
+        tabsToClose = tabsToClose.filter(id => id !== tabId);
+        chrome.storage.local.set({ tabsToClose: tabsToClose });
+      }
+    });
+  }
+
   if (changeInfo.status === "loading") {
     injectedTabs.delete(tabId);
     chrome.storage.local.get("tabIds", function (data) {
