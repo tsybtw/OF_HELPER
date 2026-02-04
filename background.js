@@ -4460,7 +4460,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
             function updateVersionText(activeBrowser) {
-            const VERSION = '167';
+            const VERSION = '168';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
             }
 
@@ -5287,7 +5287,7 @@ async function pressBind(tabIdFromArg) {
   const phtIds = Array.isArray(storageData.pht) ? storageData.pht : [];
   const isIntentionallyWithoutPhoto = currentTabId != null && phtIds.some((id) => Number(id) === Number(currentTabId));
 
-  const hasMedia = document.querySelector('.media-file.m-default-bg.m-media-el, .media-file.m-default-bg.m-video-el') !== null;
+  const hasMedia = document.querySelector('.media-file.m-default-bg.m-media-el, .media-file.m-default-bg.m-video-el, .media-file.m-lightbox-el') !== null;
   const shouldPost = isIntentionallyWithoutPhoto || hasMedia;
 
   if (!shouldPost) {
@@ -5334,10 +5334,13 @@ async function pressBindFix(tab, browserType) {
       return imageElement.getAttribute('href');
     }
 
-    const videoContainer = document.querySelector('.media-file.m-default-bg.m-video-el');
+    const videoSelectors = '.media-file.m-default-bg.m-video-el, .media-file.m-lightbox-el';
+    const videoContainer = document.querySelector(videoSelectors);
+
     if (videoContainer) {
       const source = videoContainer.querySelector('source');
       if (source && source.src) return source.src;
+      
       const video = videoContainer.querySelector('video');
       if (video && video.src) return video.src;
     }
@@ -5353,7 +5356,7 @@ async function pressBindFix(tab, browserType) {
     });
     const phtIds = Array.isArray(storageData.pht) ? storageData.pht : [];
     const isWithoutPhoto = currentTabId != null && phtIds.some((id) => Number(id) === Number(currentTabId));
-    const hasMedia = document.querySelector('.media-file.m-default-bg.m-media-el, .media-file.m-default-bg.m-video-el') !== null;
+    const hasMedia = document.querySelector('.media-file.m-default-bg.m-media-el, .media-file.m-default-bg.m-video-el, .media-file.m-lightbox-el') !== null;
     const shouldPost = isWithoutPhoto || hasMedia;
 
     if (!shouldPost) return;
