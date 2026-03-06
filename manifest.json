@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "OF HELPER",
-  "version": "169",
+  "version": "170",
   "description": "By @yen_ofsfs",
   "permissions": [
     "activeTab",
@@ -11,13 +11,21 @@
     "cookies",
     "clipboardWrite",
     "clipboardRead",
-     "webNavigation"
+    "webNavigation"
   ],
-  "host_permissions": ["*://*/*"],
+  "host_permissions": [
+    "*://*/*"
+  ],
   "web_accessible_resources": [
     {
-      "resources": ["inject.js", "server/crop/images/*", "server/files/*"],
-      "matches": ["<all_urls>"]
+      "resources": [
+        "inject.js",
+        "server/crop/images/*",
+        "server/files/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ],
   "action": {
