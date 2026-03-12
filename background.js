@@ -1,8 +1,6 @@
+const ALL_ACTIONS_DELAY = 0;
 const TAB_COUNT = 30
-const ALL_ACTIONS_MONITOR = 200;
 const DELAY_GREEN_BUTTON = 500;
-
-console.error = function () { };
 
 chrome.storage.onChanged.addListener((changes, namespace) => {
   if (namespace === 'local' && changes.autoRestartEnabled) {
@@ -78,6 +76,7 @@ let isStop = false;
 let processing = false;
 
 let currentBrowserNumber = 1;
+let currentCmdId = null;
 let lastTabCount = 0;
 let switchTabsEnabled = false;
 let switchTabsCurrentPhase = null;
@@ -108,11 +107,17 @@ async function injectCSS(tabId) {
   } catch (_) { }
 }
 
-chrome.storage.local.get(['currentBrowserNumber'], (result) => {
-  if (result.currentBrowserNumber) {
-    currentBrowserNumber = result.currentBrowserNumber;
-    console.log(`Browser number initialized: ${currentBrowserNumber}`);
-  }
+async function getMyBrowserNumber() {
+  const items = await chrome.storage.local.get(null);
+  const activeBrowser = Object.keys(items)
+    .filter(key => key.startsWith('browser') && key.endsWith('Checked') && items[key])
+    .map(key => parseInt(key.match(/\d+/)[0]))[0];
+  return activeBrowser || currentBrowserNumber;
+}
+
+getMyBrowserNumber().then(num => {
+  currentBrowserNumber = num;
+  console.log(`Browser number initialized: ${currentBrowserNumber}`);
 });
 
 chrome.storage.local.get(['lastTabCount', 'timerVisibility'], (res) => {
@@ -293,12 +298,7 @@ setInterval(() => {
     ).length;
 
     if (onlyFansTabsCount !== lastTabCount || Date.now() % 30000 < 2000) {
-      chrome.storage.local.get(null, function (items) {
-        const activeBrowser = Object.keys(items)
-          .filter(key => key.startsWith('browser') && key.endsWith('Checked') && items[key])
-          .map(key => parseInt(key.match(/\d+/)[0]))[0];
-
-        const browserNum = activeBrowser || items.currentBrowserNumber
+      getMyBrowserNumber().then(browserNum => {
         currentBrowserNumber = browserNum;
         console.log(`Sending ready request for browser ${browserNum} with ${onlyFansTabsCount} tabs`);
         sendReadyRequest(browserNum, onlyFansTabsCount);
@@ -482,9 +482,16 @@ async function sendReadyRequest(browserNumber, tabCount) {
 }
 
 chrome.storage.onChanged.addListener((changes, namespace) => {
-  if (namespace === 'local' && changes.currentBrowserNumber) {
-    currentBrowserNumber = changes.currentBrowserNumber.newValue || 1;
-    console.log(`Browser number updated: ${currentBrowserNumber}`);
+  if (namespace === 'local') {
+    const browserKeyChanged = Object.keys(changes).some(
+      key => key.startsWith('browser') && key.endsWith('Checked')
+    );
+    if (browserKeyChanged) {
+      getMyBrowserNumber().then(num => {
+        currentBrowserNumber = num;
+        console.log(`Browser number updated: ${currentBrowserNumber}`);
+      });
+    }
   }
   if (namespace === 'local' && changes.timerVisibility) {
     if (typeof changes.timerVisibility.newValue === 'boolean') {
@@ -1383,7 +1390,7 @@ async function createBrowser(browserType, index, totalIndex, repeat) {
   }
 }
 
-async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht, blacklistTag, modelTags, timeTextInput, isApart) {
+async function addTextToPost(text, imageUrl, browserType, exp, txt, pht, blacklistTag, modelTags, timeTextInput, isApart, cmdId, browserNumber) {
   let isUploading = false;
   let imageInserted = false;
   let textInserted = false;
@@ -1938,26 +1945,11 @@ async function addTextToPost(text, imageUrl, index, browserType, exp, txt, pht, 
     const shouldSendRequest = (imageInserted || !pht) && (textInserted || !txt);
     if (!shouldSendRequest) return;
 
-    const number = parseInt(browserType.replace(/\D/g, "")) || 0;
-
-    const requestConfig = {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        index: index,
-        number: number,
-      }),
-    };
-
-    const url = "http://localhost:3000/update-browser";
-
-    try {
-      await fetch(url, requestConfig);
-    } catch (error) {
-      console.error("Failed to update browser:", error);
-    }
+    chrome.runtime.sendMessage({
+      type: 'ws-confirm',
+      cmdId: cmdId,
+      browserNumber: browserNumber
+    });
   }
 
   async function handleImageUpload(pht) {
@@ -2283,12 +2275,7 @@ chrome.tabs.onRemoved.addListener(function (tabId) {
       tab.url && tab.url.startsWith('https://onlyfans.com')
     ).length;
 
-    chrome.storage.local.get(null, function (items) {
-      const activeBrowser = Object.keys(items)
-        .filter(key => key.startsWith('browser') && key.endsWith('Checked') && items[key])
-        .map(key => parseInt(key.match(/\d+/)[0]))[0];
-
-      const browserNum = activeBrowser || items.currentBrowserNumber;
+    getMyBrowserNumber().then(browserNum => {
       sendReadyRequest(browserNum, onlyFansTabsCount);
     });
     lastTabCount = onlyFansTabsCount;
@@ -2315,12 +2302,7 @@ chrome.tabs.onCreated.addListener(function (tab) {
         tab.url && tab.url.startsWith('https://onlyfans.com')
       ).length;
 
-      chrome.storage.local.get(null, function (items) {
-        const activeBrowser = Object.keys(items)
-          .filter(key => key.startsWith('browser') && key.endsWith('Checked') && items[key])
-          .map(key => parseInt(key.match(/\d+/)[0]))[0];
-
-        const browserNum = activeBrowser || items.currentBrowserNumber
+      getMyBrowserNumber().then(browserNum => {
         sendReadyRequest(browserNum, onlyFansTabsCount);
       });
       lastTabCount = onlyFansTabsCount;
@@ -2342,19 +2324,53 @@ function sendActivityInfo(browser) {
     .catch((error) => console.error("Error:", error));
 }
 
-async function checkDataFile() {
 
-  try {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    const currentTab = tabs[0];
-
-    if (!currentTab || !currentTab.url || !currentTab.url.startsWith('https://onlyfans.com/')) {
-      return;
-    }
-
-  } catch (error) {
-    console.error('Error:', error);
+async function ensureOffscreen() {
+  const exists = await chrome.offscreen.hasDocument();
+  if (!exists) {
+    await chrome.offscreen.createDocument({
+      url: 'offscreen.html',
+      reasons: ['WORKERS'],
+      justification: 'WebSocket connection to local server'
+    });
   }
+}
+
+const commandQueue = [];
+let isProcessingQueue = false;
+
+async function processQueue() {
+  if (isProcessingQueue) return;
+  isProcessingQueue = true;
+
+  while (commandQueue.length > 0) {
+    const payload = commandQueue.shift();
+    await processCommand(payload);
+    await new Promise(resolve => setTimeout(resolve, ALL_ACTIONS_DELAY));
+  }
+
+  isProcessingQueue = false;
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'ws-command') {
+    commandQueue.push(message.payload);
+    processQueue();
+    sendResponse({ ok: true });
+    return true;
+  }
+  if (message.type === 'ws-get-browser-number') {
+    getMyBrowserNumber().then(browserNum => {
+      currentBrowserNumber = browserNum;
+      sendResponse({ browserNumber: browserNum });
+    });
+    return true;
+  }
+});
+
+ensureOffscreen();
+
+async function processCommand(lastEntry) {
 
   const waitForTabAndExecute = async (tabId, functionToExecute, args) => {
     return new Promise((resolve) => {
@@ -2381,42 +2397,9 @@ async function checkDataFile() {
     });
   };
 
-  const dataFileURL = chrome.runtime.getURL("server/files/data/data.json");
-  const result = await chrome.storage.local.get([
-    "browser1Checked",
-    "browser2Checked",
-    "browser3Checked",
-    "browser4Checked",
-    "browser5Checked",
-    "browser6Checked",
-    "browser7Checked",
-    "browser8Checked",
-    "browser9Checked",
-    "browser10Checked",
-    "browser11Checked",
-    "browser12Checked",
-    "browser13Checked",
-    "browser14Checked",
-    "browser15Checked",
-    "postChecked",
-  ]);
-
-  const browser1 = result.browser1Checked;
-  const browser2 = result.browser2Checked;
-  const browser3 = result.browser3Checked;
-  const browser4 = result.browser4Checked;
-  const browser5 = result.browser5Checked;
-  const browser6 = result.browser6Checked;
-  const browser7 = result.browser7Checked;
-  const browser8 = result.browser8Checked;
-  const browser9 = result.browser9Checked;
-  const browser10 = result.browser10Checked;
-  const browser11 = result.browser11Checked;
-  const browser12 = result.browser12Checked;
-  const browser13 = result.browser13Checked;
-  const browser14 = result.browser14Checked;
-  const browser15 = result.browser15Checked;
+  const result = await chrome.storage.local.get(null);
   const instantPost = result.postChecked;
+  currentBrowserNumber = await getMyBrowserNumber();
 
   try {
     if (typeof instantPost === "boolean") {
@@ -2430,56 +2413,17 @@ async function checkDataFile() {
       });
     }
 
-    const response = await fetch(dataFileURL);
-    const data = await response.json();
+    if (!lastEntry) return;
 
-    let lastEntry = null;
-    let lastIndex = -1;
-    for (let i = 0; i < data.length; i++) {
-      const entry = data[i];
-      if (
-        (browser1 && !entry.browser1) ||
-        (browser2 && !entry.browser2) ||
-        (browser3 && !entry.browser3) ||
-        (browser4 && !entry.browser4) ||
-        (browser5 && !entry.browser5) ||
-        (browser6 && !entry.browser6) ||
-        (browser7 && !entry.browser7) ||
-        (browser8 && !entry.browser8) ||
-        (browser9 && !entry.browser9) ||
-        (browser10 && !entry.browser10) ||
-        (browser11 && !entry.browser11) ||
-        (browser12 && !entry.browser12) ||
-        (browser13 && !entry.browser13) ||
-        (browser14 && !entry.browser14) ||
-        (browser15 && !entry.browser15)
-      ) {
-        lastEntry = entry;
-        lastIndex = i;
-        break;
+    if (lastEntry.selectedBrowsers) {
+      const allowed = String(lastEntry.selectedBrowsers).split(/\s+/).map(Number);
+      if (!allowed.includes(currentBrowserNumber)) {
+        return;
       }
     }
 
-    let browserType = "";
-    var isApart = false;
-    let isDelete = false;
-
-    if (lastEntry) {
-
-      const browserVars = [browser1, browser2, browser3, browser4, browser5, browser6, browser7,
-        browser8, browser9, browser10, browser11, browser12, browser13,
-        browser14, browser15];
-
-      for (let i = 0; i < 15; i++) {
-        if (browserVars[i] && !lastEntry[`browser${i + 1}`]) {
-          browserType = `browser${i + 1}`;
-          break;
-        }
-      }
-
-      isApart = lastEntry.isApart;
-      isDelete = lastEntry.isDelete;
-    }
+    const browserType = `browser${currentBrowserNumber}`;
+    let isDelete = lastEntry.isDelete || false;
 
     function validateDelete(answer) {
       const pattern = /^(del|вуд)-?\d+$/;
@@ -2499,7 +2443,6 @@ async function checkDataFile() {
 
     if (lastEntry && (lastEntry.id === "23" || (lastEntry.id === "11" && lastEntry.textInput === "clear")) && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         await executeScriptIfValid(activeTab, {
@@ -2512,7 +2455,6 @@ async function checkDataFile() {
 
     if (lastEntry && (lastEntry.id === "24" || (lastEntry.id === "11" && lastEntry.textInput === "reload")) && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         await executeScriptIfValid(activeTab, {
@@ -2525,7 +2467,6 @@ async function checkDataFile() {
 
     if (lastEntry && lastEntry.id === "11" && lastEntry.textInput === "bl" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
 
@@ -2628,15 +2569,6 @@ async function checkDataFile() {
           await chrome.tabs.update(firstCreatedTab.id, { active: true });
         }
 
-        fetch('http://localhost:3000/clear', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        }).catch(error => {
-          console.error('Error clearing data.json:', error);
-        });
-
       } catch (error) {
         console.error('Error in processTags:', error);
 
@@ -2650,14 +2582,12 @@ async function checkDataFile() {
 
     if (lastEntry && lastEntry.id === "25" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
       processTags(lastEntry.selections || [], lastEntry.sequence || []).catch(error => console.error(error));
       return;
     }
 
     if (lastEntry && lastEntry.id === "26" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
 
       const delay = lastEntry.switchDelay !== undefined ? lastEntry.switchDelay : 2000;
 
@@ -2685,7 +2615,6 @@ async function checkDataFile() {
 
     if (lastEntry && lastEntry.id === "28" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
       try {
         await chrome.storage.local.set({ storiesStop: true });
       } catch (_) { }
@@ -2694,7 +2623,6 @@ async function checkDataFile() {
 
     if (lastEntry && lastEntry.id === "29" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         await executeScriptIfValid(activeTab, {
@@ -2730,7 +2658,6 @@ async function checkDataFile() {
 
     if (lastEntry && lastEntry.id === "30" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
       try {
         const raw = (lastEntry.tag || '').toString();
         const slug = raw.replace(/^@/, '').trim();
@@ -2884,7 +2811,6 @@ async function checkDataFile() {
 
     if (lastEntry && lastEntry.id === "27" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         await executeScriptIfValid(activeTab, {
@@ -2898,7 +2824,6 @@ async function checkDataFile() {
 
     if (lastEntry && lastEntry.id === "11" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
@@ -3014,8 +2939,8 @@ async function checkDataFile() {
     }
 
     if (lastEntry && lastEntry.id === "12" && browserType !== "") {
+      currentCmdId = lastEntry.cmdId;
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
 
       const text = lastEntry.textInput;
       let exp = lastEntry.exp;
@@ -3080,15 +3005,15 @@ async function checkDataFile() {
         await waitForTabAndExecute(
           activeTab.id,
           addTextToPost,
-          [text, imageUrl, index, browserType, exp, txt, pht, lastEntry.blacklistTag, lastEntry.modelTags || [], lastEntry.timeInput || null, lastEntry.isApart || false]
+          [text, imageUrl, browserType, exp, txt, pht, lastEntry.blacklistTag, lastEntry.modelTags || [], lastEntry.timeInput || null, lastEntry.isApart || false, currentCmdId, currentBrowserNumber]
         );
       });
       return
     }
 
+
     if (lastEntry && lastEntry.id === "14" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
@@ -3102,7 +3027,6 @@ async function checkDataFile() {
 
     if (lastEntry && lastEntry.id === "15" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
@@ -3117,7 +3041,6 @@ async function checkDataFile() {
 
     if (lastEntry && lastEntry.id === "19" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
@@ -3139,7 +3062,6 @@ async function checkDataFile() {
 
     if (lastEntry && lastEntry.id === "100" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
@@ -3153,7 +3075,6 @@ async function checkDataFile() {
 
     if (lastEntry && lastEntry.id === "101" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
@@ -3167,7 +3088,6 @@ async function checkDataFile() {
 
     if (lastEntry && lastEntry.id === "102" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
@@ -3181,7 +3101,6 @@ async function checkDataFile() {
 
     if (lastEntry && lastEntry.id === "103" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
@@ -3195,7 +3114,6 @@ async function checkDataFile() {
 
     if (lastEntry && lastEntry.id === "104" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const allTabs = currentWindow.tabs;
@@ -3218,7 +3136,6 @@ async function checkDataFile() {
 
     if (lastEntry && lastEntry.id === "20" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         const previousTab = currentWindow.tabs.find(
@@ -3235,7 +3152,6 @@ async function checkDataFile() {
 
     if (lastEntry && lastEntry.id === "21" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
 
       chrome.storage.local.get(
         ["savedTabId", "deleteTabId", "autoRestartEnabled"],
@@ -3338,7 +3254,6 @@ async function checkDataFile() {
 
     if (lastEntry && lastEntry.id === "22" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
       chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
         const currentTabId = tabs[0].id;
         chrome.tabs.query({ url: "https://onlyfans.com/*" }, function (matchingTabs) {
@@ -3364,7 +3279,6 @@ async function checkDataFile() {
 
     if (lastEntry && lastEntry.id === "32" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
 
       const result = await new Promise((resolve) => {
         chrome.storage.local.get(['singleStop'], resolve);
@@ -3411,7 +3325,6 @@ async function checkDataFile() {
 
     if (lastEntry && lastEntry.id === "16" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
@@ -3426,7 +3339,6 @@ async function checkDataFile() {
     if (lastEntry && lastEntry.id === "116" && browserType !== "") {
 
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
 
       if (lastEntry.targetBrowser && (lastEntry.targetBrowser === browserType || lastEntry.targetBrowser === "all")) {
         chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
@@ -3442,7 +3354,6 @@ async function checkDataFile() {
 
     if (lastEntry && lastEntry.id === "117" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
@@ -3456,7 +3367,6 @@ async function checkDataFile() {
 
     if (lastEntry && lastEntry.id === "118" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         await executeScriptIfValid(activeTab, {
@@ -3469,7 +3379,6 @@ async function checkDataFile() {
 
     if (lastEntry && lastEntry.id === "18" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
-      await sendTypeToServer(lastIndex, browserType);
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
@@ -4463,7 +4372,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
           function updateVersionText(activeBrowser) {
-            const VERSION = '170';
+            const VERSION = '171';
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
           }
 
@@ -4490,7 +4399,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             const activeBrowser = Object.keys(items)
               .filter(key => key.startsWith('browser') && key.endsWith('Checked') && items[key])
               .map(key => parseInt(key.match(/\d+/)[0]))[0] || "not set";
-            updateVersionText(activeBrowser)
+            updateVersionText(activeBrowser);
           });
 
           chrome.storage.onChanged.addListener(function (changes, namespace) {
@@ -4504,7 +4413,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
                   const activeBrowser = Object.keys(items)
                     .filter(key => key.startsWith('browser') && key.endsWith('Checked') && items[key])
                     .map(key => parseInt(key.match(/\d+/)[0]))[0] || "not set";
-                  updateVersionText(activeBrowser)
+                  updateVersionText(activeBrowser);
                 });
               }
             }
@@ -5111,6 +5020,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         console.error('add-media-by-tag request error:', e);
       }
     })();
+    return true;
+  }
+
+  if (request.action === 'reregisterWS') {
+    currentBrowserNumber = request.browserNumber;
+    chrome.runtime.sendMessage({
+      type: 'ws-update-browser-number',
+      browserNumber: request.browserNumber
+    });
+    return true;
+  }
+
+  if (request.action === 'unregisterWS') {
+    chrome.runtime.sendMessage({
+      type: 'ws-unregister',
+      browserNumber: request.browserNumber
+    });
     return true;
   }
 
@@ -5883,12 +5809,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
           tab.url && tab.url.startsWith('https://onlyfans.com')
         ).length;
 
-        chrome.storage.local.get(null, function (items) {
-          const activeBrowser = Object.keys(items)
-            .filter(key => key.startsWith('browser') && key.endsWith('Checked') && items[key])
-            .map(key => parseInt(key.match(/\d+/)[0]))[0];
-
-          const browserNum = activeBrowser || items.currentBrowserNumber
+        getMyBrowserNumber().then(browserNum => {
           sendReadyRequest(browserNum, onlyFansTabsCount);
         });
         lastTabCount = onlyFansTabsCount;
@@ -5991,46 +5912,17 @@ chrome.tabs.onCreated.addListener(function (tab) {
 
 setInterval(() => updateTabCounterOnActiveTab(false), 1000);
 
-function checkDataFileAndSetTimeout() {
+function sendWsConfirm(cmdId, browserNumber) {
   try {
-    Promise.resolve(checkDataFile())
-      .catch(() => { })
-      .finally(() => {
-        setTimeout(checkDataFileAndSetTimeout, ALL_ACTIONS_MONITOR);
-      });
-  } catch (_) {
-    setTimeout(checkDataFileAndSetTimeout, ALL_ACTIONS_MONITOR);
-  }
-}
-
-checkDataFileAndSetTimeout();
-
-async function sendTypeToServer(dataIndex, browserType) {
-  const serverUrl = "http://localhost:3000/update";
-
-  const requestData = {
-    dataIndex,
-    browserType,
-  };
-
-  try {
-    const response = await fetch(serverUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(requestData),
+    if (!cmdId) return;
+    chrome.runtime.sendMessage({
+      type: 'ws-confirm',
+      cmdId: cmdId,
+      browserNumber: browserNumber
     });
-
-    if (response.ok) {
-      console.log("Data sent successfully to the server");
-    } else {
-      console.error("Failed to send data to the server");
-    }
-  } catch (error) {
-    console.error("Error:", error);
-  }
+  } catch (_) { }
 }
+
 
 function shouldSkipDuplicate(entry, browserType) {
   try {

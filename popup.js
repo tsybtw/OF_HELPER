@@ -8,7 +8,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     let countChange = 0;
 
     if (previousActiveSwitchIndex === null && anyBrowserActive) {
-      countChange = 1; 
+      countChange = 1;
     } else if (previousActiveSwitchIndex !== null && !anyBrowserActive) {
       countChange = -1;
     }
@@ -27,7 +27,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     previousActiveSwitchIndex = activeSwitchIndex !== -1 ? activeSwitchIndex : null;
   }
 
-  for (let i = 1; i <= 15; i++) { 
+  for (let i = 1; i <= 15; i++) {
     const browserSwitch = document.getElementById(`browserSwitch${i}`);
     browserSwitches.push(browserSwitch);
 
@@ -50,10 +50,24 @@ document.addEventListener('DOMContentLoaded', async function () {
       }
 
       const storageUpdates = {};
-      for (let j = 1; j <= 15; j++) { 
+      for (let j = 1; j <= 15; j++) {
         storageUpdates[`browser${j}Checked`] = browserSwitches[j - 1].checked;
       }
       await chrome.storage.local.set(storageUpdates);
+
+      if (this.checked) {
+        const browserNum = parseInt(this.id.replace('browserSwitch', ''));
+        chrome.runtime.sendMessage({
+          action: 'reregisterWS',
+          browserNumber: browserNum
+        });
+      } else {
+        const browserNum = parseInt(this.id.replace('browserSwitch', ''));
+        chrome.runtime.sendMessage({
+          action: 'unregisterWS',
+          browserNumber: browserNum
+        });
+      }
 
       await updateActiveBrowserCount();
 
@@ -72,10 +86,10 @@ document.addEventListener('DOMContentLoaded', async function () {
 
   const storageResult = await chrome.storage.local.get(['postChecked', 'fakeChecked']);
   if (storageResult.postChecked === undefined || storageResult.postChecked === true) {
-    await chrome.storage.local.set({'postChecked': true});
+    await chrome.storage.local.set({ 'postChecked': true });
   }
   if (storageResult.fakeChecked === undefined || storageResult.fakeChecked === true) {
-    await chrome.storage.local.set({'fakeChecked': true});
+    await chrome.storage.local.set({ 'fakeChecked': true });
   }
   await updateActiveBrowserCount();
 });

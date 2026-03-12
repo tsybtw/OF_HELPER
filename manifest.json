@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "OF HELPER",
-  "version": "170",
+  "version": "171",
   "description": "By @yen_ofsfs",
   "permissions": [
     "activeTab",
@@ -11,7 +11,8 @@
     "cookies",
     "clipboardWrite",
     "clipboardRead",
-    "webNavigation"
+    "webNavigation",
+    "offscreen"
   ],
   "host_permissions": [
     "*://*/*"
@@ -21,7 +22,9 @@
       "resources": [
         "inject.js",
         "server/crop/images/*",
-        "server/files/*"
+        "server/files/*",
+        "offscreen.html",
+        "offscreen.js"
       ],
       "matches": [
         "<all_urls>"
