@@ -4372,7 +4372,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
           function updateVersionText(activeBrowser) {
-            const VERSION = '171';
+            const VERSION = chrome.runtime.getManifest().version;
             versionContainer.textContent = `version: ${VERSION} | browser: ${activeBrowser}`;
           }
 

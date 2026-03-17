@@ -1,3 +1,5 @@
+document.getElementById("ext-version").textContent = chrome.runtime.getManifest().version;
+
 document.addEventListener('DOMContentLoaded', async function () {
   const browserSwitches = [];
   let previousActiveSwitchIndex = null;
