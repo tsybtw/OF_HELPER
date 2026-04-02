@@ -6515,3 +6515,45 @@ async function collectFromSelectedBrowsers() {
     }
   } catch (_) { }
 }
+
+function injectConsentObserver(tabId) {
+  chrome.scripting.executeScript({
+    target: { tabId: tabId },
+    func: () => {
+      if (window.__ofAutoConsentObserver) return;
+      window.__ofAutoConsentObserver = true;
+
+      const observer = new MutationObserver((mutationsList) => {
+        for (let mutation of mutationsList) {
+          if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
+            const modalBody = document.getElementById("ModalConfirm___BV_modal_body_");
+            if (modalBody && modalBody.textContent.includes("I Consent to the distribution")) {
+              const modal = modalBody.closest('.modal-content') || modalBody.parentElement || document.body;
+              const buttons = Array.from(modal.querySelectorAll("button"));
+              const yesButton = buttons.find(b => b.textContent && b.textContent.trim().toLowerCase() === "yes");
+              if (yesButton && !yesButton.disabled) {
+                yesButton.click();
+              }
+            }
+          }
+        }
+      });
+      observer.observe(document.documentElement || document.body, { childList: true, subtree: true });
+    }
+  }).catch((e) => {});
+}
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'loading' && tab.url && tab.url.includes("onlyfans.com")) {
+    injectConsentObserver(tabId);
+  }
+});
+
+chrome.tabs.query({ url: "https://onlyfans.com/*" }, (tabs) => {
+  if (!tabs) return;
+  for (const tab of tabs) {
+    if (tab.id) {
+      injectConsentObserver(tab.id);
+    }
+  }
+});
