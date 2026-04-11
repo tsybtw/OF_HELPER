@@ -2531,9 +2531,78 @@ async function processCommand(lastEntry) {
         const tagsText = await tagsResponse.text();
         const tags = tagsText.split('\n').filter(tag => tag.trim() !== '');
 
+        let currentUsername = "";
+        try {
+          const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (tabs.length > 0) {
+            const res = await chrome.scripting.executeScript({
+              target: { tabId: tabs[0].id },
+              func: () => {
+                const el = document.querySelector(".g-user-username");
+                return el ? el.textContent.trim().replace(/^@/, '') : "";
+              }
+            });
+            if (res && res[0] && res[0].result) currentUsername = res[0].result;
+          }
+        } catch (e) { }
+
+        async function isTagSkipped(tag, currentUsername, blacklistContent) {
+          const cleanTag = tag.trim();
+          const targetTagLower = cleanTag.toLowerCase().replace(/^@/, '');
+
+          if (currentUsername && currentUsername.toLowerCase() === targetTagLower) {
+            return true;
+          }
+
+          if (blacklistContent && currentUsername) {
+            const lines = blacklistContent.split(/\r?\n/);
+            const currentModelLower = currentUsername.toLowerCase();
+
+            for (const line of lines) {
+              const trimmedLine = line.trim();
+              if (!trimmedLine) continue;
+
+              if (trimmedLine.includes('-')) {
+                const parts = trimmedLine.split('-');
+                if (parts.length >= 2) {
+                  const blacklistedTag = parts[0].trim().toLowerCase().replace(/^@/, '');
+                  if (blacklistedTag === targetTagLower) {
+                    const bannedModels = parts[1].split(',').map(m => m.trim().toLowerCase().replace(/^@/, ''));
+                    if (bannedModels.includes(currentModelLower)) {
+                      return true;
+                    }
+                  }
+                }
+              } else {
+                const globalBanTag = trimmedLine.toLowerCase().replace(/^@/, '');
+                if (globalBanTag === targetTagLower) {
+                  return true;
+                }
+              }
+            }
+          }
+
+          const fileSearchTag = cleanTag.replace(/\./g, "-");
+          const extensions = [".png", ".jpg", ".jpeg", ".heic"];
+          for (const ext of extensions) {
+            try {
+              const response = await fetch(chrome.runtime.getURL(`server/crop/images/${fileSearchTag}${ext}`));
+              if (response.ok) return false;
+            } catch (e) { }
+          }
+          try {
+            const response = await fetch(chrome.runtime.getURL(`server/crop/images/${fileSearchTag}`));
+            if (response.ok) return false;
+          } catch (e) { }
+
+          return true;
+        }
+
         for (let i = 0; i < tags.length; i++) {
           const tag = tags[i];
-          const tab = await chrome.tabs.create({ url: "https://onlyfans.com/", active: true });
+          const skipped = await isTagSkipped(tag, currentUsername, blacklistContent);
+          const tabUrl = skipped ? "https://onlyfans.com/posts/create" : "https://onlyfans.com/";
+          const tab = await chrome.tabs.create({ url: tabUrl, active: true });
 
           protectedTabs.add(tab.id);
 
@@ -6540,7 +6609,7 @@ function injectConsentObserver(tabId) {
       });
       observer.observe(document.documentElement || document.body, { childList: true, subtree: true });
     }
-  }).catch((e) => {});
+  }).catch((e) => { });
 }
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
