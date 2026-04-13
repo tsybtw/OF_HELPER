@@ -856,7 +856,7 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent) {
   }
 
   if (currentUsername && currentUsername === cleanTag.replace(/^@/, '')) {
-    return Promise.resolve();
+    return Promise.resolve('skipped');
   }
 
   if (blacklistContent && currentUsername) {
@@ -877,7 +877,7 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent) {
             const bannedModels = modelsPart.split(',').map(m => m.trim().toLowerCase().replace(/^@/, ''));
             if (bannedModels.includes(currentModelLower)) {
               console.log(`[STORY SKIP] Tag @${blacklistedTag} blacklisted for @${currentUsername}`);
-              return Promise.resolve();
+              return Promise.resolve('skipped');
             }
           }
         }
@@ -885,7 +885,7 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent) {
         const globalBanTag = trimmedLine.toLowerCase().replace(/^@/, '');
         if (globalBanTag === targetTagLower) {
           console.log(`[STORY SKIP] Tag @${globalBanTag} is globally blacklisted`);
-          return Promise.resolve();
+          return Promise.resolve('skipped');
         }
       }
     }
@@ -1091,7 +1091,7 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent) {
       resolve();
     } catch (error) {
       console.error(error);
-      reject(error);
+      resolve('skipped');
     }
   });
 }
@@ -2762,7 +2762,30 @@ async function processCommand(lastEntry) {
                       const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
                       const month = monthNames[d.getUTCMonth()];
                       const year = d.getUTCFullYear();
-                      return `${day} ${month}, ${year}`;
+                      const baseDate = `${day} ${month}, ${year}`;
+
+                      const now = new Date();
+                      let diffYears = now.getUTCFullYear() - d.getUTCFullYear();
+                      let diffMonths = now.getUTCMonth() - d.getUTCMonth();
+                      let diffDays = now.getUTCDate() - d.getUTCDate();
+
+                      if (diffDays < 0) {
+                        diffMonths--;
+                        const prevMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0));
+                        diffDays += prevMonth.getUTCDate();
+                      }
+                      if (diffMonths < 0) {
+                        diffYears--;
+                        diffMonths += 12;
+                      }
+
+                      const diffParts = [];
+                      if (diffYears > 0) diffParts.push(`${diffYears}y`);
+                      if (diffMonths > 0) diffParts.push(`${diffMonths}m`);
+                      if (diffDays > 0) diffParts.push(`${diffDays}d`);
+                      const diffStr = diffParts.length > 0 ? `\n${diffParts.join(' ')}` : '';
+
+                      return baseDate + diffStr;
                     } catch (_) { return ''; }
                   };
 
@@ -2786,7 +2809,7 @@ async function processCommand(lastEntry) {
                           position: 'absolute', top: '60px', left: '50%', transform: 'translateX(-50%)',
                           background: 'rgba(28,28,28,0.92)', color: '#fff', border: '2px solid #000', borderRadius: '10px',
                           padding: '8px 14px', zIndex: '2147483647', fontFamily: '"Josefin Sans", sans-serif', fontSize: '16px',
-                          boxShadow: '0 2px 8px rgba(0,0,0,0.35)'
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.35)', textAlign: 'center', whiteSpace: 'pre-wrap'
                         });
                         document.body.appendChild(el);
                       }
