@@ -4613,20 +4613,30 @@ function cancelAutoQueueScan() {
 }
 
 function startAutoQueueScan() {
+  var useFolders = document.getElementById('aq-use-folders');
+  var foldersEnabled = useFolders && useFolders.checked;
+
   fetch('/get-active-clients')
     .then(function (r) { return r.json(); })
     .then(function (data) {
       var clientList = data.clients || [];
       if (clientList.length > 1) {
-        _showAQClientModal(clientList);
+        _showAQClientModal(clientList, foldersEnabled);
       } else {
-        _doStartScan(null);
+        var singleId = clientList.length === 1 ? [clientList[0].id] : null;
+        if (foldersEnabled) {
+          _showAQFolderModal(singleId, function (folderFilter) {
+            _doStartScan(singleId, folderFilter);
+          });
+        } else {
+          _doStartScan(null, null);
+        }
       }
     })
-    .catch(function () { _doStartScan(null); });
+    .catch(function () { _doStartScan(null, null); });
 }
 
-function _showAQClientModal(clientList) {
+function _showAQClientModal(clientList, foldersEnabled) {
   var existing = document.getElementById('aq-client-modal');
   if (existing) existing.remove();
 
@@ -4642,6 +4652,7 @@ function _showAQClientModal(clientList) {
       '</label>';
   }).join('');
 
+  var btnLabel = foldersEnabled ? 'Next' : 'Scan';
   overlay.innerHTML =
     '<div class="aqd-content" style="height:auto;max-height:60vh;width:320px;">' +
       '<div class="aqd-header">' +
@@ -4652,7 +4663,92 @@ function _showAQClientModal(clientList) {
         checks +
       '</div>' +
       '<div style="padding:0 14px 14px;">' +
-        '<button onclick="_aqClientModalScan()" ' +
+        '<button onclick="_aqClientModalConfirm(' + (foldersEnabled ? 'true' : 'false') + ')" ' +
+          'style="width:100%;background:#fb8556;color:black;border:2px solid black;' +
+          'padding:10px;border-radius:10px;cursor:pointer;font-family:\'Varela Round\',sans-serif;' +
+          'font-weight:bold;font-size:14px;text-transform:uppercase;transition:all 0.3s ease;">' +
+          btnLabel +
+        '</button>' +
+      '</div>' +
+    '</div>';
+
+  overlay.addEventListener('click', function (e) {
+    if (e.target === overlay) overlay.remove();
+  });
+  document.body.appendChild(overlay);
+}
+
+function _aqClientModalConfirm(foldersEnabled) {
+  var checks = document.querySelectorAll('#aq-client-modal .aq-client-check:checked');
+  var selectedIds = Array.from(checks).map(function (c) { return c.value; });
+  var modal = document.getElementById('aq-client-modal');
+  if (modal) modal.remove();
+
+  if (foldersEnabled) {
+    _showAQFolderModal(selectedIds.length > 0 ? selectedIds : null, function (folderFilter) {
+      _doStartScan(selectedIds.length > 0 ? selectedIds : null, folderFilter);
+    });
+  } else {
+    _doStartScan(selectedIds.length > 0 ? selectedIds : null, null);
+  }
+}
+
+var _aqFolderCallback = null;
+
+function _showAQFolderModal(clientIds, callback) {
+  _aqFolderCallback = callback;
+  var existing = document.getElementById('aq-folder-modal');
+  if (existing) existing.remove();
+
+  fetch('/get-client-folders', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ client_ids: clientIds })
+  })
+    .then(function (r) { return r.json(); })
+    .then(function (data) { _renderAQFolderModal(data.folders || {}, clientIds); })
+    .catch(function () { if (_aqFolderCallback) _aqFolderCallback(null); });
+}
+
+function _renderAQFolderModal(foldersMap, clientIds) {
+  var overlay = document.createElement('div');
+  overlay.id = 'aq-folder-modal';
+  overlay.className = 'aqd-modal';
+  overlay.style.display = 'flex';
+
+  // Build client labels from existing client modal data (already fetched)
+  var bodyHtml = '';
+  var clientKeys = clientIds || Object.keys(foldersMap);
+  clientKeys.forEach(function (cid) {
+    var folders = foldersMap[String(cid)] || [];
+    if (folders.length === 0) return;
+    bodyHtml +=
+      '<div class="aq-folder-client-block">' +
+        '<div class="aq-folder-client-label">Account ' + aqEscape(String(cid)) + '</div>' +
+        folders.map(function (f) {
+          return '<label class="aq-folder-row">' +
+            '<input type="checkbox" class="aq-folder-check" data-client="' + cid + '" value="' + f.id + '">' +
+            '<span class="aq-folder-name">' + aqEscape(f.title) + '</span>' +
+            '</label>';
+        }).join('') +
+      '</div>';
+  });
+
+  if (!bodyHtml) {
+    bodyHtml = '<div class="aqd-placeholder aqd-placeholder--muted" style="padding:16px;text-align:center;">No folders found</div>';
+  }
+
+  overlay.innerHTML =
+    '<div class="aqd-content" style="height:auto;max-height:70vh;width:340px;">' +
+      '<div class="aqd-header">' +
+        '<span id="aqd-title">Select Folders</span>' +
+        '<button class="aqd-close-btn" onclick="document.getElementById(\'aq-folder-modal\').remove()">X</button>' +
+      '</div>' +
+      '<div style="padding:14px;display:flex;flex-direction:column;gap:4px;overflow-y:auto;max-height:50vh;">' +
+        bodyHtml +
+      '</div>' +
+      '<div style="padding:0 14px 14px;">' +
+        '<button onclick="_aqFolderModalScan()" ' +
           'style="width:100%;background:#fb8556;color:black;border:2px solid black;' +
           'padding:10px;border-radius:10px;cursor:pointer;font-family:\'Varela Round\',sans-serif;' +
           'font-weight:bold;font-size:14px;text-transform:uppercase;transition:all 0.3s ease;">' +
@@ -4664,19 +4760,25 @@ function _showAQClientModal(clientList) {
   overlay.addEventListener('click', function (e) {
     if (e.target === overlay) overlay.remove();
   });
-
   document.body.appendChild(overlay);
 }
 
-function _aqClientModalScan() {
-  var checks = document.querySelectorAll('#aq-client-modal .aq-client-check:checked');
-  var selectedIds = Array.from(checks).map(function (c) { return c.value; });
-  var modal = document.getElementById('aq-client-modal');
+function _aqFolderModalScan() {
+  var checks = document.querySelectorAll('#aq-folder-modal .aq-folder-check:checked');
+  var folderFilter = {};
+  checks.forEach(function (el) {
+    var cid = el.getAttribute('data-client');
+    if (!folderFilter[cid]) folderFilter[cid] = [];
+    folderFilter[cid].push(parseInt(el.value));
+  });
+  var modal = document.getElementById('aq-folder-modal');
   if (modal) modal.remove();
-  _doStartScan(selectedIds.length > 0 ? selectedIds : null);
+  if (_aqFolderCallback) {
+    _aqFolderCallback(Object.keys(folderFilter).length > 0 ? folderFilter : null);
+  }
 }
 
-function _doStartScan(clientIds) {
+function _doStartScan(clientIds, folderFilter) {
   var scanBtn = document.getElementById('aq-scan-btn');
   var cancelBtn = document.getElementById('aq-cancel-btn');
   var progress = document.getElementById('aq-progress');
@@ -4694,7 +4796,10 @@ function _doStartScan(clientIds) {
   if (errorDiv) errorDiv.style.display = 'none';
   clearInterval(aqScanInterval);
 
-  var body = clientIds ? JSON.stringify({ client_ids: clientIds }) : '{}';
+  var bodyObj = {};
+  if (clientIds) bodyObj.client_ids = clientIds;
+  if (folderFilter) bodyObj.folder_filter = folderFilter;
+  var body = JSON.stringify(bodyObj);
   fetch('/auto-queue-scan', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

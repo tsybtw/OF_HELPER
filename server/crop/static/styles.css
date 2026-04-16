@@ -1691,6 +1691,7 @@ input[type="checkbox"] {
 .setting-row-inline {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 8px;
 }
 
@@ -2733,6 +2734,70 @@ body.drag-active-cursor { cursor: grabbing !important; }
   color: #fb8556;
   font-style: italic;
   font-weight: bold;
+}
+
+/* --- Use folders checkbox --- */
+.aq-folder-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #aaa;
+  font-family: 'Varela Round', sans-serif;
+  user-select: none;
+}
+.aq-folder-toggle input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: #fbdf56;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.aq-folder-toggle:has(input:checked) span {
+  color: #fbdf56;
+}
+
+/* --- Folder select modal --- */
+.aq-folder-client-block {
+  margin-bottom: 12px;
+}
+.aq-folder-client-label {
+  font-size: 11px;
+  font-weight: bold;
+  color: #fbdf56;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 6px;
+  font-family: 'Varela Round', sans-serif;
+}
+.aq-folder-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 4px;
+  transition: background 0.15s ease;
+  font-family: 'Varela Round', sans-serif;
+}
+.aq-folder-row:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.aq-folder-check {
+  width: 15px;
+  height: 15px;
+  accent-color: #fbdf56;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.aq-folder-name {
+  font-size: 13px;
+  font-weight: bold;
+  color: white;
 }
 
 /* --- Client select modal --- */
