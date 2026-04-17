@@ -1409,8 +1409,9 @@ function updateQueueStatus(queueData = null, browserData = null) {
         const switchTabsEnabled = !!data.queue_settings?.switch_tabs_enabled;
         let settingsHtml = `
                         <div class="browser-settings-header">Browser Settings</div>
-                        <div class="setting-row">
-                            <span class="setting-label upper-limit-label">Upper tabs limit:</span>
+                        <div class="setting-row setting-row-inline">
+                            <input type="checkbox" class="hint-checkbox" disabled style="visibility:hidden">
+                            <span class="setting-label">Upper tabs limit:</span>
                             <div class="spin-wrap">
                                 <button class="spin-btn" onclick="spinInput('tab-threshold-input',-1)">&#8722;</button>
                                 <input type="number" id="tab-threshold-input" class="setting-input"
@@ -4681,13 +4682,19 @@ function _showAQClientModal(clientList, foldersEnabled) {
 function _aqClientModalConfirm(foldersEnabled) {
   var checks = document.querySelectorAll('#aq-client-modal .aq-client-check:checked');
   var selectedIds = Array.from(checks).map(function (c) { return c.value; });
+  var clientLabels = {};
+  Array.from(checks).forEach(function (c) {
+    var row = c.closest('.aq-client-row');
+    var phone = row ? (row.querySelector('.aq-client-phone') || {}).textContent : null;
+    clientLabels[c.value] = phone || c.value;
+  });
   var modal = document.getElementById('aq-client-modal');
   if (modal) modal.remove();
 
   if (foldersEnabled) {
     _showAQFolderModal(selectedIds.length > 0 ? selectedIds : null, function (folderFilter) {
       _doStartScan(selectedIds.length > 0 ? selectedIds : null, folderFilter);
-    });
+    }, clientLabels);
   } else {
     _doStartScan(selectedIds.length > 0 ? selectedIds : null, null);
   }
@@ -4695,7 +4702,7 @@ function _aqClientModalConfirm(foldersEnabled) {
 
 var _aqFolderCallback = null;
 
-function _showAQFolderModal(clientIds, callback) {
+function _showAQFolderModal(clientIds, callback, clientLabels) {
   _aqFolderCallback = callback;
   var existing = document.getElementById('aq-folder-modal');
   if (existing) existing.remove();
@@ -4706,11 +4713,11 @@ function _showAQFolderModal(clientIds, callback) {
     body: JSON.stringify({ client_ids: clientIds })
   })
     .then(function (r) { return r.json(); })
-    .then(function (data) { _renderAQFolderModal(data.folders || {}, clientIds); })
+    .then(function (data) { _renderAQFolderModal(data.folders || {}, clientIds, clientLabels || {}); })
     .catch(function () { if (_aqFolderCallback) _aqFolderCallback(null); });
 }
 
-function _renderAQFolderModal(foldersMap, clientIds) {
+function _renderAQFolderModal(foldersMap, clientIds, clientLabels) {
   var overlay = document.createElement('div');
   overlay.id = 'aq-folder-modal';
   overlay.className = 'aqd-modal';
@@ -4724,7 +4731,7 @@ function _renderAQFolderModal(foldersMap, clientIds) {
     if (folders.length === 0) return;
     bodyHtml +=
       '<div class="aq-folder-client-block">' +
-        '<div class="aq-folder-client-label">Account ' + aqEscape(String(cid)) + '</div>' +
+        '<div class="aq-folder-client-label">' + aqEscape((clientLabels || {})[String(cid)] || String(cid)) + '</div>' +
         folders.map(function (f) {
           return '<label class="aq-folder-row">' +
             '<input type="checkbox" class="aq-folder-check" data-client="' + cid + '" value="' + f.id + '">' +
@@ -4886,10 +4893,14 @@ function renderAQList(candidates) {
     var textRaw = c.message_preview || '';
     var preview = Array.from(textRaw).slice(0, 35).join('');
 
+    var middleHtml = c.needs_manual_selection
+      ? '<span class="aq-item-manual" title="' + aqEscape(c.reason || 'no suitable message found') + '">\u26a0 select msg</span>'
+      : (preview ? '<span class="aq-item-preview" title="' + aqEscape(c.message_preview || '') + '">' + aqEscape(preview) + '</span>' : '');
+
     container.innerHTML =
       '<span class="aq-item-num">' + (idx + 1) + '</span>' +
       '<span class="aq-item-nick" title="' + aqEscape(nickname) + '">' + aqEscape(nickname) + '</span>' +
-      (preview ? '<span class="aq-item-preview" title="' + aqEscape(c.message_preview || '') + '">' + aqEscape(preview) + '</span>' : '') +
+      middleHtml +
       '<input type="checkbox" class="aq-item-check"' + (included ? ' checked' : '') + (loaded ? ' disabled' : '') +
         ' onchange="toggleAQItem(' + c.chat_id + ', this)">' +
       '<button class="aq-item-edit" onclick="openAQDialog(' + c.chat_id + ')">edit</button>';
@@ -4915,8 +4926,13 @@ function updateAQStartWrap(candidates) {
       (loaded > 0 ? ' \u00b7 ' + loaded + ' already loaded' : '');
   }
   if (confirmBtn) {
-    confirmBtn.disabled = pending.length === 0;
-    confirmBtn.style.opacity = pending.length === 0 ? '0.4' : '1';
+    var needsManual = pending.filter(function (c) { return c.needs_manual_selection; }).length;
+    var blocked = pending.length === 0 || needsManual > 0;
+    confirmBtn.disabled = blocked;
+    confirmBtn.style.opacity = blocked ? '0.4' : '1';
+    confirmBtn.title = needsManual > 0
+      ? needsManual + ' user(s) require manual message selection'
+      : '';
   }
 }
 
@@ -4983,6 +4999,13 @@ function closeAQDialog() {
   var modal = document.getElementById('aq-dialog-modal');
   if (modal) modal.style.display = 'none';
   _aqDialogChatId = null;
+  fetch('/auto-queue-scan-status')
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      renderAQList(d.candidates || []);
+      updateAQStartWrap(d.candidates || []);
+    })
+    .catch(function () { });
 }
 
 function aqDialogLoadMore() {
