@@ -122,6 +122,16 @@ body {
     background-color: #c24817;
   }
 
+  .switch-labels.switch-occupied label {
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  .switch-labels.switch-occupied .switch-number {
+    color: #888;
+  }
+
   .switchPost {
     position: absolute;
     display: none;

@@ -33,8 +33,8 @@ async function connectWS() {
     chrome.runtime.sendMessage({ type: 'ws-get-browser-number' }, (response) => {
       if (response && response.browserNumber) {
         currentBrowserNumber = response.browserNumber;
+        ws.send(JSON.stringify({ type: 'register', browserNumber: currentBrowserNumber }));
       }
-      ws.send(JSON.stringify({ type: 'register', browserNumber: currentBrowserNumber }));
     });
 
     clearInterval(heartbeatTimer);
@@ -49,6 +49,14 @@ async function connectWS() {
     try {
       const data = JSON.parse(event.data);
       if (data.type === 'pong') return;
+      if (data.type === 'displaced') {
+        chrome.runtime.sendMessage({ type: 'ws-displaced' });
+        return;
+      }
+      if (data.type === 'browsers-updated') {
+        try { chrome.runtime.sendMessage({ type: 'browsers-updated', numbers: data.numbers }); } catch (_) {}
+        return;
+      }
       chrome.runtime.sendMessage({ type: 'ws-command', payload: data });
     } catch (_) { }
   };

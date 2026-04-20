@@ -112,12 +112,40 @@ async function getMyBrowserNumber() {
   const activeBrowser = Object.keys(items)
     .filter(key => key.startsWith('browser') && key.endsWith('Checked') && items[key])
     .map(key => parseInt(key.match(/\d+/)[0]))[0];
-  return activeBrowser || currentBrowserNumber;
+  return activeBrowser || null;
+}
+
+async function autoAssignBrowserNumber() {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    if (attempt > 0) await new Promise(r => setTimeout(r, 2000));
+    try {
+      const syncData = await chrome.storage.sync.get(['preferredBrowserNumber']);
+      const preferred = syncData.preferredBrowserNumber || null;
+      const res = await fetch('http://localhost:3000/active-browsers');
+      const { numbers } = await res.json();
+      const taken = new Set(numbers || []);
+      let chosen = (preferred && !taken.has(preferred)) ? preferred : null;
+      if (!chosen) for (let i = 1; i <= 15; i++) { if (!taken.has(i)) { chosen = i; break; } }
+      if (!chosen) continue;
+      await chrome.storage.local.set({ [`browser${chosen}Checked`]: true });
+      currentBrowserNumber = chosen;
+      try { chrome.runtime.sendMessage({ type: 'ws-update-browser-number', browserNumber: chosen }); } catch (_) {}
+      return;
+    } catch (_) {}
+  }
+  await chrome.storage.local.set({ browser1Checked: true });
+  currentBrowserNumber = 1;
+  try { chrome.runtime.sendMessage({ type: 'ws-update-browser-number', browserNumber: 1 }); } catch (_) {}
 }
 
 getMyBrowserNumber().then(num => {
-  currentBrowserNumber = num;
-  console.log(`Browser number initialized: ${currentBrowserNumber}`);
+  if (num) {
+    currentBrowserNumber = num;
+    console.log(`Browser number initialized: ${currentBrowserNumber}`);
+  } else {
+    currentBrowserNumber = 1;
+    autoAssignBrowserNumber();
+  }
 });
 
 chrome.storage.local.get(['lastTabCount', 'timerVisibility'], (res) => {
@@ -2364,6 +2392,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       currentBrowserNumber = browserNum;
       sendResponse({ browserNumber: browserNum });
     });
+    return true;
+  }
+  if (message.type === 'ws-displaced') {
+    (async () => {
+      try {
+        const res = await fetch('http://localhost:3000/active-browsers');
+        const data = await res.json();
+        const taken = new Set(data.numbers || []);
+        let freeNum = null;
+        for (let i = 1; i <= 15; i++) {
+          if (!taken.has(i)) { freeNum = i; break; }
+        }
+        if (freeNum) {
+          const storageUpdates = {};
+          for (let j = 1; j <= 15; j++) {
+            storageUpdates[`browser${j}Checked`] = j === freeNum;
+          }
+          await chrome.storage.local.set(storageUpdates);
+          currentBrowserNumber = freeNum;
+          chrome.runtime.sendMessage({ type: 'ws-update-browser-number', browserNumber: freeNum });
+        }
+      } catch (_) {}
+      sendResponse({ ok: true });
+    })();
     return true;
   }
 });
@@ -5117,6 +5169,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'reregisterWS') {
     currentBrowserNumber = request.browserNumber;
+    chrome.storage.sync.set({ preferredBrowserNumber: request.browserNumber });
     chrome.runtime.sendMessage({
       type: 'ws-update-browser-number',
       browserNumber: request.browserNumber

@@ -4,6 +4,37 @@ document.addEventListener('DOMContentLoaded', async function () {
   const browserSwitches = [];
   let previousActiveSwitchIndex = null;
 
+  async function fetchActiveBrowsers() {
+    try {
+      const res = await fetch('http://localhost:3000/active-browsers');
+      const data = await res.json();
+      return new Set(data.numbers || []);
+    } catch (_) {
+      return new Set();
+    }
+  }
+
+  function getMyCheckedNum() {
+    const idx = browserSwitches.findIndex(sw => sw.checked);
+    return idx >= 0 ? idx + 1 : null;
+  }
+
+  function updateDisabledSwitches(activeBrowserNumbers) {
+    const myNum = getMyCheckedNum();
+    for (let i = 1; i <= 15; i++) {
+      const sw = browserSwitches[i - 1];
+      const container = sw.closest('.switch-labels');
+      const isOccupied = activeBrowserNumbers.has(i) && i !== myNum;
+      sw.disabled = isOccupied;
+      if (isOccupied) {
+        sw.checked = false;
+        container.classList.add('switch-occupied');
+      } else {
+        container.classList.remove('switch-occupied');
+      }
+    }
+  }
+
   async function updateActiveBrowserCount() {
     const anyBrowserActive = browserSwitches.some(switchElement => switchElement.checked);
     const activeSwitchIndex = browserSwitches.findIndex(switchElement => switchElement.checked);
@@ -83,8 +114,41 @@ document.addEventListener('DOMContentLoaded', async function () {
           console.error('Error sending POST request:', response);
         }
       }
+
+      const activeBrowserNumbers = await fetchActiveBrowsers();
+      updateDisabledSwitches(activeBrowserNumbers);
     });
   }
+
+  const initialActiveBrowsers = await fetchActiveBrowsers();
+  updateDisabledSwitches(initialActiveBrowsers);
+
+  chrome.storage.onChanged.addListener(async (changes, namespace) => {
+    if (namespace !== 'local') return;
+    const hasBrowserKey = Object.keys(changes).some(k => k.startsWith('browser') && k.endsWith('Checked'));
+    if (!hasBrowserKey) return;
+    for (const [key, { newValue }] of Object.entries(changes)) {
+      const match = key.match(/^browser(\d+)Checked$/);
+      if (match) {
+        const i = parseInt(match[1]);
+        if (i >= 1 && i <= 15) browserSwitches[i - 1].checked = newValue || false;
+      }
+    }
+    const nums = await fetchActiveBrowsers();
+    updateDisabledSwitches(nums);
+  });
+
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.type === 'browsers-updated') {
+      updateDisabledSwitches(new Set(request.numbers || []));
+      sendResponse({ ok: true });
+      return false;
+    }
+    if (request.type === 'getActiveBrowserCount') {
+      sendResponse({ activeBrowserCount: browserSwitches.filter(s => s.checked).length });
+      return false;
+    }
+  });
 
   const storageResult = await chrome.storage.local.get(['postChecked', 'fakeChecked']);
   if (storageResult.postChecked === undefined || storageResult.postChecked === true) {
@@ -94,11 +158,4 @@ document.addEventListener('DOMContentLoaded', async function () {
     await chrome.storage.local.set({ 'fakeChecked': true });
   }
   await updateActiveBrowserCount();
-});
-
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.type === 'getActiveBrowserCount') {
-    const activeBrowserCount = browserSwitches.filter(switchElement => switchElement.checked).length;
-    sendResponse({ activeBrowserCount });
-  }
 });
