@@ -850,7 +850,7 @@ function stopQueue() {
     });
 }
 
-async function switchToUser(userIndex) {
+async function switchToUser(userIndex, force = false) {
   const button = document.querySelector(`button[onclick="switchToUser(${userIndex})"]`);
   if (button && button.disabled) {
     console.log('Switch already in progress, ignoring click');
@@ -899,7 +899,8 @@ async function switchToUser(userIndex) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
-          }
+          },
+          body: JSON.stringify({ force: force })
         });
 
         if (!response.ok) {
@@ -2392,6 +2393,22 @@ function processContentLoader(button, messageData, client_id) {
 
       const previousActive = localStorage.getItem('activeButtonNumber') || '0';
       updateActiveButton(previousActive);
+    });
+}
+
+function reloadCurrentAssistant() {
+  fetch('/reload-current-assistant', { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        showStatus('Duplicating content...', 'info');
+      } else {
+        showStatus(data.error || 'Failed to reload assistant', 'error');
+      }
+    })
+    .catch(err => {
+      console.error('Error duplicating content:', err);
+      showStatus('Error duplicating content', 'error');
     });
 }
 
@@ -4656,21 +4673,21 @@ function _showAQClientModal(clientList, foldersEnabled) {
   var btnLabel = foldersEnabled ? 'Next' : 'Scan';
   overlay.innerHTML =
     '<div class="aqd-content" style="height:auto;max-height:60vh;width:320px;">' +
-      '<div class="aqd-header">' +
-        '<span id="aqd-title">Select Accounts</span>' +
-        '<button class="aqd-close-btn" onclick="document.getElementById(\'aq-client-modal\').remove()">X</button>' +
-      '</div>' +
-      '<div style="padding:14px;display:flex;flex-direction:column;gap:8px;">' +
-        checks +
-      '</div>' +
-      '<div style="padding:0 14px 14px;">' +
-        '<button onclick="_aqClientModalConfirm(' + (foldersEnabled ? 'true' : 'false') + ')" ' +
-          'style="width:100%;background:#fb8556;color:black;border:2px solid black;' +
-          'padding:10px;border-radius:10px;cursor:pointer;font-family:\'Varela Round\',sans-serif;' +
-          'font-weight:bold;font-size:14px;text-transform:uppercase;transition:all 0.3s ease;">' +
-          btnLabel +
-        '</button>' +
-      '</div>' +
+    '<div class="aqd-header">' +
+    '<span id="aqd-title">Select Accounts</span>' +
+    '<button class="aqd-close-btn" onclick="document.getElementById(\'aq-client-modal\').remove()">X</button>' +
+    '</div>' +
+    '<div style="padding:14px;display:flex;flex-direction:column;gap:8px;">' +
+    checks +
+    '</div>' +
+    '<div style="padding:0 14px 14px;">' +
+    '<button onclick="_aqClientModalConfirm(' + (foldersEnabled ? 'true' : 'false') + ')" ' +
+    'style="width:100%;background:#fb8556;color:black;border:2px solid black;' +
+    'padding:10px;border-radius:10px;cursor:pointer;font-family:\'Varela Round\',sans-serif;' +
+    'font-weight:bold;font-size:14px;text-transform:uppercase;transition:all 0.3s ease;">' +
+    btnLabel +
+    '</button>' +
+    '</div>' +
     '</div>';
 
   overlay.addEventListener('click', function (e) {
@@ -4731,13 +4748,13 @@ function _renderAQFolderModal(foldersMap, clientIds, clientLabels) {
     if (folders.length === 0) return;
     bodyHtml +=
       '<div class="aq-folder-client-block">' +
-        '<div class="aq-folder-client-label">' + aqEscape((clientLabels || {})[String(cid)] || String(cid)) + '</div>' +
-        folders.map(function (f) {
-          return '<label class="aq-folder-row">' +
-            '<input type="checkbox" class="aq-folder-check" data-client="' + cid + '" value="' + f.id + '">' +
-            '<span class="aq-folder-name">' + aqEscape(f.title) + '</span>' +
-            '</label>';
-        }).join('') +
+      '<div class="aq-folder-client-label">' + aqEscape((clientLabels || {})[String(cid)] || String(cid)) + '</div>' +
+      folders.map(function (f) {
+        return '<label class="aq-folder-row">' +
+          '<input type="checkbox" class="aq-folder-check" data-client="' + cid + '" value="' + f.id + '">' +
+          '<span class="aq-folder-name">' + aqEscape(f.title) + '</span>' +
+          '</label>';
+      }).join('') +
       '</div>';
   });
 
@@ -4747,21 +4764,21 @@ function _renderAQFolderModal(foldersMap, clientIds, clientLabels) {
 
   overlay.innerHTML =
     '<div class="aqd-content" style="height:auto;max-height:70vh;width:340px;">' +
-      '<div class="aqd-header">' +
-        '<span id="aqd-title">Select Folders</span>' +
-        '<button class="aqd-close-btn" onclick="document.getElementById(\'aq-folder-modal\').remove()">X</button>' +
-      '</div>' +
-      '<div style="padding:14px;display:flex;flex-direction:column;gap:4px;overflow-y:auto;max-height:50vh;">' +
-        bodyHtml +
-      '</div>' +
-      '<div style="padding:0 14px 14px;">' +
-        '<button onclick="_aqFolderModalScan()" ' +
-          'style="width:100%;background:#fb8556;color:black;border:2px solid black;' +
-          'padding:10px;border-radius:10px;cursor:pointer;font-family:\'Varela Round\',sans-serif;' +
-          'font-weight:bold;font-size:14px;text-transform:uppercase;transition:all 0.3s ease;">' +
-          'Scan' +
-        '</button>' +
-      '</div>' +
+    '<div class="aqd-header">' +
+    '<span id="aqd-title">Select Folders</span>' +
+    '<button class="aqd-close-btn" onclick="document.getElementById(\'aq-folder-modal\').remove()">X</button>' +
+    '</div>' +
+    '<div style="padding:14px;display:flex;flex-direction:column;gap:4px;overflow-y:auto;max-height:50vh;">' +
+    bodyHtml +
+    '</div>' +
+    '<div style="padding:0 14px 14px;">' +
+    '<button onclick="_aqFolderModalScan()" ' +
+    'style="width:100%;background:#fb8556;color:black;border:2px solid black;' +
+    'padding:10px;border-radius:10px;cursor:pointer;font-family:\'Varela Round\',sans-serif;' +
+    'font-weight:bold;font-size:14px;text-transform:uppercase;transition:all 0.3s ease;">' +
+    'Scan' +
+    '</button>' +
+    '</div>' +
     '</div>';
 
   overlay.addEventListener('click', function (e) {
@@ -4902,7 +4919,7 @@ function renderAQList(candidates) {
       '<span class="aq-item-nick" title="' + aqEscape(nickname) + '">' + aqEscape(nickname) + '</span>' +
       middleHtml +
       '<input type="checkbox" class="aq-item-check"' + (included ? ' checked' : '') + (loaded ? ' disabled' : '') +
-        ' onchange="toggleAQItem(' + c.chat_id + ', this)">' +
+      ' onchange="toggleAQItem(' + c.chat_id + ', this)">' +
       '<button class="aq-item-edit" onclick="openAQDialog(' + c.chat_id + ')">edit</button>';
 
     list.appendChild(container);
@@ -4963,22 +4980,22 @@ function openAQDialog(chatId) {
     modal.style.display = 'flex';
     modal.innerHTML =
       '<div class="aqd-content">' +
-        '<div class="aqd-header">' +
-          '<span id="aqd-title">Dialog</span>' +
-          '<button class="aqd-close-btn" onclick="closeAQDialog()">X</button>' +
-        '</div>' +
-        '<div class="aqd-pinned-section">' +
-          '<div class="aqd-section-label">Pinned</div>' +
-          '<div id="aqd-pinned"></div>' +
-        '</div>' +
-        '<div class="aqd-msg-section">' +
-          '<div class="aqd-section-label aqd-section-label--messages">Messages</div>' +
-          '<div id="aqd-load-more" style="display:none;">' +
-            '<button class="aqd-load-more-btn" onclick="aqDialogLoadMore()">Load older</button>' +
-          '</div>' +
-          '<div id="aqd-messages"></div>' +
-        '</div>' +
-        '<div class="aqd-footer">Click a message to set it as the reply target</div>' +
+      '<div class="aqd-header">' +
+      '<span id="aqd-title">Dialog</span>' +
+      '<button class="aqd-close-btn" onclick="closeAQDialog()">X</button>' +
+      '</div>' +
+      '<div class="aqd-pinned-section">' +
+      '<div class="aqd-section-label">Pinned</div>' +
+      '<div id="aqd-pinned"></div>' +
+      '</div>' +
+      '<div class="aqd-msg-section">' +
+      '<div class="aqd-section-label aqd-section-label--messages">Messages</div>' +
+      '<div id="aqd-load-more" style="display:none;">' +
+      '<button class="aqd-load-more-btn" onclick="aqDialogLoadMore()">Load older</button>' +
+      '</div>' +
+      '<div id="aqd-messages"></div>' +
+      '</div>' +
+      '<div class="aqd-footer">Click a message to set it as the reply target</div>' +
       '</div>';
     document.body.appendChild(modal);
     // Close on backdrop click
@@ -5116,9 +5133,9 @@ function _aqMsgHtml(m, targetId) {
     ' data-me="' + (isMe ? '1' : '0') + '"' +
     ' onclick="selectAQTarget(' + m.id + ')">' +
     '<div class="aqd-msg-meta">' +
-      '<span class="aqd-msg-name">' + label + '</span>' +
-      '<span class="aqd-msg-date">' + aqEscape(m.date) + '</span>' +
-      (isTarget ? '<span class="aqd-msg-target-label">target</span>' : '') +
+    '<span class="aqd-msg-name">' + label + '</span>' +
+    '<span class="aqd-msg-date">' + aqEscape(m.date) + '</span>' +
+    (isTarget ? '<span class="aqd-msg-target-label">target</span>' : '') +
     '</div>' +
     '<div class="aqd-msg-text">' + _aqFormatText(m.text || '') + '</div>' +
     '</div>';
@@ -5254,15 +5271,15 @@ function showAQDoneModal(queueSizeBefore, loadedCount) {
 
   overlay.innerHTML =
     '<div class="queue-modal-content" style="max-width:340px;">' +
-      '<div class="queue-modal-header"><h3>Auto Queue Complete</h3></div>' +
-      '<div class="queue-modal-body">' +
-        '<p>Loaded <strong>' + loadedCount + '</strong> user(s) into the queue.</p>' +
-        '<p>Remove users from the queue who were not loaded by Auto Queue?</p>' +
-      '</div>' +
-      '<div class="queue-modal-buttons">' +
-        '<button class="queue-modal-btn queue-modal-btn-primary" onclick="aqClearOldUsers()">Clear old users</button>' +
-        '<button class="queue-modal-btn queue-modal-btn-secondary" onclick="document.getElementById(\'aq-done-modal\').remove()">Keep all</button>' +
-      '</div>' +
+    '<div class="queue-modal-header"><h3>Auto Queue Complete</h3></div>' +
+    '<div class="queue-modal-body">' +
+    '<p>Loaded <strong>' + loadedCount + '</strong> user(s) into the queue.</p>' +
+    '<p>Remove users from the queue who were not loaded by Auto Queue?</p>' +
+    '</div>' +
+    '<div class="queue-modal-buttons">' +
+    '<button class="queue-modal-btn queue-modal-btn-primary" onclick="aqClearOldUsers()">Clear old users</button>' +
+    '<button class="queue-modal-btn queue-modal-btn-secondary" onclick="document.getElementById(\'aq-done-modal\').remove()">Keep all</button>' +
+    '</div>' +
     '</div>';
 
   document.body.appendChild(overlay);
