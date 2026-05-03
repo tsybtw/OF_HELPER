@@ -129,13 +129,13 @@ async function autoAssignBrowserNumber() {
       if (!chosen) continue;
       await chrome.storage.local.set({ [`browser${chosen}Checked`]: true });
       currentBrowserNumber = chosen;
-      try { chrome.runtime.sendMessage({ type: 'ws-update-browser-number', browserNumber: chosen }); } catch (_) {}
+      try { chrome.runtime.sendMessage({ type: 'ws-update-browser-number', browserNumber: chosen }); } catch (_) { }
       return;
-    } catch (_) {}
+    } catch (_) { }
   }
   await chrome.storage.local.set({ browser1Checked: true });
   currentBrowserNumber = 1;
-  try { chrome.runtime.sendMessage({ type: 'ws-update-browser-number', browserNumber: 1 }); } catch (_) {}
+  try { chrome.runtime.sendMessage({ type: 'ws-update-browser-number', browserNumber: 1 }); } catch (_) { }
 }
 
 getMyBrowserNumber().then(num => {
@@ -353,7 +353,7 @@ function updateTabCounterOnActiveTab(isReset) {
         func: (isVisible) => {
           const ids = [
             "tabCounter", "cont1", "cont2", "cont3",
-            "switch-button", "fakeMakeButton", "version", "clear-button", "reload-button", "stories-container", "bottom-overlay", "joy", "text-size-slider"
+            "switch-button", "fakeMakeButton", "version", "clear-button", "reload-button", "stories-container", "bottom-overlay", "joy", "text-size-slider", "tag-rotation-dial"
           ];
           ids.forEach((id) => {
             const el = document.getElementById(id);
@@ -696,7 +696,24 @@ function updateTextScale(scalePercent) {
   } catch (_) { }
 }
 
-async function processImageAndUpload(imageTag, storyColor, blacklistContent) {
+function updateTextRotation(angleDeg) {
+  try {
+    const container = document.querySelector('.b-photo-editor__container');
+    if (!container) return;
+    const vue = container.__vue__;
+    if (!vue || !vue.$parent || !vue.$parent.$parent) return;
+    const canvas = vue.$parent.$parent.canvas;
+    if (!canvas) return;
+    const objects = canvas.getObjects();
+    if (!objects || objects.length < 2) return;
+    const target = objects[1];
+    if (!target) return;
+    target.set({ angle: Number(angleDeg) - 90 });
+    canvas.renderAll();
+  } catch (_) { }
+}
+
+async function processImageAndUpload(imageTag, storyColor, blacklistContent, savedSettings = null) {
   function createJoystick() {
     const containerSize = 100;
     const handleSize = 10;
@@ -720,8 +737,8 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent) {
     });
 
     const joystickHandle = document.createElement("div");
-    const initialX = (containerSize - handleSize) / 2;
-    const initialY = (containerSize - handleSize) / 2;
+    const initialX = (savedSettings && savedSettings.joyX !== undefined) ? savedSettings.joyX : (containerSize - handleSize) / 2;
+    const initialY = (savedSettings && savedSettings.joyY !== undefined) ? savedSettings.joyY : (containerSize - handleSize) / 2;
 
     Object.assign(joystickHandle.style, {
       width: handleSize + "px",
@@ -804,6 +821,12 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent) {
         const newTagX = percentX * canvasRect.width;
         const newTagY = percentY * canvasRect.height;
         sendJoystickData(newTagX, newTagY);
+        
+        fetch('http://localhost:3000/tag-settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tag: cleanTag, settings: { joyX: currentX, joyY: currentY, canvasX: newTagX, canvasY: newTagY } })
+        }).catch(() => {});
       }
     });
   }
@@ -1081,7 +1104,7 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent) {
         input.min = '50';
         input.max = '500';
         input.step = '10';
-        input.value = '100';
+        input.value = (savedSettings && savedSettings.scale !== undefined) ? String(savedSettings.scale) : '100';
         input.id = 'size-slider';
         Object.assign(input.style, {
           writingMode: 'vertical-lr',
@@ -1108,11 +1131,164 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent) {
         }
 
         input.addEventListener('change', function () {
+          const scale = Number(this.value);
           fetch('http://localhost:3000/text-scale', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ scalePercent: Number(this.value) })
+            body: JSON.stringify({ scalePercent: scale })
           }).catch(() => { });
+
+          fetch('http://localhost:3000/tag-settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tag: cleanTag, settings: { scale: scale } })
+          }).catch(() => {});
+        });
+      } catch (_) { }
+
+      // Rotation dial
+      try {
+        const joyEl = document.getElementById('joy');
+        const sliderEl = document.getElementById('text-size-slider');
+        const joyRect = joyEl ? joyEl.getBoundingClientRect() : null;
+        const sliderRect = sliderEl ? sliderEl.getBoundingClientRect() : null;
+        const dialSize = joyRect ? joyRect.height : 100;
+        const dialLeft = sliderRect ? (sliderRect.right + 10) : 174;
+        const dialTop = joyRect ? joyRect.top : 45;
+
+        const dial = document.createElement('div');
+        dial.id = 'tag-rotation-dial';
+        Object.assign(dial.style, {
+          position: 'fixed',
+          top: dialTop + 'px',
+          left: dialLeft + 'px',
+          width: dialSize + 'px',
+          height: dialSize + 'px',
+          background: 'rgba(28, 28, 28, 0.92)',
+          border: '2px solid #000',
+          borderRadius: '10px',
+          zIndex: '10001',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          userSelect: 'none',
+          cursor: 'pointer',
+          color: '#fff',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
+          fontFamily: "'Josefin Sans', sans-serif",
+          fontSize: '10px',
+          transition: 'opacity 0.3s ease',
+          gap: '2px'
+        });
+
+        // Clock SVG canvas
+        const clockSize = Math.round(dialSize * 0.76);
+        const svgNS = 'http://www.w3.org/2000/svg';
+        const svg = document.createElementNS(svgNS, 'svg');
+        svg.setAttribute('width', clockSize);
+        svg.setAttribute('height', clockSize);
+        svg.setAttribute('viewBox', `0 0 ${clockSize} ${clockSize}`);
+        const cx = clockSize / 2;
+        const cy = clockSize / 2;
+        const r = cx - 2;
+
+        const circle = document.createElementNS(svgNS, 'circle');
+        circle.setAttribute('cx', cx); circle.setAttribute('cy', cy);
+        circle.setAttribute('r', r);
+        circle.setAttribute('fill', 'rgba(255,255,255,0.08)');
+        circle.setAttribute('stroke', '#fff');
+        circle.setAttribute('stroke-width', '1.5');
+        svg.appendChild(circle);
+
+        // Tick marks
+        for (let t = 0; t < 12; t++) {
+          const angle = (t / 12) * Math.PI * 2 - Math.PI / 2;
+          const inner = r - 4;
+          const outer = r - 1;
+          const line = document.createElementNS(svgNS, 'line');
+          line.setAttribute('x1', cx + Math.cos(angle) * inner);
+          line.setAttribute('y1', cy + Math.sin(angle) * inner);
+          line.setAttribute('x2', cx + Math.cos(angle) * outer);
+          line.setAttribute('y2', cy + Math.sin(angle) * outer);
+          line.setAttribute('stroke', 'rgba(255,255,255,0.5)');
+          line.setAttribute('stroke-width', '1');
+          svg.appendChild(line);
+        }
+
+        const hand = document.createElementNS(svgNS, 'line');
+        hand.setAttribute('x1', cx); hand.setAttribute('y1', cy);
+        hand.setAttribute('x2', cx); hand.setAttribute('y2', cy - r + 6);
+        hand.setAttribute('stroke', '#fbdf56');
+        hand.setAttribute('stroke-width', '2');
+        hand.setAttribute('stroke-linecap', 'round');
+        svg.appendChild(hand);
+
+        const centerDot = document.createElementNS(svgNS, 'circle');
+        centerDot.setAttribute('cx', cx); centerDot.setAttribute('cy', cy);
+        centerDot.setAttribute('r', '2.5');
+        centerDot.setAttribute('fill', '#fbdf56');
+        svg.appendChild(centerDot);
+
+        const degLabel = document.createElement('div');
+        degLabel.textContent = '90°';
+        Object.assign(degLabel.style, { fontSize: '10px', color: '#fbdf56', lineHeight: '1', marginTop: '1px' });
+
+        dial.appendChild(svg);
+        dial.appendChild(degLabel);
+        document.body.appendChild(dial);
+
+        let isDragging = false;
+        let currentAngle = (savedSettings && savedSettings.angle !== undefined) ? savedSettings.angle : 90;
+
+        function updateHand(angleDeg) {
+          const rad = (angleDeg - 90) * Math.PI / 180;
+          hand.setAttribute('x2', cx + Math.cos(rad) * (r - 6));
+          hand.setAttribute('y2', cy + Math.sin(rad) * (r - 6));
+          degLabel.textContent = Math.round(angleDeg) + '°';
+        }
+
+        updateHand(currentAngle);
+
+        function getAngleFromEvent(e) {
+          const rect = dial.getBoundingClientRect();
+          const dx = e.clientX - (rect.left + rect.width / 2);
+          const dy = e.clientY - (rect.top + rect.height / 2);
+          let angle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
+          if (angle < 0) angle += 360;
+          return angle % 360;
+        }
+
+        dial.addEventListener('pointerdown', (e) => {
+          isDragging = true;
+          dial.setPointerCapture(e.pointerId);
+          currentAngle = getAngleFromEvent(e);
+          updateHand(currentAngle);
+        });
+
+        dial.addEventListener('pointermove', (e) => {
+          if (!isDragging) return;
+          currentAngle = getAngleFromEvent(e);
+          updateHand(currentAngle);
+        });
+
+        dial.addEventListener('pointerup', (e) => {
+          if (!isDragging) return;
+          isDragging = false;
+          currentAngle = getAngleFromEvent(e);
+          updateHand(currentAngle);
+          const angle = Math.round(currentAngle);
+          fetch('http://localhost:3000/text-rotate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ angleDeg: angle })
+          }).catch(() => {});
+
+          fetch('http://localhost:3000/tag-settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tag: cleanTag, settings: { angle: angle } })
+          }).catch(() => {});
         });
       } catch (_) { }
 
@@ -1146,7 +1322,7 @@ function postStories() {
       "tabCounter", "cont1", "cont2", "cont3",
       "switch-button", "fakeMakeButton", "version", "clear-button",
       "reload-button", "stories-container", "bottom-overlay",
-      "joy", "text-size-slider"
+      "joy", "text-size-slider", "tag-rotation-dial"
     ];
 
     idsToHide.forEach(id => {
@@ -2413,7 +2589,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           currentBrowserNumber = freeNum;
           chrome.runtime.sendMessage({ type: 'ws-update-browser-number', browserNumber: freeNum });
         }
-      } catch (_) {}
+      } catch (_) { }
       sendResponse({ ok: true });
     })();
     return true;
@@ -2676,13 +2852,67 @@ async function processCommand(lastEntry) {
           if (stopState && stopState.storiesStop) { break; }
 
           await new Promise(resolve => {
-            chrome.scripting.executeScript({
-              target: { tabId: tab.id },
-              func: processImageAndUpload,
-              args: [tag, colorQueue[i] || null, blacklistContent]
-            }, () => {
-              resolve();
-            });
+            fetch('http://localhost:3000/tag-settings')
+              .then(res => res.json())
+              .catch(() => ({}))
+              .then(ts => {
+                const cleanTag = tag.trim().replace(/^@/, '');
+                const savedSettings = ts[cleanTag] || null;
+                chrome.scripting.executeScript({
+                  target: { tabId: tab.id },
+                  func: processImageAndUpload,
+                  args: [tag, colorQueue[i] || null, blacklistContent, savedSettings]
+                }, () => {
+                  if (savedSettings) {
+                    chrome.scripting.executeScript({
+                      target: { tabId: tab.id },
+                      world: 'MAIN',
+                      func: (settings) => {
+                        let attempts = 0;
+                        const checkAndApply = () => {
+                          attempts++;
+                          if (attempts > 50) return; // give up after 5 seconds
+                          try {
+                            const container = document.querySelector('.b-photo-editor__container');
+                            if (!container) return setTimeout(checkAndApply, 100);
+                            const vue = container.__vue__;
+                            if (!vue || !vue.$parent || !vue.$parent.$parent) return setTimeout(checkAndApply, 100);
+                            const canvas = vue.$parent.$parent.canvas;
+                            if (!canvas) return setTimeout(checkAndApply, 100);
+                            const objects = canvas.getObjects();
+                            if (!objects || objects.length < 2) return setTimeout(checkAndApply, 100);
+                            const target = objects[1];
+                            if (!target) return setTimeout(checkAndApply, 100);
+                            
+                            let changed = false;
+                            if (settings.canvasX !== undefined && settings.canvasY !== undefined) {
+                              target.set({ left: settings.canvasX, top: settings.canvasY });
+                              changed = true;
+                            }
+                            if (settings.scale !== undefined) {
+                              if (window.__OFH_TEXT_SCALE_BASE == null) window.__OFH_TEXT_SCALE_BASE = target.scaleX || 1;
+                              const scale = (settings.scale / 100) * window.__OFH_TEXT_SCALE_BASE;
+                              target.set({ scaleX: scale, scaleY: scale });
+                              changed = true;
+                            }
+                            if (settings.angle !== undefined) {
+                              target.set({ angle: settings.angle - 90 });
+                              changed = true;
+                            }
+                            if (changed && canvas.renderAll) canvas.renderAll();
+                          } catch (e) {
+                            setTimeout(checkAndApply, 100);
+                          }
+                        };
+                        checkAndApply();
+                      },
+                      args: [savedSettings]
+                    }, () => resolve());
+                  } else {
+                    resolve();
+                  }
+                });
+              });
           });
         }
 
@@ -2775,6 +3005,35 @@ async function processCommand(lastEntry) {
         });
         return
       })
+    }
+
+    if (lastEntry && lastEntry.id === "31" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
+      chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        const activeTab = currentWindow.tabs.find((tab) => tab.active);
+        await executeScriptIfValid(activeTab, {
+          target: { tabId: activeTab.id },
+          world: 'MAIN',
+          func: (angleDeg) => {
+            try {
+              var container = document.querySelector('.b-photo-editor__container');
+              if (!container) return;
+              var vue = container.__vue__;
+              if (!vue || !vue.$parent || !vue.$parent.$parent) return;
+              var canvas = vue.$parent.$parent.canvas;
+              if (!canvas) return;
+              var objects = canvas.getObjects();
+              if (!objects || objects.length < 2) return;
+              var target = objects[1];
+              if (!target) return;
+              target.set({ angle: Number(angleDeg) - 90 });
+              if (canvas.renderAll) canvas.renderAll();
+            } catch (_) { }
+          },
+          args: [lastEntry.angleDeg],
+        });
+        return;
+      });
     }
 
     if (lastEntry && lastEntry.id === "30" && browserType !== "") {
@@ -3657,7 +3916,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
               picker.style.bottom = '145px';
               picker.style.zIndex = '100000';
               picker.style.display = 'flex';
-              picker.style.gap = '3px';
+              picker.style.gap = '0.5px';
               picker.style.alignItems = 'flex-end';
 
               const badgeBaseBottom = 38;
