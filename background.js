@@ -632,45 +632,22 @@ async function fakeColorsOff() {
 }
 
 
-let lastMentionPos = null;
-let __textScaleOriginal = null;
-
 function updateMentionPosition(newX, newY) {
-  const canvas = document.querySelector(".upper-canvas");
-  if (!canvas) return;
-  const canvasRect = canvas.getBoundingClientRect();
-  if (!lastMentionPos || typeof lastMentionPos.x !== 'number' || typeof lastMentionPos.y !== 'number') {
-    lastMentionPos = { x: canvasRect.width / 2, y: canvasRect.height / 2 };
-  }
-  const startX = canvasRect.left + lastMentionPos.x;
-  const startY = canvasRect.top + lastMentionPos.y;
-  const endX = canvasRect.left + newX;
-  const endY = canvasRect.top + newY;
-  const mouseDownEvent = new MouseEvent("mousedown", {
-    bubbles: true,
-    cancelable: true,
-    view: window,
-    clientX: startX,
-    clientY: startY
-  });
-  canvas.dispatchEvent(mouseDownEvent);
-  const mouseMoveEvent = new MouseEvent("mousemove", {
-    bubbles: true,
-    cancelable: true,
-    view: window,
-    clientX: endX,
-    clientY: endY
-  });
-  canvas.dispatchEvent(mouseMoveEvent);
-  const mouseUpEvent = new MouseEvent("mouseup", {
-    bubbles: true,
-    cancelable: true,
-    view: window,
-    clientX: endX,
-    clientY: endY
-  });
-  canvas.dispatchEvent(mouseUpEvent);
-  lastMentionPos = { x: newX, y: newY };
+  try {
+    const container = document.querySelector('.b-photo-editor__container');
+    if (!container) return;
+    const vue = container.__vue__;
+    if (!vue || !vue.$parent || !vue.$parent.$parent) return;
+    const canvas = vue.$parent.$parent.canvas;
+    if (!canvas) return;
+    const objects = canvas.getObjects();
+    if (!objects || objects.length < 2) return;
+    const target = objects[1];
+    if (!target) return;
+
+    target.set({ left: newX, top: newY });
+    if (canvas.renderAll) canvas.renderAll();
+  } catch (_) { }
 }
 
 function updateTextScale(scalePercent) {
@@ -821,23 +798,17 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent, sav
         const newTagX = percentX * canvasRect.width;
         const newTagY = percentY * canvasRect.height;
         sendJoystickData(newTagX, newTagY);
-        
+
         fetch('http://localhost:3000/tag-settings', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ tag: cleanTag, settings: { joyX: currentX, joyY: currentY, canvasX: newTagX, canvasY: newTagY } })
-        }).catch(() => {});
+        }).catch(() => { });
       }
     });
   }
 
-  function initializeLastMentionPos() {
-    const canvas = document.querySelector(".upper-canvas");
-    if (canvas) {
-      const rect = canvas.getBoundingClientRect();
-      lastMentionPos = { x: rect.width / 2, y: rect.height / 2 };
-    }
-  }
+
 
   const waitForElement = (selector, maxAttempts = 30, interval = 500) => new Promise((resolve, reject) => {
     let attempts = 0;
@@ -1070,7 +1041,6 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent, sav
       const doneButton = await waitForButtonWithText(".g-btn.m-rounded.m-reset-width", "Done");
       doneButton.click();
 
-      initializeLastMentionPos();
       createJoystick();
 
       try {
@@ -1142,7 +1112,7 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent, sav
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ tag: cleanTag, settings: { scale: scale } })
-          }).catch(() => {});
+          }).catch(() => { });
         });
       } catch (_) { }
 
@@ -1282,13 +1252,13 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent, sav
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ angleDeg: angle })
-          }).catch(() => {});
+          }).catch(() => { });
 
           fetch('http://localhost:3000/tag-settings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ tag: cleanTag, settings: { angle: angle } })
-          }).catch(() => {});
+          }).catch(() => { });
         });
       } catch (_) { }
 
@@ -2883,7 +2853,7 @@ async function processCommand(lastEntry) {
                             if (!objects || objects.length < 2) return setTimeout(checkAndApply, 100);
                             const target = objects[1];
                             if (!target) return setTimeout(checkAndApply, 100);
-                            
+
                             let changed = false;
                             if (settings.canvasX !== undefined && settings.canvasY !== undefined) {
                               target.set({ left: settings.canvasX, top: settings.canvasY });
@@ -3218,6 +3188,7 @@ async function processCommand(lastEntry) {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         await executeScriptIfValid(activeTab, {
           target: { tabId: activeTab.id },
+          world: 'MAIN',
           func: updateMentionPosition,
           args: [lastEntry.x, lastEntry.y],
         });
@@ -6340,7 +6311,11 @@ function shouldSkipDuplicate(entry, browserType) {
       recentCommands.delete(oldestKey);
     }
 
-    const cmdKey = JSON.stringify({ id: entry.id, text: entry.textInput || null, browserType });
+    let valueKey = null;
+    if (entry.id === '27') valueKey = `${Math.round(entry.x)}_${Math.round(entry.y)}`;
+    else if (entry.id === '29') valueKey = String(entry.scalePercent);
+    else if (entry.id === '31') valueKey = String(entry.angleDeg);
+    const cmdKey = JSON.stringify({ id: entry.id, text: entry.textInput || null, browserType, v: valueKey });
     const lastTs = recentCommands.get(cmdKey);
 
     if (lastTs && (now - lastTs) < DEDUPE_TTL_MS) {
