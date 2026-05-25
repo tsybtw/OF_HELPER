@@ -2,43 +2,65 @@ const ALL_ACTIONS_DELAY = 0;
 const TAB_COUNT = 30
 const DELAY_GREEN_BUTTON = 500;
 
+function updateArrowButtonOnTab(tabId, state, locked, lockedByMe) {
+  chrome.scripting.executeScript({
+    target: { tabId },
+    func: (state, locked, lockedByMe) => {
+      const fillElement = document.getElementById("fill-animation");
+      const arrowPath = document.getElementById("arrow-path");
+      const arrowButton = document.getElementById("auto-restart-arrow");
+      if (!fillElement || !arrowPath || !arrowButton) return;
+
+      if (state === 1) {
+        fillElement.style.backgroundImage = "linear-gradient(to right, rgb(45, 155, 55) 0%, rgb(45, 155, 55) 50%, rgb(221, 109, 85) 50%, rgb(221, 109, 85) 100%)";
+        fillElement.style.backgroundPosition = "0%";
+        arrowPath.setAttribute("stroke", "#ffffff");
+      } else if (state === 2) {
+        fillElement.style.backgroundImage = "linear-gradient(to right, #9B59B6 0%, #9B59B6 50%, rgb(221, 109, 85) 50%, rgb(221, 109, 85) 100%)";
+        fillElement.style.backgroundPosition = "0%";
+        arrowPath.setAttribute("stroke", "#ffffff");
+      } else {
+        fillElement.style.backgroundPosition = "100%";
+        arrowPath.setAttribute("stroke", "#dddddd");
+      }
+
+      arrowButton.style.opacity = (locked && !lockedByMe) ? "0.45" : "1";
+      arrowButton.style.pointerEvents = (locked && !lockedByMe) ? "none" : "auto";
+      arrowButton.setAttribute("data-arrow-state", String(state));
+
+      arrowButton.style.transform = "scale(1.1)";
+      setTimeout(() => { arrowButton.style.transform = "scale(1)"; }, 150);
+    },
+    args: [state, locked, lockedByMe]
+  }).catch(() => { });
+}
+
+function getArrowStateInt(autoEnabled, singleEnabled) {
+  if (singleEnabled) return 2;
+  if (autoEnabled) return 1;
+  return 0;
+}
+
 chrome.storage.onChanged.addListener((changes, namespace) => {
-  if (namespace === 'local' && changes.autoRestartEnabled) {
-    const enabled = changes.autoRestartEnabled.newValue;
-    chrome.tabs.query({}, (tabs) => {
-      tabs.forEach(tab => {
-        if (tab.url && tab.url.includes("onlyfans.com")) {
-          chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            func: (newState) => {
-              const fillElement = document.getElementById("fill-animation");
-              const arrowPath = document.getElementById("arrow-path");
-              const arrowButton = document.getElementById("auto-restart-arrow");
-              if (fillElement && arrowPath && arrowButton) {
-                if (newState) {
-                  fillElement.style.backgroundPosition = "0%";
-                  arrowPath.setAttribute("stroke", "#ffffff");
-                  arrowButton.style.transform = "scale(1.1)";
-                  setTimeout(() => {
-                    arrowButton.style.transform = "scale(1)";
-                  }, 150);
-                } else {
-                  fillElement.style.backgroundPosition = "100%";
-                  arrowPath.setAttribute("stroke", "#dddddd");
-                  arrowButton.style.transform = "scale(1.1)";
-                  setTimeout(() => {
-                    arrowButton.style.transform = "scale(1)";
-                  }, 150);
-                }
-              }
-            },
-            args: [enabled]
-          });
-        }
+  if (namespace === 'local' && (changes.autoRestartEnabled || changes.singleTabMode || changes._arrowLocked || changes._arrowLockedBy)) {
+    chrome.storage.local.get(['autoRestartEnabled', 'singleTabMode', '_arrowLocked', '_arrowLockedBy'], (result) => {
+      const autoEnabled = result.autoRestartEnabled || false;
+      const singleEnabled = result.singleTabMode || false;
+      const state = getArrowStateInt(autoEnabled, singleEnabled);
+      const locked = result._arrowLocked || false;
+      const lockedByMe = result._arrowLockedBy === currentBrowserNumber;
+
+      chrome.tabs.query({}, (tabs) => {
+        tabs.forEach(tab => {
+          if (tab.url && tab.url.includes("onlyfans.com")) {
+            updateArrowButtonOnTab(tab.id, state, locked, lockedByMe);
+          }
+        });
       });
     });
   }
 });
+
 
 async function executeScriptIfValid(activeTab, details) {
   if (activeTab && activeTab.url && !activeTab.url.startsWith("chrome://")) {
@@ -353,7 +375,7 @@ function updateTabCounterOnActiveTab(isReset) {
         func: (isVisible) => {
           const ids = [
             "tabCounter", "cont1", "cont2", "cont3",
-            "switch-button", "fakeMakeButton", "version", "clear-button", "reload-button", "stories-container", "bottom-overlay", "joy", "text-size-slider", "tag-rotation-dial"
+            "switch-button", "fakeMakeButton", "version", "clear-button", "reload-button", "stories-container", "bottom-overlay", "joy", "text-size-slider", "tag-rotation-dial", "tag-reset-button"
           ];
           ids.forEach((id) => {
             const el = document.getElementById(id);
@@ -1262,6 +1284,47 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent, sav
         });
       } catch (_) { }
 
+      try {
+        const dialEl = document.getElementById('tag-rotation-dial');
+        const dialRect = dialEl ? dialEl.getBoundingClientRect() : null;
+        const btnLeft = dialRect ? (dialRect.right + 10) : 284;
+        const btnTop = dialRect ? dialRect.top : 45;
+
+        const resetBtn = document.createElement('button');
+        resetBtn.id = 'tag-reset-button';
+        resetBtn.textContent = 'Reset';
+        Object.assign(resetBtn.style, {
+          position: 'fixed',
+          top: btnTop + 'px',
+          left: btnLeft + 'px',
+          height: (dialRect ? dialRect.height : 100) + 'px',
+          background: 'rgba(221, 109, 85, 0.92)',
+          border: '2px solid #000',
+          borderRadius: '10px',
+          zIndex: '10001',
+          color: '#fff',
+          fontFamily: "'Josefin Sans', sans-serif",
+          fontSize: '14px',
+          cursor: 'pointer',
+          padding: '0 15px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
+          transition: 'background 0.3s ease'
+        });
+
+        resetBtn.onmouseover = () => resetBtn.style.background = 'rgba(227, 133, 113, 0.95)';
+        resetBtn.onmouseout = () => resetBtn.style.background = 'rgba(221, 109, 85, 0.92)';
+
+        resetBtn.addEventListener('click', () => {
+          fetch('http://localhost:3000/tag-settings-reset', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tag: cleanTag })
+          }).catch(() => { });
+        });
+
+        document.body.appendChild(resetBtn);
+      } catch (_) { }
+
       resolve();
     } catch (error) {
       console.error(error);
@@ -1292,7 +1355,7 @@ function postStories() {
       "tabCounter", "cont1", "cont2", "cont3",
       "switch-button", "fakeMakeButton", "version", "clear-button",
       "reload-button", "stories-container", "bottom-overlay",
-      "joy", "text-size-slider", "tag-rotation-dial"
+      "joy", "text-size-slider", "tag-rotation-dial", "tag-reset-button"
     ];
 
     idsToHide.forEach(id => {
@@ -2536,7 +2599,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'ws-get-browser-number') {
     getMyBrowserNumber().then(browserNum => {
       currentBrowserNumber = browserNum;
-      sendResponse({ browserNumber: browserNum });
+      chrome.storage.local.get(['singleTabMode', 'autoRestartEnabled', 'singleTabScreenshotDelay'], (res) => {
+        let mode = 'off';
+        if (res.singleTabMode) mode = 'single';
+        else if (res.autoRestartEnabled) mode = 'auto';
+        sendResponse({ browserNumber: browserNum, arrowMode: mode });
+
+        fetch('http://localhost:3000/updateSingleTabSettings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ screenshotDelay: res.singleTabScreenshotDelay !== undefined ? res.singleTabScreenshotDelay : 5000 })
+        }).catch(() => { });
+      });
     });
     return true;
   }
@@ -2613,6 +2687,25 @@ async function processCommand(lastEntry) {
 
     if (!lastEntry) return;
 
+    if (lastEntry.type === "arrow-lock-state") {
+      chrome.storage.local.set({
+        _arrowLocked: lastEntry.locked,
+        _arrowLockedBy: lastEntry.lockedBy
+      });
+      // Also update local state if server says we are "off" but we think we're on
+      if (lastEntry.lockedBy === currentBrowserNumber) {
+        chrome.storage.local.set({
+          autoRestartEnabled: lastEntry.mode === 'auto',
+          singleTabMode: lastEntry.mode === 'single'
+        });
+      } else {
+        chrome.storage.local.set({
+          autoRestartEnabled: false,
+          singleTabMode: false
+        });
+      }
+      return;
+    }
     if (lastEntry.selectedBrowsers) {
       const allowed = String(lastEntry.selectedBrowsers).split(/\s+/).map(Number);
       if (!allowed.includes(currentBrowserNumber)) {
@@ -2975,6 +3068,81 @@ async function processCommand(lastEntry) {
         });
         return
       })
+    }
+
+    if (lastEntry && lastEntry.id === "34" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
+      const targetTag = lastEntry.textInput;
+      chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        const activeTab = currentWindow.tabs.find((tab) => tab.active);
+        if (activeTab) {
+          chrome.scripting.executeScript({
+            target: { tabId: activeTab.id },
+            world: 'MAIN',
+            func: (tagToReset) => {
+              try {
+                const container = document.querySelector('.b-photo-editor__container');
+                if (container && container.__vue__ && container.__vue__.$parent && container.__vue__.$parent.$parent) {
+                  const canvas = container.__vue__.$parent.$parent.canvas;
+                  if (canvas) {
+                    const objects = canvas.getObjects();
+                    if (objects && objects.length >= 2) {
+                      const target = objects[1];
+                      if (target) {
+                        target.set({
+                          left: canvas.width / 2,
+                          top: canvas.height / 2,
+                          angle: 0
+                        });
+                        if (window.__OFH_TEXT_SCALE_BASE != null) {
+                          target.set({ scaleX: window.__OFH_TEXT_SCALE_BASE, scaleY: window.__OFH_TEXT_SCALE_BASE });
+                        } else {
+                          target.set({ scaleX: 1, scaleY: 1 });
+                        }
+                        target.setCoords();
+                        canvas.renderAll();
+                      }
+                    }
+                  }
+                }
+              } catch (e) { }
+            },
+            args: [targetTag]
+          });
+
+          chrome.scripting.executeScript({
+            target: { tabId: activeTab.id },
+            func: () => {
+              try {
+                const slider = document.getElementById('size-slider');
+                if (slider) slider.value = '100';
+
+                const joy = document.getElementById('joy');
+                if (joy) {
+                  const handle = joy.querySelector('div');
+                  if (handle) {
+                    handle.style.left = '45px';
+                    handle.style.top = '45px';
+                  }
+                }
+
+                const dialLabel = document.querySelector('#tag-rotation-dial div');
+                if (dialLabel) {
+                  dialLabel.textContent = '90°';
+                }
+
+                const dialHand = document.querySelector('#tag-rotation-dial svg line[stroke="#fbdf56"]');
+                if (dialHand) {
+                  dialHand.setAttribute('x2', '38');
+                  dialHand.setAttribute('y2', '6');
+                }
+              } catch (e) { }
+            }
+          });
+        }
+      });
+      sendWsConfirm(lastEntry.cmdId, currentBrowserNumber);
+      return;
     }
 
     if (lastEntry && lastEntry.id === "31" && browserType !== "") {
@@ -3428,8 +3596,40 @@ async function processCommand(lastEntry) {
         await executeScriptIfValid(activeTab, {
           target: { tabId: activeTab.id },
           func: pressBindFix,
-          args: [activeTab, browserType],
+          args: [activeTab, browserType, lastEntry.singleTabMode || false],
         });
+
+        if (lastEntry.singleTabMode) {
+          let hasNavigatedAway = false;
+          let confirmed = false;
+
+          const finish = () => {
+            if (confirmed) return;
+            confirmed = true;
+            chrome.tabs.onUpdated.removeListener(listener);
+
+            closedTabsCount++;
+            lastClosedTime = new Date();
+            updateTabCounterOnActiveTab(false);
+
+            sendWsConfirm(lastEntry.cmdId, currentBrowserNumber);
+          };
+
+          const listener = (tabId, changeInfo, tab) => {
+            if (tabId === activeTab.id && changeInfo.url) {
+              if (!changeInfo.url.includes('/posts/create')) {
+                hasNavigatedAway = true;
+              } else if (hasNavigatedAway && changeInfo.url.includes('/posts/create')) {
+                finish();
+              }
+            }
+          };
+
+          chrome.tabs.onUpdated.addListener(listener);
+
+        } else {
+          sendWsConfirm(lastEntry.cmdId, currentBrowserNumber);
+        }
       });
       return
     }
@@ -3647,6 +3847,35 @@ async function processCommand(lastEntry) {
             }
           }
         });
+      });
+      return;
+    }
+
+    if (lastEntry && lastEntry.id === "33" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
+      chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        const activeTab = currentWindow.tabs.find((tab) => tab.active);
+        if (activeTab && lastEntry.url) {
+          chrome.tabs.update(activeTab.id, { url: lastEntry.url });
+
+          let confirmed = false;
+          const finish = () => {
+            if (confirmed) return;
+            confirmed = true;
+            chrome.tabs.onUpdated.removeListener(listener);
+            sendWsConfirm(lastEntry.cmdId, currentBrowserNumber);
+          };
+
+          const listener = (tabId, changeInfo, tab) => {
+            if (tabId === activeTab.id && changeInfo.status === 'complete') {
+              finish();
+            }
+          };
+          chrome.tabs.onUpdated.addListener(listener);
+          setTimeout(finish, 15000); // safety fallback
+        } else {
+          sendWsConfirm(lastEntry.cmdId, currentBrowserNumber);
+        }
       });
       return;
     }
@@ -4192,6 +4421,244 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           await makeRequest("http://localhost:3000/quickStoriesStop", 0);
           chrome.storage.local.set({ storiesStop: true }, () => {
           });
+        }
+
+        function createSingleTabSettingsMenu() {
+          if (document.getElementById('single-tab-settings-menu')) return;
+
+          const menu = document.createElement('div');
+          menu.id = 'single-tab-settings-menu';
+          Object.assign(menu.style, {
+            position: 'fixed',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            backgroundColor: 'rgba(28, 28, 28, 0.95)',
+            border: '2px solid #000',
+            borderRadius: '10px',
+            padding: '20px',
+            zIndex: '2147483647',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '15px',
+            color: 'white',
+            fontFamily: "'Josefin Sans', sans-serif",
+            boxShadow: '0 4px 15px rgba(0,0,0,0.5)',
+            minWidth: '280px'
+          });
+
+          const title = document.createElement('div');
+          title.textContent = 'Single Tab Settings';
+          title.style.textAlign = 'center';
+          title.style.fontSize = '18px';
+          title.style.marginBottom = '5px';
+          menu.appendChild(title);
+
+          function createInput(labelText, storageKey, defaultValue) {
+            const container = document.createElement('div');
+            container.style.display = 'flex';
+            container.style.flexDirection = 'column';
+            container.style.gap = '5px';
+
+            const label = document.createElement('label');
+            label.textContent = labelText;
+            label.style.fontSize = '14px';
+            label.style.color = '#ccc';
+
+            const input = document.createElement('input');
+            input.type = 'number';
+            Object.assign(input.style, {
+              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+              border: '1px solid #444',
+              borderRadius: '5px',
+              padding: '8px',
+              color: 'white',
+              fontFamily: "'Josefin Sans', sans-serif",
+              outline: 'none'
+            });
+
+            chrome.storage.local.get([storageKey], (res) => {
+              input.value = res[storageKey] !== undefined ? res[storageKey] : defaultValue;
+            });
+
+            input.addEventListener('change', () => {
+              const val = parseInt(input.value) || 0;
+              chrome.storage.local.set({ [storageKey]: val }, () => {
+                chrome.storage.local.get(['singleTabScreenshotDelay', 'singleTabFakeButtonDelay'], (allRes) => {
+                  fetch('http://localhost:3000/updateSingleTabSettings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      screenshotDelay: allRes.singleTabScreenshotDelay !== undefined ? allRes.singleTabScreenshotDelay : 5000,
+                      fakeButtonDelay: allRes.singleTabFakeButtonDelay !== undefined ? allRes.singleTabFakeButtonDelay : 3000
+                    })
+                  }).catch(() => { });
+                });
+              });
+            });
+
+            container.appendChild(label);
+            container.appendChild(input);
+            return container;
+          }
+
+          menu.appendChild(createInput('Fake Button Delay (ms)', 'singleTabFakeButtonDelay', 3000));
+          menu.appendChild(createInput('Screenshot Delay (ms)', 'singleTabScreenshotDelay', 5000));
+
+          const closeBtn = document.createElement('button');
+          closeBtn.textContent = 'Close';
+          Object.assign(closeBtn.style, {
+            marginTop: '10px',
+            padding: '8px',
+            backgroundColor: 'rgb(221, 109, 85)',
+            border: 'none',
+            borderRadius: '5px',
+            color: 'white',
+            cursor: 'pointer',
+            fontFamily: "'Josefin Sans', sans-serif",
+            fontSize: '14px',
+            transition: 'background 0.3s'
+          });
+
+          closeBtn.onmouseover = () => closeBtn.style.backgroundColor = '#e38571';
+          closeBtn.onmouseout = () => closeBtn.style.backgroundColor = 'rgb(221, 109, 85)';
+
+          closeBtn.addEventListener('click', () => {
+            menu.remove();
+          });
+
+          menu.appendChild(closeBtn);
+          document.body.appendChild(menu);
+
+          const clickOutside = (e) => {
+            if (!menu.contains(e.target) && e.target !== menu) {
+              menu.remove();
+              document.removeEventListener('mousedown', clickOutside);
+            }
+          };
+          setTimeout(() => document.addEventListener('mousedown', clickOutside), 0);
+        }
+
+        async function openGlobalScreenshotMenu() {
+          if (document.getElementById('global-ss-menu')) return;
+
+          const menu = document.createElement('div');
+          menu.id = 'global-ss-menu';
+          Object.assign(menu.style, {
+            position: 'fixed',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            backgroundColor: 'rgba(28, 28, 28, 0.95)',
+            border: '2px solid #000',
+            borderRadius: '10px',
+            padding: '20px',
+            zIndex: '2147483647',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '15px',
+            color: 'white',
+            fontFamily: "'Josefin Sans', sans-serif",
+            boxShadow: '0 4px 15px rgba(0,0,0,0.5)',
+            minWidth: '280px'
+          });
+
+          const title = document.createElement('div');
+          title.textContent = 'Auto Screenshot Settings';
+          title.style.textAlign = 'center';
+          title.style.fontSize = '18px';
+          title.style.marginBottom = '5px';
+          menu.appendChild(title);
+
+          const fields = [
+            { label: 'SS Delay (ms)', key: 'ss_delay' },
+            { label: 'Lightshot Delay (ms)', key: 'lightshot_delay' },
+            { label: 'TG Delay (ms)', key: 'tg_delay' }
+          ];
+
+          let config = {};
+          try {
+            const response = await fetch('http://localhost:3000/ss-config');
+            config = await response.json();
+          } catch (e) { }
+
+          const inputs = {};
+
+          function createInput(labelText, key, defaultValue) {
+            const container = document.createElement('div');
+            container.style.display = 'flex';
+            container.style.flexDirection = 'column';
+            container.style.gap = '5px';
+
+            const label = document.createElement('label');
+            label.textContent = labelText;
+            label.style.fontSize = '14px';
+            label.style.color = '#ccc';
+
+            const input = document.createElement('input');
+            input.type = 'number';
+            Object.assign(input.style, {
+              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+              border: '1px solid #444',
+              borderRadius: '5px',
+              padding: '8px',
+              color: 'white',
+              fontFamily: "'Josefin Sans', sans-serif",
+              outline: 'none'
+            });
+            input.value = config[key] !== undefined ? config[key] : defaultValue;
+
+            inputs[key] = input;
+
+            input.addEventListener('change', () => {
+              const val = parseInt(input.value) || 0;
+              config[key] = val;
+              fetch('http://localhost:3000/ss-config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(config)
+              }).catch(() => { });
+            });
+
+            container.appendChild(label);
+            container.appendChild(input);
+            return container;
+          }
+
+          fields.forEach(f => {
+            menu.appendChild(createInput(f.label, f.key, 0));
+          });
+
+          const closeBtn = document.createElement('button');
+          closeBtn.textContent = 'Close';
+          Object.assign(closeBtn.style, {
+            marginTop: '10px',
+            padding: '8px',
+            backgroundColor: 'rgb(221, 109, 85)',
+            border: 'none',
+            borderRadius: '5px',
+            color: 'white',
+            cursor: 'pointer',
+            fontFamily: "'Josefin Sans', sans-serif",
+            fontSize: '14px',
+            transition: 'background 0.3s'
+          });
+
+          closeBtn.onmouseover = () => closeBtn.style.backgroundColor = '#e38571';
+          closeBtn.onmouseout = () => closeBtn.style.backgroundColor = 'rgb(221, 109, 85)';
+
+          closeBtn.addEventListener('click', () => menu.remove());
+
+          menu.appendChild(closeBtn);
+          document.body.appendChild(menu);
+
+          const clickOutside = (e) => {
+            if (!menu.contains(e.target) && e.target !== menu) {
+              menu.remove();
+              document.removeEventListener('mousedown', clickOutside);
+            }
+          };
+          setTimeout(() => document.addEventListener('mousedown', clickOutside), 0);
         }
 
         async function handleStoriesAction() {
@@ -4975,19 +5442,52 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           autoButton.textContent = "auto";
 
           const toggleAutoRestart = () => {
-            chrome.runtime.sendMessage({ action: "toggleAutoRestartState" });
+            chrome.storage.local.get(['singleTabMode'], (result) => {
+              if (result.singleTabMode) {
+                createSingleTabSettingsMenu();
+              } else {
+                chrome.runtime.sendMessage({ action: "toggleAutoRestartState" });
+              }
+            });
+          };
+
+          const toggleSingleTabMode = (e) => {
+            e.preventDefault();
+            chrome.runtime.sendMessage({ action: "toggleSingleTabMode" });
           };
 
           arrowButton.addEventListener("click", toggleAutoRestart);
+          arrowButton.addEventListener("contextmenu", toggleSingleTabMode);
 
-          chrome.storage.local.get("autoRestartEnabled", (result) => {
-            if (result.autoRestartEnabled) {
-              fillElement.style.backgroundPosition = "0%";
-              arrowPath.setAttribute("stroke", "#ffffff");
-            } else {
-              fillElement.style.backgroundPosition = "100%";
-              arrowPath.setAttribute("stroke", "#dddddd");
-            }
+          chrome.storage.local.get(["autoRestartEnabled", "singleTabMode", "_arrowLocked", "_arrowLockedBy"], (result) => {
+            const autoEnabled = result.autoRestartEnabled || false;
+            const singleEnabled = result.singleTabMode || false;
+            let state = 0;
+            if (singleEnabled) state = 2;
+            else if (autoEnabled) state = 1;
+
+            const locked = result._arrowLocked || false;
+            chrome.runtime.sendMessage({ type: "ws-get-browser-number" }, (response) => {
+              const myNum = response ? response.browserNumber : null;
+              const lockedByMe = result._arrowLockedBy === myNum;
+
+              if (state === 1) {
+                fillElement.style.backgroundImage = "linear-gradient(to right, rgb(45, 155, 55) 0%, rgb(45, 155, 55) 50%, rgb(221, 109, 85) 50%, rgb(221, 109, 85) 100%)";
+                fillElement.style.backgroundPosition = "0%";
+                arrowPath.setAttribute("stroke", "#ffffff");
+              } else if (state === 2) {
+                fillElement.style.backgroundImage = "linear-gradient(to right, #9B59B6 0%, #9B59B6 50%, rgb(221, 109, 85) 50%, rgb(221, 109, 85) 100%)";
+                fillElement.style.backgroundPosition = "0%";
+                arrowPath.setAttribute("stroke", "#ffffff");
+              } else {
+                fillElement.style.backgroundPosition = "100%";
+                arrowPath.setAttribute("stroke", "#dddddd");
+              }
+
+              arrowButton.style.opacity = (locked && !lockedByMe) ? "0.45" : "1";
+              arrowButton.style.pointerEvents = (locked && !lockedByMe) ? "none" : "auto";
+              arrowButton.setAttribute("data-arrow-state", String(state));
+            });
           });
 
           autoButton.addEventListener("mouseover", function () {
@@ -5000,6 +5500,11 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
 
           autoButton.addEventListener("click", function () {
             chrome.runtime.sendMessage({ action: "clickAndMove" });
+          });
+
+          autoButton.addEventListener("contextmenu", function (e) {
+            e.preventDefault();
+            openGlobalScreenshotMenu();
           });
 
           containerNew.appendChild(arrowButton);
@@ -5416,12 +5921,77 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === "toggleAutoRestartState") {
-    chrome.storage.local.get('autoRestartEnabled', (result) => {
-      const enabled = !result.autoRestartEnabled;
-      chrome.storage.local.set({ autoRestartEnabled: enabled });
+    chrome.storage.local.get(['autoRestartEnabled', 'singleTabMode', '_arrowLocked', '_arrowLockedBy'], (result) => {
+      const currentlyAuto = result.autoRestartEnabled || false;
+      const lockedBy = result._arrowLockedBy;
+      const locked = result._arrowLocked || false;
+
+      if (currentlyAuto) {
+        chrome.storage.local.set({ autoRestartEnabled: false });
+        try {
+          chrome.runtime.sendMessage({
+            type: 'ws-send-raw',
+            payload: { type: 'arrow-mode', mode: 'off', browserNumber: currentBrowserNumber }
+          });
+        } catch (_) { }
+        return;
+      }
+
+      if (locked && lockedBy !== currentBrowserNumber) return;
+
+      chrome.storage.local.set({
+        autoRestartEnabled: true,
+        singleTabMode: false,
+        _arrowLocked: true,
+        _arrowLockedBy: currentBrowserNumber
+      });
+      try {
+        chrome.runtime.sendMessage({
+          type: 'ws-send-raw',
+          payload: { type: 'arrow-mode', mode: 'auto', browserNumber: currentBrowserNumber }
+        });
+      } catch (_) { }
     });
     return true;
   }
+
+  if (request.action === "toggleSingleTabMode") {
+    chrome.storage.local.get(['autoRestartEnabled', 'singleTabMode', '_arrowLocked', '_arrowLockedBy'], (result) => {
+      const currentlySingle = result.singleTabMode || false;
+      const lockedBy = result._arrowLockedBy;
+      const locked = result._arrowLocked || false;
+
+
+      if (currentlySingle) {
+        chrome.storage.local.set({ singleTabMode: false, _arrowLocked: false, _arrowLockedBy: null });
+        try {
+          chrome.runtime.sendMessage({
+            type: 'ws-send-raw',
+            payload: { type: 'arrow-mode', mode: 'off', browserNumber: currentBrowserNumber }
+          });
+        } catch (_) { }
+        return;
+      }
+
+
+      if (locked && lockedBy !== currentBrowserNumber) return;
+
+      chrome.storage.local.set({
+        singleTabMode: true,
+        autoRestartEnabled: false,
+        _arrowLocked: true,
+        _arrowLockedBy: currentBrowserNumber
+      });
+      try {
+        chrome.runtime.sendMessage({
+          type: 'ws-send-raw',
+          payload: { type: 'arrow-mode', mode: 'single', browserNumber: currentBrowserNumber }
+        });
+      } catch (_) { }
+    });
+    return true;
+  }
+
 
   function handleTabOpen() {
     return new Promise((resolve) => {
@@ -5628,7 +6198,7 @@ async function pressBind(tabIdFromArg) {
   }
 }
 
-async function pressBindFix(tab, browserType) {
+async function pressBindFix(tab, browserType, singleTabMode = false) {
 
   let savedMediaLink = null;
 
@@ -5678,13 +6248,17 @@ async function pressBindFix(tab, browserType) {
       const { syncStop = false, singleStop = false } = storageData;
       if (!syncStop && !singleStop) {
         selector.click();
-        chrome.storage.local.get(['tabsToClose'], (result) => {
-          const tabsToClose = result.tabsToClose || [];
-          if (!tabsToClose.includes(tab.id)) {
-            tabsToClose.push(tab.id);
-            chrome.storage.local.set({ tabsToClose: tabsToClose });
-          }
-        });
+
+        if (!singleTabMode) {
+          chrome.storage.local.get(['tabsToClose'], (result) => {
+            const tabsToClose = result.tabsToClose || [];
+            if (!tabsToClose.includes(tab.id)) {
+              tabsToClose.push(tab.id);
+              chrome.storage.local.set({ tabsToClose: tabsToClose });
+            }
+          });
+        }
+
         setTimeout(function () {
           const buttons = document.querySelectorAll("button.g-btn.m-flat.m-btn-gaps.m-reset-width");
           buttons.forEach(function (button) {
@@ -5703,16 +6277,18 @@ async function pressBindFix(tab, browserType) {
     return new Promise((resolve) => setTimeout(resolve, time));
   }
 
-  chrome.runtime.sendMessage({ action: "openNewTab", source: "pressBindFix" });
+  if (!singleTabMode) {
+    chrome.runtime.sendMessage({ action: "openNewTab", source: "pressBindFix" });
 
-  if (browserType) {
-    fetch('http://localhost:3000/tabOpened', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ browserType })
-    })
+    if (browserType) {
+      fetch('http://localhost:3000/tabOpened', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ browserType })
+      });
+    }
   }
 
   function intervalFunc() {

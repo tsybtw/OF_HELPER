@@ -34,6 +34,10 @@ async function connectWS() {
       if (response && response.browserNumber) {
         currentBrowserNumber = response.browserNumber;
         ws.send(JSON.stringify({ type: 'register', browserNumber: currentBrowserNumber }));
+
+        if (response.arrowMode) {
+          ws.send(JSON.stringify({ type: 'arrow-mode', mode: response.arrowMode, browserNumber: currentBrowserNumber }));
+        }
       }
     });
 
@@ -54,7 +58,7 @@ async function connectWS() {
         return;
       }
       if (data.type === 'browsers-updated') {
-        try { chrome.runtime.sendMessage({ type: 'browsers-updated', numbers: data.numbers }); } catch (_) {}
+        try { chrome.runtime.sendMessage({ type: 'browsers-updated', numbers: data.numbers }); } catch (_) { }
         return;
       }
       chrome.runtime.sendMessage({ type: 'ws-command', payload: data });
@@ -109,6 +113,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === 'ws-status') {
     sendResponse({ connected: ws && ws.readyState === WebSocket.OPEN });
+    return false;
+  }
+
+  if (message.type === 'ws-send-raw') {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(message.payload));
+    }
+    sendResponse({ ok: true });
     return false;
   }
 });
