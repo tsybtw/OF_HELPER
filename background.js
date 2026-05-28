@@ -1458,6 +1458,62 @@ function clearPhotoBindAll() {
   });
 }
 
+async function fetchAndPasteBind() {
+  const extractTagLocally = () => {
+    try {
+      const editor = document.querySelector(".tiptap.ProseMirror");
+      if (!editor) return null;
+      let text = "";
+      editor.childNodes.forEach((node) => {
+        if (node.nodeType === Node.TEXT_NODE) text += node.textContent + " ";
+        else text += node.innerText + " ";
+      });
+      const words = text.split(/\s+/);
+      const usernameWord = words.find((word) => word.startsWith("@"));
+      if (usernameWord) return usernameWord.replace(/[.,!?]$/, "");
+    } catch (e) { }
+    return null;
+  };
+
+  const tag = extractTagLocally();
+  if (!tag) return;
+
+  try {
+    const response = await fetch(`http://localhost:8444/get-image-by-tag?tag=${encodeURIComponent(tag)}`);
+    if (!response.ok) return;
+
+    const blob = await response.blob();
+    const contentType = response.headers.get('content-type') || '';
+    const isImage = contentType.startsWith('image/');
+    const fileExtension = isImage ? 'png' : 'mp4';
+    const mimeType = isImage ? 'image/png' : 'video/mp4';
+
+    const file = new File([blob], `media.${fileExtension}`, { type: mimeType });
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(file);
+
+    const targetElement = document.querySelector(
+      ".tiptap.ProseMirror.b-text-editor.js-text-editor.m-native-custom-scrollbar.m-scrollbar-y.m-scroll-behavior-auto.m-overscroll-behavior-auto"
+    ) || document.querySelector(".tiptap.ProseMirror");
+
+    if (targetElement) {
+      const dragStartEvent = new DragEvent("dragstart", { bubbles: true, cancelable: true, dataTransfer });
+      const dragOverEvent = new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer });
+      const dropEvent = new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer });
+
+      targetElement.dispatchEvent(dragStartEvent);
+      setTimeout(() => {
+        targetElement.dispatchEvent(dragOverEvent);
+        setTimeout(() => {
+          targetElement.dispatchEvent(dropEvent);
+        }, 100);
+      }, 100);
+    }
+  } catch (e) {
+    console.error("fetchAndPasteBind error:", e);
+  }
+}
+
 async function pasteBind() {
   const tempContainer = document.createElement("div");
   tempContainer.style.position = "absolute";
@@ -4071,24 +4127,24 @@ async function processCommand(lastEntry) {
           });
         });
       } else {
-        chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+        chrome.tabs.query({ active: true, currentWindow: true }, async function (tabs) {
           const currentTabId = tabs[0].id;
-          chrome.tabs.query({ url: "https://onlyfans.com/*" }, function (matchingTabs) {
-            if (matchingTabs.length > 0) {
-              matchingTabs.forEach((tab, index) => {
-                if (currentTabId !== tab.id) {
+          chrome.tabs.query({ url: "https://onlyfans.com/*" }, async function (matchingTabs) {
+            const otherTabs = matchingTabs.filter(tab => tab.id !== currentTabId);
+            if (otherTabs.length > 0) {
+              for (const tab of otherTabs) {
+                await new Promise(resolve => {
                   chrome.tabs.update(tab.id, { active: true }, () => {
-                    setTimeout(() => {
-                      chrome.tabs.update(currentTabId, { active: true });
-                    }, 1000);
                     chrome.scripting.executeScript({
                       target: { tabId: tab.id },
                       func: checkAndCloseTab,
                       args: [tab.id],
-                    });
+                    }).catch(() => { });
+                    setTimeout(resolve, 500);
                   });
-                }
-              });
+                });
+              }
+              chrome.tabs.update(currentTabId, { active: true });
             }
           });
         });
@@ -4110,7 +4166,6 @@ async function processCommand(lastEntry) {
     }
 
     if (lastEntry && lastEntry.id === "116" && browserType !== "") {
-
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
 
       if (lastEntry.targetBrowser && (lastEntry.targetBrowser === browserType || lastEntry.targetBrowser === "all")) {
@@ -4118,7 +4173,7 @@ async function processCommand(lastEntry) {
           const activeTab = currentWindow.tabs.find((tab) => tab.active);
           await executeScriptIfValid(activeTab, {
             target: { tabId: activeTab.id },
-            func: pasteBind,
+            func: fetchAndPasteBind,
           });
         });
       }
@@ -5015,38 +5070,10 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           return indicatorButton;
         }
 
-        function extractTagFromTextFields() {
-          try {
-            const editor = document.querySelector(
-              ".tiptap.ProseMirror.b-text-editor.js-text-editor.m-native-custom-scrollbar.m-scrollbar-y.m-scroll-behavior-auto.m-overscroll-behavior-auto"
-            );
-
-            if (editor) {
-              let text = "";
-              if (editor.innerText) {
-                text = editor.innerText;
-              } else if (editor.textContent) {
-                text = editor.textContent;
-              }
-
-              if (text) {
-                const match = text.match(/@([a-zA-Z0-9_.-]+)/);
-                if (match && match[1]) {
-                  return match[1];
-                }
-              }
-            }
-          } catch (e) {
-            console.error("extractTagFromTextFields error:", e);
-          }
-          return null;
-        }
-
-        async function sendAddMediaByTagRequest(tag, target = null) {
+        async function sendAddMediaByTagRequest(target = null) {
           try {
             chrome.runtime.sendMessage({
               action: "addMediaByTag",
-              tag: tag,
               target: target
             });
           } catch (e) {
@@ -5209,13 +5236,10 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
               holdTimer = setTimeout(async () => {
                 holdTriggered = true;
 
-                const tag = extractTagFromTextFields();
-                if (tag) {
-                  button.style.transform = "scale(1.05)";
-                  setTimeout(() => button.style.transform = "scale(1)", 100);
+                button.style.transform = "scale(1.05)";
+                setTimeout(() => button.style.transform = "scale(1)", 100);
 
-                  await sendAddMediaByTagRequest(tag, "all");
-                }
+                await sendAddMediaByTagRequest("all");
                 resetHoldAnim();
               }, 1000);
             };
@@ -5250,11 +5274,8 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
               event.preventDefault();
               const rect = button.getBoundingClientRect();
               if ((event.clientX - rect.left) > rect.width / 2) {
-                const tag = extractTagFromTextFields();
-                if (tag) {
-                  animateButton(button, rightPart);
-                  await sendAddMediaByTagRequest(tag, null);
-                }
+                animateButton(button, rightPart);
+                await sendAddMediaByTagRequest(null);
               }
             });
 
@@ -6057,7 +6078,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  if (request && request.action === 'addMediaByTag' && request.tag) {
+  if (request && request.action === 'addMediaByTag') {
     (async () => {
       try {
         const browserId = request.target ? request.target : ("browser" + currentBrowserNumber);
@@ -6065,7 +6086,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         await fetch('http://localhost:8444/add-media-by-tag', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tag: request.tag, browser: browserId })
+          body: JSON.stringify({ browser: browserId })
         });
       } catch (e) {
         console.error('add-media-by-tag request error:', e);
