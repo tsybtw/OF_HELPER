@@ -669,6 +669,15 @@ function updateMentionPosition(newX, newY) {
 
     target.set({ left: newX, top: newY });
     if (canvas.renderAll) canvas.renderAll();
+
+    var canvasRect = canvas.lowerCanvasEl.getBoundingClientRect();
+    var joyX = (newX / canvasRect.width) * 100 - 5;
+    var joyY = (newY / canvasRect.height) * 100 - 5;
+    var joyHandle = document.querySelector('#joy div');
+    if (joyHandle) {
+      joyHandle.style.left = joyX + 'px';
+      joyHandle.style.top = joyY + 'px';
+    }
   } catch (_) { }
 }
 
@@ -2889,9 +2898,20 @@ async function processCommand(lastEntry) {
           return true;
         }
 
+        let isStoriesEnabled = true;
+        try {
+          const res = await chrome.storage.local.get(['storiesEnabled']);
+          isStoriesEnabled = res.storiesEnabled !== false;
+        } catch (e) {}
+
         for (let i = 0; i < tags.length; i++) {
           const tag = tags[i];
-          const skipped = await isTagSkipped(tag, currentUsername, blacklistContent);
+          let skipped = await isTagSkipped(tag, currentUsername, blacklistContent);
+          
+          if (!isStoriesEnabled) {
+            skipped = true;
+          }
+
           const tabUrl = skipped ? "https://onlyfans.com/posts/create" : "https://onlyfans.com/";
           const tab = await chrome.tabs.create({ url: tabUrl, active: true });
 
@@ -2919,8 +2939,122 @@ async function processCommand(lastEntry) {
               .then(res => res.json())
               .catch(() => ({}))
               .then(ts => {
+                if (!isStoriesEnabled) {
+                  return resolve();
+                }
                 const cleanTag = tag.trim().replace(/^@/, '');
                 const savedSettings = ts[cleanTag] || null;
+                const hookFabricFunc = (tagStr) => {
+                  const hookFabricCanvas = () => {
+                    try {
+                      const container = document.querySelector('.b-photo-editor__container');
+                      if (!container) return setTimeout(hookFabricCanvas, 500);
+                      const vue = container.__vue__;
+                      if (!vue || !vue.$parent || !vue.$parent.$parent) return setTimeout(hookFabricCanvas, 500);
+                      const canvas = vue.$parent.$parent.canvas;
+                      if (!canvas) return setTimeout(hookFabricCanvas, 500);
+                      
+                      if (canvas.__OFH_HOOKED) return;
+                      canvas.__OFH_HOOKED = true;
+
+                      const extractData = (target) => {
+                        let angle = Math.round(target.angle || 0) + 90;
+                        if (angle < 0) angle += 360;
+                        angle = angle % 360;
+
+                        if (window.__OFH_TEXT_SCALE_BASE == null) {
+                          window.__OFH_TEXT_SCALE_BASE = target.scaleX || 1;
+                        }
+                        let scale = Math.round((target.scaleX / window.__OFH_TEXT_SCALE_BASE) * 100);
+
+                        const canvasRect = canvas.lowerCanvasEl.getBoundingClientRect();
+                        let joyX = (target.left / canvasRect.width) * 100 - 5;
+                        let joyY = (target.top / canvasRect.height) * 100 - 5;
+                        return { angle, scale, joyX, joyY };
+                      };
+
+                      const updateUI = (e) => {
+                        const target = e.target;
+                        if (!target) return;
+                        const objects = canvas.getObjects();
+                        if (objects.length < 2 || target !== objects[1]) return;
+
+                        const { angle, scale, joyX, joyY } = extractData(target);
+
+                        const slider = document.getElementById('size-slider');
+                        if (slider) slider.value = scale;
+
+                        const dialHand = document.querySelector('#tag-rotation-dial svg line[stroke="#fbdf56"]');
+                        if (dialHand) {
+                          const cx = parseFloat(dialHand.getAttribute('x1') || 38);
+                          const cy = parseFloat(dialHand.getAttribute('y1') || 38);
+                          const length = cx - 8;
+                          const rad = (angle - 90) * Math.PI / 180;
+                          const x2 = cx + length * Math.cos(rad);
+                          const y2 = cy + length * Math.sin(rad);
+                          dialHand.setAttribute('x2', x2);
+                          dialHand.setAttribute('y2', y2);
+                        }
+                        const dialLabel = document.querySelector('#tag-rotation-dial div');
+                        if (dialLabel) {
+                          dialLabel.textContent = angle + '°';
+                        }
+
+                        const joyHandle = document.querySelector('#joy div');
+                        if (joyHandle) {
+                          joyHandle.style.left = joyX + 'px';
+                          joyHandle.style.top = joyY + 'px';
+                        }
+                      };
+
+                      const syncServer = (e) => {
+                        const target = e.target;
+                        if (!target) return;
+                        const objects = canvas.getObjects();
+                        if (objects.length < 2 || target !== objects[1]) return;
+
+                        const { angle, scale, joyX, joyY } = extractData(target);
+
+                        fetch('http://localhost:3000/text-scale', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ scalePercent: scale })
+                        }).catch(() => {});
+
+                        fetch('http://localhost:3000/text-rotate', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ angleDeg: angle })
+                        }).catch(() => {});
+
+                        fetch('http://localhost:3000/joystick-data', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ x: target.left, y: target.top })
+                        }).catch(() => {});
+
+                        fetch('http://localhost:3000/tag-settings', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ tag: tagStr, settings: { scale: scale, angle: angle, joyX: joyX, joyY: joyY, canvasX: target.left, canvasY: target.top } })
+                        }).catch(() => {});
+                      };
+
+                      canvas.on('object:moving', updateUI);
+                      canvas.on('object:scaling', updateUI);
+                      canvas.on('object:rotating', updateUI);
+                      canvas.on('object:modified', (e) => {
+                        updateUI(e);
+                        syncServer(e);
+                      });
+
+                    } catch(err) {
+                      setTimeout(hookFabricCanvas, 500);
+                    }
+                  };
+                  hookFabricCanvas();
+                };
+
                 chrome.scripting.executeScript({
                   target: { tabId: tab.id },
                   func: processImageAndUpload,
@@ -2934,7 +3068,7 @@ async function processCommand(lastEntry) {
                         let attempts = 0;
                         const checkAndApply = () => {
                           attempts++;
-                          if (attempts > 50) return; // give up after 5 seconds
+                          if (attempts > 50) return;
                           try {
                             const container = document.querySelector('.b-photo-editor__container');
                             if (!container) return setTimeout(checkAndApply, 100);
@@ -2970,9 +3104,21 @@ async function processCommand(lastEntry) {
                         checkAndApply();
                       },
                       args: [savedSettings]
-                    }, () => resolve());
+                    }, () => {
+                      chrome.scripting.executeScript({
+                        target: { tabId: tab.id },
+                        world: 'MAIN',
+                        func: hookFabricFunc,
+                        args: [cleanTag]
+                      }, () => resolve());
+                    });
                   } else {
-                    resolve();
+                    chrome.scripting.executeScript({
+                      target: { tabId: tab.id },
+                      world: 'MAIN',
+                      func: hookFabricFunc,
+                      args: [cleanTag]
+                    }, () => resolve());
                   }
                 });
               });
@@ -3061,6 +3207,8 @@ async function processCommand(lastEntry) {
               }
               var scale = (Number(p) / 100) * (window.__OFH_TEXT_SCALE_BASE || 1);
               target.set({ scaleX: scale, scaleY: scale });
+              var slider = document.getElementById('size-slider');
+              if (slider) slider.value = p;
               if (canvas.renderAll) canvas.renderAll();
             } catch (_) { }
           },
@@ -3165,6 +3313,21 @@ async function processCommand(lastEntry) {
               var target = objects[1];
               if (!target) return;
               target.set({ angle: Number(angleDeg) - 90 });
+              var dialHand = document.querySelector('#tag-rotation-dial svg line[stroke="#fbdf56"]');
+              if (dialHand) {
+                var cx = parseFloat(dialHand.getAttribute('x1') || 38);
+                var cy = parseFloat(dialHand.getAttribute('y1') || 38);
+                var length = cx - 8;
+                var rad = (Number(angleDeg) - 90) * Math.PI / 180;
+                var x2 = cx + length * Math.cos(rad);
+                var y2 = cy + length * Math.sin(rad);
+                dialHand.setAttribute('x2', x2);
+                dialHand.setAttribute('y2', y2);
+              }
+              var dialLabel = document.querySelector('#tag-rotation-dial div');
+              if (dialLabel) {
+                dialLabel.textContent = Number(angleDeg) + '°';
+              }
               if (canvas.renderAll) canvas.renderAll();
             } catch (_) { }
           },
@@ -4379,6 +4542,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             return container;
           }
 
+          menu.appendChild(createCheckbox('Enable stories', 'storiesEnabled', true));
           menu.appendChild(createCheckbox('Enable Screenshots', 'storiesScreenshotEnabled', true));
           menu.appendChild(createInput('Screenshot Delay (ms)', 'storiesScreenshotDelay', 1000));
           menu.appendChild(createInput('Switch Delay (ms)', 'storiesSwitchDelay', 3000));
@@ -6277,6 +6441,24 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
     return new Promise((resolve) => setTimeout(resolve, time));
   }
 
+  // In single-tab mode, stop retrying as soon as the post navigates away
+  let singleTabDone = false;
+  if (singleTabMode) {
+    const navWatcher = () => {
+      if (!window.location.href.includes('/posts/create')) {
+        singleTabDone = true;
+      }
+    };
+    window.addEventListener('popstate', navWatcher);
+    // Also poll via interval as SPA may not fire popstate
+    const navPollId = setInterval(() => {
+      if (!window.location.href.includes('/posts/create')) {
+        singleTabDone = true;
+        clearInterval(navPollId);
+      }
+    }, 200);
+  }
+
   if (!singleTabMode) {
     chrome.runtime.sendMessage({ action: "openNewTab", source: "pressBindFix" });
 
@@ -6292,6 +6474,9 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
   }
 
   function intervalFunc() {
+    // In single-tab mode, stop retrying once the page navigated away
+    if (singleTabMode && singleTabDone) return;
+
     chrome.storage.local.get(["isPaused", `blacklisted_${tab.id}`], async function (data) {
       if (data.isPaused) {
         setTimeout(intervalFunc, 1000);
@@ -6343,6 +6528,7 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
               await delay(60000);
             }
             else if (/(attached|issue)/i.test(innerDiv.textContent)) {
+
 
               let mediaLink = savedMediaLink;
 
