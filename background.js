@@ -2899,15 +2899,17 @@ async function processCommand(lastEntry) {
         }
 
         let isStoriesEnabled = true;
+        let isSyncCanvasEnabled = true;
         try {
-          const res = await chrome.storage.local.get(['storiesEnabled']);
+          const res = await chrome.storage.local.get(['storiesEnabled', 'storiesSyncCanvasEnabled']);
           isStoriesEnabled = res.storiesEnabled !== false;
-        } catch (e) {}
+          isSyncCanvasEnabled = res.storiesSyncCanvasEnabled !== false;
+        } catch (e) { }
 
         for (let i = 0; i < tags.length; i++) {
           const tag = tags[i];
           let skipped = await isTagSkipped(tag, currentUsername, blacklistContent);
-          
+
           if (!isStoriesEnabled) {
             skipped = true;
           }
@@ -2944,7 +2946,10 @@ async function processCommand(lastEntry) {
                 }
                 const cleanTag = tag.trim().replace(/^@/, '');
                 const savedSettings = ts[cleanTag] || null;
-                const hookFabricFunc = (tagStr) => {
+                const hookFabricFunc = (tagStr, syncEnabled) => {
+                  if (window.__OFH_SYNC_ENABLED === undefined) {
+                    window.__OFH_SYNC_ENABLED = syncEnabled;
+                  }
                   const hookFabricCanvas = () => {
                     try {
                       const container = document.querySelector('.b-photo-editor__container');
@@ -2953,7 +2958,7 @@ async function processCommand(lastEntry) {
                       if (!vue || !vue.$parent || !vue.$parent.$parent) return setTimeout(hookFabricCanvas, 500);
                       const canvas = vue.$parent.$parent.canvas;
                       if (!canvas) return setTimeout(hookFabricCanvas, 500);
-                      
+
                       if (canvas.__OFH_HOOKED) return;
                       canvas.__OFH_HOOKED = true;
 
@@ -3015,29 +3020,31 @@ async function processCommand(lastEntry) {
 
                         const { angle, scale, joyX, joyY } = extractData(target);
 
-                        fetch('http://localhost:3000/text-scale', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ scalePercent: scale })
-                        }).catch(() => {});
+                        if (window.__OFH_SYNC_ENABLED !== false) {
+                          fetch('http://localhost:3000/text-scale', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ scalePercent: scale })
+                          }).catch(() => { });
 
-                        fetch('http://localhost:3000/text-rotate', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ angleDeg: angle })
-                        }).catch(() => {});
+                          fetch('http://localhost:3000/text-rotate', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ angleDeg: angle })
+                          }).catch(() => { });
 
-                        fetch('http://localhost:3000/joystick-data', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ x: target.left, y: target.top })
-                        }).catch(() => {});
+                          fetch('http://localhost:3000/joystick-data', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ x: target.left, y: target.top })
+                          }).catch(() => { });
+                        }
 
                         fetch('http://localhost:3000/tag-settings', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ tag: tagStr, settings: { scale: scale, angle: angle, joyX: joyX, joyY: joyY, canvasX: target.left, canvasY: target.top } })
-                        }).catch(() => {});
+                        }).catch(() => { });
                       };
 
                       canvas.on('object:moving', updateUI);
@@ -3048,7 +3055,7 @@ async function processCommand(lastEntry) {
                         syncServer(e);
                       });
 
-                    } catch(err) {
+                    } catch (err) {
                       setTimeout(hookFabricCanvas, 500);
                     }
                   };
@@ -3109,7 +3116,7 @@ async function processCommand(lastEntry) {
                         target: { tabId: tab.id },
                         world: 'MAIN',
                         func: hookFabricFunc,
-                        args: [cleanTag]
+                        args: [cleanTag, isSyncCanvasEnabled]
                       }, () => resolve());
                     });
                   } else {
@@ -3117,7 +3124,7 @@ async function processCommand(lastEntry) {
                       target: { tabId: tab.id },
                       world: 'MAIN',
                       func: hookFabricFunc,
-                      args: [cleanTag]
+                      args: [cleanTag, isSyncCanvasEnabled]
                     }, () => resolve());
                   }
                 });
@@ -4543,6 +4550,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           }
 
           menu.appendChild(createCheckbox('Enable stories', 'storiesEnabled', true));
+          menu.appendChild(createCheckbox('Sync Manual Canvas', 'storiesSyncCanvasEnabled', true));
           menu.appendChild(createCheckbox('Enable Screenshots', 'storiesScreenshotEnabled', true));
           menu.appendChild(createInput('Screenshot Delay (ms)', 'storiesScreenshotDelay', 1000));
           menu.appendChild(createInput('Switch Delay (ms)', 'storiesSwitchDelay', 3000));
@@ -7696,5 +7704,23 @@ chrome.tabs.query({ url: "https://onlyfans.com/*" }, (tabs) => {
     if (tab.id) {
       injectConsentObserver(tab.id);
     }
+  }
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.storiesSyncCanvasEnabled) {
+    const newValue = changes.storiesSyncCanvasEnabled.newValue !== false;
+    chrome.tabs.query({ url: "*://*.onlyfans.com/*" }, (tabs) => {
+      for (const tab of tabs) {
+        if (tab.id) {
+          chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            world: 'MAIN',
+            func: (val) => { window.__OFH_SYNC_ENABLED = val; },
+            args: [newValue]
+          }).catch(() => { });
+        }
+      }
+    });
   }
 });
