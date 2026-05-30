@@ -2757,7 +2757,7 @@ async function processCommand(lastEntry) {
         _arrowLocked: lastEntry.locked,
         _arrowLockedBy: lastEntry.lockedBy
       });
-      // Also update local state if server says we are "off" but we think we're on
+
       if (lastEntry.lockedBy === currentBrowserNumber) {
         chrome.storage.local.set({
           autoRestartEnabled: lastEntry.mode === 'auto',
@@ -2769,6 +2769,56 @@ async function processCommand(lastEntry) {
           singleTabMode: false
         });
       }
+      return;
+    }
+
+    if (lastEntry.type === "stories-settings-update") {
+
+      chrome.windows.getCurrent({ populate: true }, (currentWindow) => {
+        const activeTab = currentWindow && currentWindow.tabs && currentWindow.tabs.find(t => t.active);
+        if (!activeTab) return;
+        chrome.scripting.executeScript({
+          target: { tabId: activeTab.id },
+          func: (settings) => {
+            const menu = document.getElementById('stories-settings-menu');
+            if (!menu) return;
+            const ssEnabledEl = menu.querySelector('[data-server-key="screenshotEnabled"]');
+            const ssDelayEl = menu.querySelector('[data-server-key="screenshotDelay"]');
+            const swDelayEl = menu.querySelector('[data-server-key="switchDelay"]');
+            if (ssEnabledEl) ssEnabledEl.checked = settings.screenshotEnabled !== undefined ? settings.screenshotEnabled : true;
+            if (ssDelayEl) ssDelayEl.value = settings.screenshotDelay !== undefined ? settings.screenshotDelay : 1000;
+            if (swDelayEl) swDelayEl.value = settings.switchDelay !== undefined ? settings.switchDelay : 3000;
+          },
+          args: [lastEntry]
+        }).catch(() => { });
+      });
+      return;
+    }
+
+    if (lastEntry.type === "switch-right-update") {
+
+      chrome.windows.getCurrent({ populate: true }, (currentWindow) => {
+        const activeTab = currentWindow && currentWindow.tabs && currentWindow.tabs.find(t => t.active);
+        if (!activeTab) return;
+        chrome.scripting.executeScript({
+          target: { tabId: activeTab.id },
+          func: (activated) => {
+
+            window.__switchRightActivated = activated;
+            const btn = document.getElementById('switch-button');
+            if (btn) {
+              if (activated) {
+                btn.style.boxShadow = "0 0 0 2px #FFD700 inset, 0 0 8px rgba(255,215,0,0.7)";
+                btn.setAttribute("data-right-activated", "true");
+              } else {
+                btn.style.boxShadow = "";
+                btn.setAttribute("data-right-activated", "false");
+              }
+            }
+          },
+          args: [lastEntry.activated]
+        }).catch(() => { });
+      });
       return;
     }
     if (lastEntry.selectedBrowsers) {
@@ -3094,7 +3144,7 @@ async function processCommand(lastEntry) {
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ x: target.left, y: target.top })
                           }).catch(() => { });
-                          
+
                           fetch('http://localhost:3000/tag-settings', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -4477,10 +4527,15 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
         }
 
         async function quickStoriesDone() {
-          const settings = await chrome.storage.local.get(['storiesSwitchDelay', 'storiesScreenshotDelay', 'storiesScreenshotEnabled']);
-          const switchDelay = settings.storiesSwitchDelay !== undefined ? parseInt(settings.storiesSwitchDelay) : 2000;
-          const screenshotDelay = settings.storiesScreenshotDelay !== undefined ? parseInt(settings.storiesScreenshotDelay) : 1000;
-          const screenshotEnabled = settings.storiesScreenshotEnabled !== undefined ? settings.storiesScreenshotEnabled : true;
+          let switchDelay = 3000;
+          let screenshotDelay = 1000;
+          let screenshotEnabled = true;
+          try {
+            const data = await fetch('http://localhost:3000/stories-settings').then(r => r.json());
+            switchDelay = data.switchDelay !== undefined ? parseInt(data.switchDelay) : 3000;
+            screenshotDelay = data.screenshotDelay !== undefined ? parseInt(data.screenshotDelay) : 1000;
+            screenshotEnabled = data.screenshotEnabled !== undefined ? data.screenshotEnabled : true;
+          } catch (_) { }
 
           await fetch("http://localhost:3000/quickStoriesDone", {
             method: "POST",
@@ -4524,7 +4579,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           title.style.marginBottom = '5px';
           menu.appendChild(title);
 
-          function createCheckbox(labelText, storageKey, defaultValue) {
+          function createCheckbox(labelText, storageKey, defaultValue, { useServer = false } = {}) {
             const container = document.createElement('div');
             Object.assign(container.style, {
               display: 'flex',
@@ -4544,6 +4599,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
 
             const input = document.createElement('input');
             input.type = 'checkbox';
+            input.dataset.serverKey = storageKey;
             Object.assign(input.style, {
               width: '18px',
               height: '18px',
@@ -4554,20 +4610,31 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
 
             label.addEventListener('click', () => input.click());
 
-            chrome.storage.local.get([storageKey], (res) => {
-              input.checked = res[storageKey] !== undefined ? res[storageKey] : defaultValue;
-            });
-
-            input.addEventListener('change', () => {
-              chrome.storage.local.set({ [storageKey]: input.checked });
-            });
+            if (useServer) {
+              // Value will be set by the caller after fetching from server
+              input.checked = defaultValue;
+              input.addEventListener('change', () => {
+                fetch('http://localhost:3000/stories-settings', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ [storageKey]: input.checked })
+                }).catch(() => { });
+              });
+            } else {
+              chrome.storage.local.get([storageKey], (res) => {
+                input.checked = res[storageKey] !== undefined ? res[storageKey] : defaultValue;
+              });
+              input.addEventListener('change', () => {
+                chrome.storage.local.set({ [storageKey]: input.checked });
+              });
+            }
 
             container.appendChild(label);
             container.appendChild(input);
             return container;
           }
 
-          function createInput(labelText, storageKey, defaultValue) {
+          function createInput(labelText, storageKey, defaultValue, { useServer = false } = {}) {
             const container = document.createElement('div');
             container.style.display = 'flex';
             container.style.flexDirection = 'column';
@@ -4580,6 +4647,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
 
             const input = document.createElement('input');
             input.type = 'number';
+            input.dataset.serverKey = storageKey;
             Object.assign(input.style, {
               backgroundColor: 'rgba(255, 255, 255, 0.1)',
               border: '1px solid #444',
@@ -4590,13 +4658,23 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
               outline: 'none'
             });
 
-            chrome.storage.local.get([storageKey], (res) => {
-              input.value = res[storageKey] !== undefined ? res[storageKey] : defaultValue;
-            });
-
-            input.addEventListener('change', () => {
-              chrome.storage.local.set({ [storageKey]: parseInt(input.value) || 0 });
-            });
+            if (useServer) {
+              input.value = defaultValue;
+              input.addEventListener('change', () => {
+                fetch('http://localhost:3000/stories-settings', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ [storageKey]: parseInt(input.value) || 0 })
+                }).catch(() => { });
+              });
+            } else {
+              chrome.storage.local.get([storageKey], (res) => {
+                input.value = res[storageKey] !== undefined ? res[storageKey] : defaultValue;
+              });
+              input.addEventListener('change', () => {
+                chrome.storage.local.set({ [storageKey]: parseInt(input.value) || 0 });
+              });
+            }
 
             container.appendChild(label);
             container.appendChild(input);
@@ -4605,9 +4683,21 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
 
           menu.appendChild(createCheckbox('Enable stories', 'storiesEnabled', true));
           menu.appendChild(createCheckbox('Sync Manual Canvas', 'storiesSyncCanvasEnabled', true));
-          menu.appendChild(createCheckbox('Enable Screenshots', 'storiesScreenshotEnabled', true));
-          menu.appendChild(createInput('Screenshot Delay (ms)', 'storiesScreenshotDelay', 1000));
-          menu.appendChild(createInput('Switch Delay (ms)', 'storiesSwitchDelay', 3000));
+          menu.appendChild(createCheckbox('Enable Screenshots', 'screenshotEnabled', true, { useServer: true }));
+          menu.appendChild(createInput('Screenshot Delay (ms)', 'screenshotDelay', 1000, { useServer: true }));
+          menu.appendChild(createInput('Switch Delay (ms)', 'switchDelay', 3000, { useServer: true }));
+
+          fetch('http://localhost:3000/stories-settings')
+            .then(r => r.json())
+            .then(data => {
+              const ssEnabledEl = menu.querySelector('[data-server-key="screenshotEnabled"]');
+              const ssDelayEl = menu.querySelector('[data-server-key="screenshotDelay"]');
+              const swDelayEl = menu.querySelector('[data-server-key="switchDelay"]');
+              if (ssEnabledEl) ssEnabledEl.checked = data.screenshotEnabled !== undefined ? data.screenshotEnabled : true;
+              if (ssDelayEl) ssDelayEl.value = data.screenshotDelay !== undefined ? data.screenshotDelay : 1000;
+              if (swDelayEl) swDelayEl.value = data.switchDelay !== undefined ? data.switchDelay : 3000;
+            })
+            .catch(() => { });
 
           const closeBtn = document.createElement('button');
           closeBtn.textContent = 'Close';
@@ -5854,9 +5944,8 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             holdSwitch
           );
 
-          let isRightActivated = false;
           function updateRightActivationStyle() {
-            if (isRightActivated) {
+            if (window.__switchRightActivated) {
               switchButton.style.boxShadow = "0 0 0 2px #FFD700 inset, 0 0 8px rgba(255,215,0,0.7)";
               switchButton.setAttribute("data-right-activated", "true");
             } else {
@@ -5864,17 +5953,21 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
               switchButton.setAttribute("data-right-activated", "false");
             }
           }
-          chrome.storage.local.get("switchRightActivated", (res) => {
-            isRightActivated = !!res.switchRightActivated;
-            updateRightActivationStyle();
-          });
 
-          chrome.storage.onChanged.addListener((changes, namespace) => {
-            if (namespace === 'local' && Object.prototype.hasOwnProperty.call(changes, 'switchRightActivated')) {
-              isRightActivated = !!changes.switchRightActivated.newValue;
+          // Load initial state from server (shared across all browsers)
+          fetch('http://localhost:3000/switch-right-activated')
+            .then(r => r.json())
+            .then(data => {
+              window.__switchRightActivated = !!data.activated;
               updateRightActivationStyle();
-            }
-          });
+            })
+            .catch(() => {
+              // Fallback to localStorage if server unavailable
+              chrome.storage.local.get("switchRightActivated", (res) => {
+                window.__switchRightActivated = !!res.switchRightActivated;
+                updateRightActivationStyle();
+              });
+            });
 
           chrome.storage.onChanged.addListener((changes, namespace) => {
             if (namespace !== 'local') return;
@@ -5885,14 +5978,21 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
 
           switchButton.addEventListener("contextmenu", (e) => {
             e.preventDefault();
-            isRightActivated = !isRightActivated;
-            chrome.storage.local.set({ switchRightActivated: isRightActivated }, () => {
-              updateRightActivationStyle();
+            window.__switchRightActivated = !window.__switchRightActivated;
+            updateRightActivationStyle();
+
+            fetch('http://localhost:3000/switch-right-activated', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ activated: window.__switchRightActivated })
+            }).catch(() => {
+
+              chrome.storage.local.set({ switchRightActivated: window.__switchRightActivated });
             });
           });
 
           chrome.runtime.onMessage.addListener((request) => {
-            if (request && request.action === "autoCompleted" && isRightActivated) {
+            if (request && request.action === "autoCompleted" && window.__switchRightActivated) {
               const down = new MouseEvent("mousedown", { bubbles: true, button: 0 });
               const up = new MouseEvent("mouseup", { bubbles: true, button: 0 });
               switchButton.dispatchEvent(down);
@@ -6469,18 +6569,17 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
     return new Promise((resolve) => setTimeout(resolve, time));
   }
 
-  // In single-tab mode, stop retrying as soon as the post navigates away
+  // In single-tab mode, stop retrying only AFTER the page returns to /posts/create
+  // following a trip through /my/queue (i.e., after instantPost completes the full cycle).
   let singleTabDone = false;
   if (singleTabMode) {
-    const navWatcher = () => {
-      if (!window.location.href.includes('/posts/create')) {
-        singleTabDone = true;
-      }
-    };
-    window.addEventListener('popstate', navWatcher);
-    // Also poll via interval as SPA may not fire popstate
+    let singleTabWentAway = false;
     const navPollId = setInterval(() => {
-      if (!window.location.href.includes('/posts/create')) {
+      const isOnCreate = window.location.href.includes('/posts/create');
+      if (!isOnCreate) {
+        singleTabWentAway = true;
+      } else if (singleTabWentAway && isOnCreate) {
+        // Returned to /posts/create after being on /my/queue — post cycle is done
         singleTabDone = true;
         clearInterval(navPollId);
       }
@@ -6710,6 +6809,10 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
               await delay(7000);
             }
             else if (!innerDiv.textContent.includes("[OFH]")) {
+              // In singleTabMode keep retrying, otherwise give up
+              if (singleTabMode && !singleTabDone) {
+                setTimeout(intervalFunc, 2000);
+              }
               return
             }
             else {
@@ -6741,6 +6844,13 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
             'a[data-name="PostsCreate"][href="/posts/create"]',
           );
           tabId = tabId.toString();
+
+          if (singleTabMode) {
+            if (singleTabDone) return;
+            setTimeout(intervalFunc, 2000);
+            return;
+          }
+
           chrome.storage.local.get(tabId, function (data) {
             if (
               (anchorElement &&
