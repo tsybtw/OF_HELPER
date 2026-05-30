@@ -3094,15 +3094,14 @@ async function processCommand(lastEntry) {
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ x: target.left, y: target.top })
                           }).catch(() => { });
+                          
+                          fetch('http://localhost:3000/tag-settings', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ tag: tagStr, settings: { scale: scale, angle: angle, joyX: joyX, joyY: joyY, canvasX: target.left, canvasY: target.top } })
+                          }).catch(() => { });
                         }
-
-                        fetch('http://localhost:3000/tag-settings', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ tag: tagStr, settings: { scale: scale, angle: angle, joyX: joyX, joyY: joyY, canvasX: target.left, canvasY: target.top } })
-                        }).catch(() => { });
                       };
-
                       canvas.on('object:moving', updateUI);
                       canvas.on('object:scaling', updateUI);
                       canvas.on('object:rotating', updateUI);
