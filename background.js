@@ -3891,12 +3891,43 @@ async function processCommand(lastEntry) {
           };
 
           const listener = (tabId, changeInfo, tab) => {
-            if (tabId === activeTab.id && changeInfo.url) {
+            if (tabId !== activeTab.id) return;
+
+            if (changeInfo.url) {
               if (!changeInfo.url.includes('/posts/create')) {
                 hasNavigatedAway = true;
               } else if (hasNavigatedAway && changeInfo.url.includes('/posts/create')) {
-                finish();
+                // URL is back on /posts/create — now wait for full load to inject hiding
               }
+            }
+
+            if (hasNavigatedAway && changeInfo.status === 'complete' &&
+                tab && tab.url && tab.url.includes('/posts/create')) {
+              // Inject element-hiding script after page fully loaded
+              chrome.scripting.executeScript({
+                target: { tabId: activeTab.id },
+                func: () => {
+                  const selector1 = "#content > div.l-wrapper > div.l-wrapper__holder-content.m-inherit-zindex > div > div > div > div.g-page__header.m-real-sticky.js-sticky-header.m-nowrap > div > button.m-btn-clear-draft.g-btn.m-border.m-rounded.m-sm-width.m-reset-width";
+                  const selector2 = "#content > div.l-wrapper > div > div > div > div > div.stories-list.g-negative-sides-gaps";
+                  const observer = new MutationObserver(() => {
+                    const element1 = document.querySelector(selector1);
+                    if (element1) {
+                      element1.click();
+                      element1.style.display = "none";
+                    }
+                    const element2 = document.querySelector(selector2);
+                    if (element2) {
+                      element2.parentNode.removeChild(element2);
+                    }
+                    if (element1 && element2) {
+                      observer.disconnect();
+                    }
+                  });
+                  observer.observe(document, { childList: true, subtree: true });
+                  setTimeout(() => observer.disconnect(), 10000);
+                }
+              }).catch(() => {});
+              finish();
             }
           };
 
@@ -4134,20 +4165,47 @@ async function processCommand(lastEntry) {
           chrome.tabs.update(activeTab.id, { url: lastEntry.url });
 
           let confirmed = false;
-          const finish = () => {
+          const finish = (tabId) => {
             if (confirmed) return;
             confirmed = true;
             chrome.tabs.onUpdated.removeListener(listener);
+
+            // Inject element-hiding script (same as multi-tab openNewTab flow)
+            const targetTabId = tabId || activeTab.id;
+            chrome.scripting.executeScript({
+              target: { tabId: targetTabId },
+              func: () => {
+                const selector1 = "#content > div.l-wrapper > div.l-wrapper__holder-content.m-inherit-zindex > div > div > div > div.g-page__header.m-real-sticky.js-sticky-header.m-nowrap > div > button.m-btn-clear-draft.g-btn.m-border.m-rounded.m-sm-width.m-reset-width";
+                const selector2 = "#content > div.l-wrapper > div > div > div > div > div.stories-list.g-negative-sides-gaps";
+                const observer = new MutationObserver(() => {
+                  const element1 = document.querySelector(selector1);
+                  if (element1) {
+                    element1.click();
+                    element1.style.display = "none";
+                  }
+                  const element2 = document.querySelector(selector2);
+                  if (element2) {
+                    element2.parentNode.removeChild(element2);
+                  }
+                  if (element1 && element2) {
+                    observer.disconnect();
+                  }
+                });
+                observer.observe(document, { childList: true, subtree: true });
+                setTimeout(() => observer.disconnect(), 10000);
+              }
+            }).catch(() => {});
+
             sendWsConfirm(lastEntry.cmdId, currentBrowserNumber);
           };
 
           const listener = (tabId, changeInfo, tab) => {
             if (tabId === activeTab.id && changeInfo.status === 'complete') {
-              finish();
+              finish(tabId);
             }
           };
           chrome.tabs.onUpdated.addListener(listener);
-          setTimeout(finish, 15000); // safety fallback
+          setTimeout(() => finish(activeTab.id), 15000); // safety fallback
         } else {
           sendWsConfirm(lastEntry.cmdId, currentBrowserNumber);
         }
@@ -6569,21 +6627,19 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
     return new Promise((resolve) => setTimeout(resolve, time));
   }
 
-  // In single-tab mode, stop retrying only AFTER the page returns to /posts/create
-  // following a trip through /my/queue (i.e., after instantPost completes the full cycle).
+
   let singleTabDone = false;
+  let singleTabWentAway = false;
   if (singleTabMode) {
-    let singleTabWentAway = false;
     const navPollId = setInterval(() => {
       const isOnCreate = window.location.href.includes('/posts/create');
       if (!isOnCreate) {
         singleTabWentAway = true;
       } else if (singleTabWentAway && isOnCreate) {
-        // Returned to /posts/create after being on /my/queue — post cycle is done
         singleTabDone = true;
         clearInterval(navPollId);
       }
-    }, 200);
+    }, 50);
   }
 
   if (!singleTabMode) {
@@ -6601,8 +6657,13 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
   }
 
   function intervalFunc() {
-    // In single-tab mode, stop retrying once the page navigated away
-    if (singleTabMode && singleTabDone) return;
+
+    if (singleTabMode) {
+      if (singleTabWentAway && window.location.href.includes('/posts/create')) {
+        singleTabDone = true;
+      }
+      if (singleTabDone) return;
+    }
 
     chrome.storage.local.get(["isPaused", `blacklisted_${tab.id}`], async function (data) {
       if (data.isPaused) {
