@@ -2735,7 +2735,7 @@ async function processCommand(lastEntry) {
   };
 
   const result = await chrome.storage.local.get(null);
-  const instantPost = result.postChecked;
+  const instantPost = result.postChecked !== false;
   currentBrowserNumber = await getMyBrowserNumber();
 
   try {
@@ -2792,6 +2792,153 @@ async function processCommand(lastEntry) {
           args: [lastEntry]
         }).catch(() => { });
       });
+      return;
+    }
+
+    if (lastEntry.action === "RUN_GLOBAL_STATS") {
+      try {
+        const urls = [
+          "https://onlyfans.com/my/statistics/reach/trial-links",
+          "https://onlyfans.com/my/statistics/fans/subscriptions",
+          "https://onlyfans.com/my/statistics/reach/tracking-links"
+        ];
+
+        const tabs = await Promise.all(urls.map(url => new Promise(resolve => {
+          chrome.tabs.create({ url, active: false }, tab => {
+            chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
+              if (tabId === tab.id && info.status === 'complete') {
+                chrome.tabs.onUpdated.removeListener(listener);
+                resolve(tab);
+              }
+            });
+          });
+        })));
+
+        const extractStats = async () => {
+          const wait = (ms) => new Promise(r => setTimeout(r, ms));
+
+          let dropdownBtn = null;
+          for (let i = 0; i < 20; i++) {
+            dropdownBtn = document.querySelector('button.dropdown-toggle.b-holder-options');
+            if (dropdownBtn) break;
+            await wait(500);
+          }
+          if (!dropdownBtn) return 0;
+          dropdownBtn.click();
+
+          let customItem = null;
+          for (let i = 0; i < 20; i++) {
+            customItem = Array.from(document.querySelectorAll('.v-list-item')).find(el => el.textContent.trim() === 'Custom');
+            if (customItem) break;
+            await wait(500);
+          }
+          if (!customItem) return 0;
+          customItem.click();
+
+          const today = new Date();
+          const yesterday = new Date(today);
+          yesterday.setDate(yesterday.getDate() - 1);
+
+          const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+          const expectedMonthStr = monthNames[yesterday.getMonth()] + " " + yesterday.getFullYear();
+          const expectedDayStr = String(yesterday.getDate());
+
+          let dateClicked = false;
+          for (let i = 0; i < 20; i++) {
+            await wait(500);
+            const timeSpan = document.querySelector('.b-streaks-swither__time');
+            if (!timeSpan) continue;
+
+            const currentMonthStr = timeSpan.textContent.trim();
+            if (currentMonthStr === expectedMonthStr) {
+              const dayCells = Array.from(document.querySelectorAll('.v-calendar-weekly__day:not(.v-outside)'));
+              const targetCell = dayCells.find(cell => {
+                const span = cell.querySelector('.v-calendar-weekly__day-label span');
+                return span && span.textContent.trim() === expectedDayStr;
+              });
+
+              if (targetCell) {
+                targetCell.click();
+                await wait(200);
+                targetCell.click();
+                dateClicked = true;
+                break;
+              }
+            } else {
+              const leftArrow = document.querySelector('.b-streaks-swither__btn:first-child button');
+              if (leftArrow && !leftArrow.disabled) {
+                leftArrow.click();
+              } else {
+                break;
+              }
+            }
+          }
+
+          if (!dateClicked) return 0;
+
+          const applyBtn = document.querySelector('.vdatetime-popup__actions__button--confirm button');
+          if (applyBtn) {
+            applyBtn.click();
+          } else {
+            return 0;
+          }
+
+          await wait(1000);
+
+          for (let i = 0; i < 30; i++) {
+            const emptyMsg = document.querySelector('.empty-message');
+            if (emptyMsg && emptyMsg.offsetParent !== null) return 0;
+
+            const items = document.querySelectorAll('.b-engagements-summary__item');
+            if (items.length > 0) {
+              const text = items[0].textContent;
+              const num = parseInt(text.replace(/[^0-9]/g, ''), 10);
+              return isNaN(num) ? 0 : num;
+            }
+            await wait(200);
+          }
+          return 0;
+        };
+
+        const results = await Promise.all(tabs.map(tab => new Promise(resolve => {
+          chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: extractStats
+          }, (injectionResults) => {
+            let val = 0;
+            if (injectionResults && injectionResults[0] && typeof injectionResults[0].result === 'number') {
+              val = injectionResults[0].result;
+            }
+            chrome.tabs.remove(tab.id);
+            resolve(val);
+          });
+        })));
+
+        const [left, center, right] = results;
+        const net = center - left - right;
+
+        chrome.windows.getCurrent({ populate: true }, (currentWindow) => {
+          const activeTab = currentWindow && currentWindow.tabs && currentWindow.tabs.find(t => t.active);
+          if (activeTab) {
+            chrome.tabs.sendMessage(activeTab.id, {
+              action: "STATS_COLLECTION_FINISHED",
+              success: true,
+              data: { net, center, left, right }
+            });
+          }
+        });
+      } catch (e) {
+        console.error("collectStats error", e);
+        chrome.windows.getCurrent({ populate: true }, (currentWindow) => {
+          const activeTab = currentWindow && currentWindow.tabs && currentWindow.tabs.find(t => t.active);
+          if (activeTab) {
+            chrome.tabs.sendMessage(activeTab.id, {
+              action: "STATS_COLLECTION_FINISHED",
+              success: false
+            });
+          }
+        });
+      }
       return;
     }
 
@@ -3902,7 +4049,7 @@ async function processCommand(lastEntry) {
             }
 
             if (hasNavigatedAway && changeInfo.status === 'complete' &&
-                tab && tab.url && tab.url.includes('/posts/create')) {
+              tab && tab.url && tab.url.includes('/posts/create')) {
               // Inject element-hiding script after page fully loaded
               chrome.scripting.executeScript({
                 target: { tabId: activeTab.id },
@@ -3926,7 +4073,7 @@ async function processCommand(lastEntry) {
                   observer.observe(document, { childList: true, subtree: true });
                   setTimeout(() => observer.disconnect(), 10000);
                 }
-              }).catch(() => {});
+              }).catch(() => { });
               finish();
             }
           };
@@ -4194,7 +4341,7 @@ async function processCommand(lastEntry) {
                 observer.observe(document, { childList: true, subtree: true });
                 setTimeout(() => observer.disconnect(), 10000);
               }
-            }).catch(() => {});
+            }).catch(() => { });
 
             sendWsConfirm(lastEntry.cmdId, currentBrowserNumber);
           };
@@ -5690,12 +5837,74 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           let fakeColors = createFakeColorsButton(container2);
           let fakeMakeButton = createFakeMakeButton(document.body);
 
-          updatePostIndicator(postIndicatorButton);
+          postIndicatorButton.style.background = "#2D9B37";
+          postIndicatorButton.innerHTML = "";
           updateFakeIndicator(fakeColors);
 
           postIndicatorButton.addEventListener("click", async () => {
-            await togglePostIndicator();
-            await updatePostIndicator(postIndicatorButton);
+            if (postIndicatorButton.dataset.loading === "true") return;
+            postIndicatorButton.dataset.loading = "true";
+            postIndicatorButton.style.opacity = "0.5";
+            try {
+              await fetch("http://localhost:3000/fake", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "RUN_GLOBAL_STATS" })
+              });
+            } catch (e) { }
+          });
+
+          chrome.runtime.onMessage.addListener((msg) => {
+            if (msg.action === "STATS_COLLECTION_FINISHED") {
+              postIndicatorButton.dataset.loading = "false";
+              postIndicatorButton.style.opacity = "1";
+
+              if (msg.success) {
+                const { net, center, left, right } = msg.data;
+
+                let statsWidget = document.getElementById("ofh-stats-widget");
+                if (!statsWidget) {
+                  statsWidget = document.createElement("div");
+                  statsWidget.id = "ofh-stats-widget";
+                  Object.assign(statsWidget.style, {
+                    position: "fixed",
+                    left: "5px",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    zIndex: "10000",
+                    width: "120px",
+                    height: "80px"
+                  });
+                  document.body.appendChild(statsWidget);
+                }
+
+                statsWidget.innerHTML = `
+                  <div style="display: flex; flex-direction: row; align-items: stretch; width: 100%; height: 100%; font-family: 'Josefin Sans', sans-serif; background: #222; border-radius: 8px; overflow: hidden; border: 1px solid #444; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+                    <div style="flex: 1.2; display: flex; align-items: center; justify-content: center; font-size: 32px; color: #ff9900; font-weight: bold; border-right: 1px solid #444; background: #1a1a1a; padding: 0 5px;">
+                      ${net}
+                    </div>
+                    <div style="flex: 1; display: flex; flex-direction: column;">
+                      <div style="flex: 0.7; display: flex; align-items: center; justify-content: center; font-size: 20px; color: #fff; border-bottom: 1px solid #444; background: #2a2a2a;">
+                        ${center}
+                      </div>
+                      <div style="flex: 0.3; display: flex; flex-direction: row;">
+                        <div style="flex: 1; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #aaa; border-right: 1px solid #444; background: #222;">
+                          ${left}
+                        </div>
+                        <div style="flex: 1; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #aaa; background: #222;">
+                          ${right}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                `;
+              } else {
+                postIndicatorButton.style.background = "#DD6D55";
+                setTimeout(() => {
+                  postIndicatorButton.style.background = "#2D9B37";
+                }, 2000);
+              }
+            }
           });
           fakeColors.addEventListener("click", async () => {
             await toggleFakeIndicator();
@@ -6207,6 +6416,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     })();
     return true;
   }
+
 
   if (request.action === 'checkTab') {
     (async () => {
