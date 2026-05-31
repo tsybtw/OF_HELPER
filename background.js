@@ -2772,6 +2772,45 @@ async function processCommand(lastEntry) {
       return;
     }
 
+    if (lastEntry.type === "stats-settings-update") {
+      const updates = {};
+      for (const [key, val] of Object.entries(lastEntry.data || {})) {
+        if (key.startsWith('statsSettings_')) updates[key] = val;
+      }
+      chrome.storage.local.set(updates);
+
+      chrome.windows.getCurrent({ populate: true }, (currentWindow) => {
+        const activeTab = currentWindow && currentWindow.tabs && currentWindow.tabs.find(t => t.active);
+        if (!activeTab) return;
+        chrome.scripting.executeScript({
+          target: { tabId: activeTab.id },
+          func: (serverSettings) => {
+            const menu = document.getElementById('stats-settings-menu');
+            if (!menu) return;
+            chrome.storage.local.get(null, (items) => {
+              const activeBrowser = Object.keys(items)
+                .filter(key => key.startsWith('browser') && key.endsWith('Checked') && items[key])
+                .map(key => parseInt(key.match(/\d+/)[0]))[0] || 1;
+              const storageKey = `statsSettings_${activeBrowser}`;
+              const mySettings = serverSettings[storageKey];
+              if (mySettings) {
+                const ownCb = document.getElementById('cb-own-track');
+                const renCb = document.getElementById('cb-renews');
+                if (ownCb) ownCb.checked = mySettings.subtractOwnTracking || false;
+                if (renCb) renCb.checked = mySettings.subtractRenews || false;
+                if (window.renderStatsList) {
+                  window.currentStatsList = mySettings.trackingNames || [];
+                  window.renderStatsList();
+                }
+              }
+            });
+          },
+          args: [lastEntry.data]
+        }).catch(() => { });
+      });
+      return;
+    }
+
     if (lastEntry.type === "stories-settings-update") {
 
       chrome.windows.getCurrent({ populate: true }, (currentWindow) => {
@@ -2797,25 +2836,35 @@ async function processCommand(lastEntry) {
 
     if (lastEntry.action === "RUN_GLOBAL_STATS") {
       try {
-        const urls = [
-          "https://onlyfans.com/my/statistics/reach/trial-links",
-          "https://onlyfans.com/my/statistics/fans/subscriptions",
-          "https://onlyfans.com/my/statistics/reach/tracking-links"
+        const settingsKey = `statsSettings_${currentBrowserNumber}`;
+        const settingsResult = await chrome.storage.local.get([settingsKey]);
+        const settings = settingsResult[settingsKey] || { trackingNames: [], subtractOwnTracking: false, subtractRenews: false };
+
+        const tabConfig = [
+          { type: 'left', url: "https://onlyfans.com/my/statistics/reach/trial-links" },
+          { type: 'center', url: "https://onlyfans.com/my/statistics/fans/subscriptions" },
+          { type: 'right', url: "https://onlyfans.com/my/statistics/reach/tracking-links" }
         ];
 
-        const tabs = await Promise.all(urls.map(url => new Promise(resolve => {
-          chrome.tabs.create({ url, active: false }, tab => {
+        const tabs = await Promise.all(tabConfig.map(config => new Promise(resolve => {
+          chrome.tabs.create({ url: config.url, active: false }, tab => {
             chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
               if (tabId === tab.id && info.status === 'complete') {
                 chrome.tabs.onUpdated.removeListener(listener);
-                resolve(tab);
+                resolve({ tab, type: config.type });
               }
             });
           });
         })));
 
-        const extractStats = async () => {
+        const extractStats = async (type, settings) => {
           const wait = (ms) => new Promise(r => setTimeout(r, ms));
+
+          const returnZero = () => {
+            if (type === 'center') return { total: 0, renews: 0 };
+            if (type === 'right') return { total: 0, addedTracking: 0 };
+            return 0;
+          };
 
           let dropdownBtn = null;
           for (let i = 0; i < 20; i++) {
@@ -2823,7 +2872,7 @@ async function processCommand(lastEntry) {
             if (dropdownBtn) break;
             await wait(500);
           }
-          if (!dropdownBtn) return 0;
+          if (!dropdownBtn) return returnZero();
           dropdownBtn.click();
 
           let customItem = null;
@@ -2832,7 +2881,7 @@ async function processCommand(lastEntry) {
             if (customItem) break;
             await wait(500);
           }
-          if (!customItem) return 0;
+          if (!customItem) return returnZero();
           customItem.click();
 
           const today = new Date();
@@ -2874,48 +2923,113 @@ async function processCommand(lastEntry) {
             }
           }
 
-          if (!dateClicked) return 0;
+          if (!dateClicked) return returnZero();
 
           const applyBtn = document.querySelector('.vdatetime-popup__actions__button--confirm button');
           if (applyBtn) {
             applyBtn.click();
           } else {
-            return 0;
+            return returnZero();
           }
 
           await wait(1000);
 
+          let total = 0;
           for (let i = 0; i < 30; i++) {
             const emptyMsg = document.querySelector('.empty-message');
-            if (emptyMsg && emptyMsg.offsetParent !== null) return 0;
+            if (emptyMsg && emptyMsg.offsetParent !== null) break;
 
             const items = document.querySelectorAll('.b-engagements-summary__item');
             if (items.length > 0) {
               const text = items[0].textContent;
               const num = parseInt(text.replace(/[^0-9]/g, ''), 10);
-              return isNaN(num) ? 0 : num;
+              total = isNaN(num) ? 0 : num;
+              break;
             }
             await wait(200);
           }
-          return 0;
+
+          if (type === 'left') {
+            return total;
+          }
+
+          if (type === 'center') {
+            let renews = 0;
+            const renewsBtn = document.getElementById('Renews');
+            if (renewsBtn) {
+              renewsBtn.click();
+              await wait(1000);
+              for (let i = 0; i < 30; i++) {
+                const emptyMsg = document.querySelector('.empty-message');
+                if (emptyMsg && emptyMsg.offsetParent !== null) break;
+
+                const items = document.querySelectorAll('.b-engagements-summary__item');
+                if (items.length > 0) {
+                  const text = items[0].textContent;
+                  const num = parseInt(text.replace(/[^0-9]/g, ''), 10);
+                  renews = isNaN(num) ? 0 : num;
+                  break;
+                }
+                await wait(200);
+              }
+            }
+            return { total, renews };
+          }
+
+          if (type === 'right') {
+            let addedTracking = 0;
+            const trackingNames = settings.trackingNames || [];
+            if (trackingNames.length > 0) {
+              const rows = document.querySelectorAll('.b-table tbody tr.m-responsive__justify-between');
+              rows.forEach(row => {
+                const strong = row.querySelector('strong');
+                if (strong && trackingNames.includes(strong.textContent.trim())) {
+                  const tds = row.querySelectorAll('td');
+                  if (tds.length > 0) {
+                    const lastTd = tds[tds.length - 1];
+                    const num = parseInt(lastTd.textContent.replace(/[^0-9]/g, ''), 10);
+                    if (!isNaN(num)) {
+                      addedTracking += num;
+                    }
+                  }
+                }
+              });
+            }
+            return { total, addedTracking };
+          }
         };
 
-        const results = await Promise.all(tabs.map(tab => new Promise(resolve => {
+        const results = await Promise.all(tabs.map(({ tab, type }) => new Promise(resolve => {
           chrome.scripting.executeScript({
             target: { tabId: tab.id },
-            func: extractStats
+            func: extractStats,
+            args: [type, settings]
           }, (injectionResults) => {
-            let val = 0;
-            if (injectionResults && injectionResults[0] && typeof injectionResults[0].result === 'number') {
+            let val = type === 'left' ? 0 : (type === 'center' ? { total: 0, renews: 0 } : { total: 0, addedTracking: 0 });
+            if (injectionResults && injectionResults[0] && injectionResults[0].result !== undefined) {
               val = injectionResults[0].result;
             }
             chrome.tabs.remove(tab.id);
-            resolve(val);
+            resolve({ type, val });
           });
         })));
 
-        const [left, center, right] = results;
-        const net = center - left - right;
+        const leftResult = results.find(r => r.type === 'left').val;
+        const centerResult = results.find(r => r.type === 'center').val;
+        const rightResult = results.find(r => r.type === 'right').val;
+
+        let net = centerResult.total - leftResult - rightResult.total;
+        if (settings.subtractOwnTracking) net -= rightResult.addedTracking;
+        if (settings.subtractRenews) net -= centerResult.renews;
+
+        const payload = {
+          net,
+          center: centerResult.total,
+          renews: centerResult.renews,
+          right: rightResult.total,
+          addedTracking: rightResult.addedTracking,
+          left: leftResult
+        };
 
         chrome.windows.getCurrent({ populate: true }, (currentWindow) => {
           const activeTab = currentWindow && currentWindow.tabs && currentWindow.tabs.find(t => t.active);
@@ -2923,7 +3037,7 @@ async function processCommand(lastEntry) {
             chrome.tabs.sendMessage(activeTab.id, {
               action: "STATS_COLLECTION_FINISHED",
               success: true,
-              data: { net, center, left, right }
+              data: payload
             });
           }
         });
@@ -5841,6 +5955,303 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           postIndicatorButton.innerHTML = "";
           updateFakeIndicator(fakeColors);
 
+          function createStatsSettingsMenu() {
+            if (document.getElementById('stats-settings-menu')) return;
+
+            const menu = document.createElement('div');
+            menu.id = 'stats-settings-menu';
+            Object.assign(menu.style, {
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              backgroundColor: 'rgba(28, 28, 28, 0.95)',
+              border: '2px solid #000',
+              borderRadius: '10px',
+              padding: '20px',
+              zIndex: '2147483647',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '15px',
+              color: 'white',
+              fontFamily: "'Josefin Sans', sans-serif",
+              boxShadow: '0 4px 15px rgba(0,0,0,0.5)',
+              minWidth: '280px'
+            });
+
+            const title = document.createElement('div');
+            title.textContent = 'Stats Settings';
+            title.style.textAlign = 'center';
+            title.style.fontSize = '18px';
+            title.style.marginBottom = '5px';
+            menu.appendChild(title);
+
+            // Checkboxes
+            const createCheckbox = (id, labelText) => {
+              const wrapper = document.createElement('div');
+              Object.assign(wrapper.style, {
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '10px',
+                marginBottom: '5px'
+              });
+
+              const label = document.createElement('label');
+              label.htmlFor = id;
+              label.textContent = labelText;
+              label.style.fontSize = '15px';
+              label.style.color = '#fff';
+              label.style.cursor = 'pointer';
+              label.style.margin = '0';
+              label.style.lineHeight = '1';
+
+              const cb = document.createElement('input');
+              cb.type = 'checkbox';
+              cb.id = id;
+              Object.assign(cb.style, {
+                width: '18px',
+                height: '18px',
+                cursor: 'pointer',
+                accentColor: 'rgb(221, 109, 85)',
+                margin: '0'
+              });
+
+              wrapper.appendChild(label);
+              wrapper.appendChild(cb);
+              return { wrapper, cb };
+            };
+
+            const ownTrackCb = createCheckbox('cb-own-track', 'Subtract own tracking');
+            const renewsCb = createCheckbox('cb-renews', 'Subtract renews');
+
+            menu.appendChild(ownTrackCb.wrapper);
+            menu.appendChild(renewsCb.wrapper);
+
+            // Tracking links
+            const addWrapper = document.createElement('div');
+            addWrapper.style.display = 'flex';
+            addWrapper.style.gap = '5px';
+
+            const addInput = document.createElement('input');
+            addInput.type = 'text';
+            addInput.placeholder = 'Link name (e.g. test)';
+            Object.assign(addInput.style, {
+              flex: '1',
+              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+              border: '1px solid #444',
+              borderRadius: '5px',
+              padding: '8px',
+              color: 'white',
+              fontFamily: "'Josefin Sans', sans-serif",
+              outline: 'none'
+            });
+
+            const addBtn = document.createElement('button');
+            addBtn.textContent = 'Add';
+            Object.assign(addBtn.style, {
+              padding: '8px 15px',
+              borderRadius: '5px',
+              border: 'none',
+              backgroundColor: 'rgb(221, 109, 85)',
+              color: 'white',
+              cursor: 'pointer',
+              fontFamily: "'Josefin Sans', sans-serif",
+              fontSize: '14px',
+              transition: 'background 0.3s'
+            });
+            addBtn.onmouseover = () => addBtn.style.backgroundColor = '#e38571';
+            addBtn.onmouseout = () => addBtn.style.backgroundColor = 'rgb(221, 109, 85)';
+
+            addWrapper.appendChild(addInput);
+            addWrapper.appendChild(addBtn);
+            menu.appendChild(addWrapper);
+
+            const listContainer = document.createElement('div');
+            Object.assign(listContainer.style, {
+              maxHeight: '100px',
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '5px'
+            });
+            menu.appendChild(listContainer);
+
+            // Save & Sync
+            const actionWrapper = document.createElement('div');
+            actionWrapper.style.display = 'flex';
+            actionWrapper.style.gap = '10px';
+            actionWrapper.style.marginTop = '10px';
+
+            const syncBtn = document.createElement('button');
+            syncBtn.textContent = 'Sync All';
+            Object.assign(syncBtn.style, {
+              flex: '1', padding: '8px', borderRadius: '5px', border: 'none',
+              backgroundColor: 'rgb(221, 109, 85)', color: 'white', cursor: 'pointer',
+              fontFamily: "'Josefin Sans', sans-serif", fontSize: '14px', transition: 'background 0.3s'
+            });
+            syncBtn.onmouseover = () => syncBtn.style.backgroundColor = '#e38571';
+            syncBtn.onmouseout = () => syncBtn.style.backgroundColor = 'rgb(221, 109, 85)';
+
+            actionWrapper.appendChild(syncBtn);
+            menu.appendChild(actionWrapper);
+
+            const closeMenuBtn = document.createElement('button');
+            closeMenuBtn.textContent = 'Close';
+            Object.assign(closeMenuBtn.style, {
+              marginTop: '5px',
+              padding: '8px',
+              backgroundColor: 'rgb(221, 109, 85)',
+              border: 'none',
+              borderRadius: '5px',
+              color: 'white',
+              cursor: 'pointer',
+              fontFamily: "'Josefin Sans', sans-serif",
+              fontSize: '14px',
+              transition: 'background 0.3s'
+            });
+            closeMenuBtn.onmouseover = () => closeMenuBtn.style.backgroundColor = '#e38571';
+            closeMenuBtn.onmouseout = () => closeMenuBtn.style.backgroundColor = 'rgb(221, 109, 85)';
+            closeMenuBtn.addEventListener('click', () => {
+              menu.remove();
+            });
+            menu.appendChild(closeMenuBtn);
+
+            document.body.appendChild(menu);
+
+            const clickOutside = (e) => {
+              if (!menu.contains(e.target) && e.target !== menu) {
+                menu.remove();
+                document.removeEventListener('mousedown', clickOutside);
+              }
+            };
+            setTimeout(() => document.addEventListener('mousedown', clickOutside), 0);
+
+            // Async data loading
+            chrome.storage.local.get(null, (items) => {
+              const activeBrowser = Object.keys(items)
+                .filter(key => key.startsWith('browser') && key.endsWith('Checked') && items[key])
+                .map(key => parseInt(key.match(/\d+/)[0]))[0] || 1;
+
+              const storageKey = `statsSettings_${activeBrowser}`;
+              
+              let currentList = [];
+
+              const applySettings = (settings) => {
+                ownTrackCb.cb.checked = settings.subtractOwnTracking || false;
+                renewsCb.cb.checked = settings.subtractRenews || false;
+                currentList = settings.trackingNames || [];
+                window.currentStatsList = currentList;
+                if (window.renderStatsList) window.renderStatsList();
+              };
+
+              const localSettings = items[storageKey];
+              if (localSettings) applySettings(localSettings);
+
+              fetch('http://localhost:3000/stats-settings')
+                .then(r => r.json())
+                .then(data => {
+                  if (data && data[storageKey]) {
+                    applySettings(data[storageKey]);
+                    chrome.storage.local.set({ [storageKey]: data[storageKey] });
+                  }
+                }).catch(() => {});
+
+              const saveData = () => {
+                const newSettings = {
+                  trackingNames: currentList,
+                  subtractOwnTracking: ownTrackCb.cb.checked,
+                  subtractRenews: renewsCb.cb.checked
+                };
+                chrome.storage.local.set({ [storageKey]: newSettings });
+                
+                fetch('http://localhost:3000/stats-settings', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ browserId: activeBrowser, settings: newSettings })
+                }).catch(() => { });
+              };
+
+              ownTrackCb.cb.addEventListener('change', saveData);
+              renewsCb.cb.addEventListener('change', saveData);
+
+              window.currentStatsList = currentList;
+              window.renderStatsList = () => {
+                listContainer.innerHTML = '';
+                window.currentStatsList.forEach((name, index) => {
+                  const item = document.createElement('div');
+                  Object.assign(item.style, {
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    background: 'rgba(255,255,255,0.05)',
+                    padding: '5px 8px',
+                    borderRadius: '4px',
+                    fontSize: '13px'
+                  });
+                  const nameSpan = document.createElement('span');
+                  nameSpan.textContent = name;
+                  const delBtn = document.createElement('button');
+                  delBtn.textContent = 'x';
+                  Object.assign(delBtn.style, {
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#DD6D55',
+                    cursor: 'pointer',
+                    fontWeight: 'bold'
+                  });
+                  delBtn.onclick = () => {
+                    window.currentStatsList.splice(index, 1);
+                    currentList = window.currentStatsList;
+                    window.renderStatsList();
+                    saveData();
+                  };
+                  item.appendChild(nameSpan);
+                  item.appendChild(delBtn);
+                  listContainer.appendChild(item);
+                });
+              };
+              window.renderStatsList();
+
+              addBtn.onclick = () => {
+                const val = addInput.value.trim();
+                if (val && !window.currentStatsList.includes(val)) {
+                  window.currentStatsList.push(val);
+                  currentList = window.currentStatsList;
+                  addInput.value = '';
+                  window.renderStatsList();
+                  saveData();
+                }
+              };
+
+              syncBtn.onclick = () => {
+                const newSettings = {
+                  trackingNames: currentList,
+                  subtractOwnTracking: ownTrackCb.cb.checked,
+                  subtractRenews: renewsCb.cb.checked
+                };
+                fetch('http://localhost:3000/stats-settings', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ syncAll: true, settings: newSettings })
+                }).then(() => {
+                  syncBtn.textContent = 'Synced!';
+                  setTimeout(() => { syncBtn.textContent = 'Sync All'; }, 1500);
+                }).catch(() => { });
+              };
+            });
+          }
+
+          postIndicatorButton.addEventListener("mousedown", (e) => {
+            if (e.button === 2) {
+              e.preventDefault();
+              createStatsSettingsMenu();
+            }
+          });
+          postIndicatorButton.addEventListener("contextmenu", (e) => {
+            e.preventDefault();
+          });
+
           postIndicatorButton.addEventListener("click", async () => {
             if (postIndicatorButton.dataset.loading === "true") return;
             postIndicatorButton.dataset.loading = "true";
@@ -5872,29 +6283,37 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
                     top: "50%",
                     transform: "translateY(-50%)",
                     zIndex: "10000",
-                    width: "120px",
-                    height: "80px"
+                    width: "max-content",
+                    height: "auto"
                   });
                   document.body.appendChild(statsWidget);
                 }
 
                 statsWidget.innerHTML = `
-                  <div style="display: flex; flex-direction: row; align-items: stretch; width: 100%; height: 100%; font-family: 'Josefin Sans', sans-serif; background: #222; border-radius: 8px; overflow: hidden; border: 1px solid #444; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
-                    <div style="flex: 1.2; display: flex; align-items: center; justify-content: center; font-size: 32px; color: #ff9900; font-weight: bold; border-right: 1px solid #444; background: #1a1a1a; padding: 0 5px;">
-                      ${net}
+                  <div style="font-family: 'Josefin Sans', sans-serif; background: rgba(28, 28, 28, 0.95); border-radius: 8px; border: 1px solid #444; box-shadow: 0 4px 15px rgba(0,0,0,0.5); padding: 10px; display: flex; flex-direction: column; gap: 6px; color: #fff; font-size: 14px;">
+                    <div style="display: flex; justify-content: space-between; gap: 20px;">
+                      <span style="font-weight: bold; color: #4CAF50;">${msg.data.center}</span>
+                      <span style="color: #ccc;">Total</span>
                     </div>
-                    <div style="flex: 1; display: flex; flex-direction: column;">
-                      <div style="flex: 0.7; display: flex; align-items: center; justify-content: center; font-size: 20px; color: #fff; border-bottom: 1px solid #444; background: #2a2a2a;">
-                        ${center}
-                      </div>
-                      <div style="flex: 0.3; display: flex; flex-direction: row;">
-                        <div style="flex: 1; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #aaa; border-right: 1px solid #444; background: #222;">
-                          ${left}
-                        </div>
-                        <div style="flex: 1; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #aaa; background: #222;">
-                          ${right}
-                        </div>
-                      </div>
+                    <div style="display: flex; justify-content: space-between; gap: 20px;">
+                      <span style="font-weight: bold; color: #ff9900;">${msg.data.net}</span>
+                      <span style="color: #ccc;">Net</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; gap: 20px;">
+                      <span style="font-weight: bold; color: #2196F3;">${msg.data.renews}</span>
+                      <span style="color: #ccc;">Renews</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; gap: 20px;">
+                      <span style="font-weight: bold;">${msg.data.right}</span>
+                      <span style="color: #ccc;">Tracking</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; gap: 20px;">
+                      <span style="font-weight: bold;">${msg.data.left}</span>
+                      <span style="color: #ccc;">Trial</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; gap: 20px;">
+                      <span style="font-weight: bold; color: #E91E63;">${msg.data.addedTracking}</span>
+                      <span style="color: #ccc;">Added Tracking</span>
                     </div>
                   </div>
                 `;
