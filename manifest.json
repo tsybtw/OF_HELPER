@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "OF HELPER",
-  "version": "198",
+  "version": "199",
   "description": "By @yen_ofsfs",
   "permissions": [
     "activeTab",
@@ -21,6 +21,7 @@
     {
       "resources": [
         "inject.js",
+        "network_interceptor.js",
         "server/crop/images/*",
         "server/files/*",
         "offscreen.html",
@@ -35,6 +36,13 @@
     "default_popup": "popup.html",
     "default_title": "OF HELPER"
   },
+  "content_scripts": [
+    {
+      "matches": ["*://onlyfans.com/*"],
+      "js": ["content_interceptor.js"],
+      "run_at": "document_start"
+    }
+  ],
   "background": {
     "service_worker": "background.js"
   },

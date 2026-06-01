@@ -1468,9 +1468,8 @@ async function fetchAndPasteBind() {
         if (node.nodeType === Node.TEXT_NODE) text += node.textContent + " ";
         else text += node.innerText + " ";
       });
-      const words = text.split(/\s+/);
-      const usernameWord = words.find((word) => word.startsWith("@"));
-      if (usernameWord) return usernameWord.replace(/[.,!?]$/, "");
+      const match = text.match(/@[a-zA-Z0-9._-]+/);
+      if (match) return match[0].replace(/[.,!?]$/, "");
     } catch (e) { }
     return null;
   };
@@ -2773,41 +2772,6 @@ async function processCommand(lastEntry) {
     }
 
     if (lastEntry.type === "stats-settings-update") {
-      const updates = {};
-      for (const [key, val] of Object.entries(lastEntry.data || {})) {
-        if (key.startsWith('statsSettings_')) updates[key] = val;
-      }
-      chrome.storage.local.set(updates);
-
-      chrome.windows.getCurrent({ populate: true }, (currentWindow) => {
-        const activeTab = currentWindow && currentWindow.tabs && currentWindow.tabs.find(t => t.active);
-        if (!activeTab) return;
-        chrome.scripting.executeScript({
-          target: { tabId: activeTab.id },
-          func: (serverSettings) => {
-            const menu = document.getElementById('stats-settings-menu');
-            if (!menu) return;
-            chrome.storage.local.get(null, (items) => {
-              const activeBrowser = Object.keys(items)
-                .filter(key => key.startsWith('browser') && key.endsWith('Checked') && items[key])
-                .map(key => parseInt(key.match(/\d+/)[0]))[0] || 1;
-              const storageKey = `statsSettings_${activeBrowser}`;
-              const mySettings = serverSettings[storageKey];
-              if (mySettings) {
-                const ownCb = document.getElementById('cb-own-track');
-                const renCb = document.getElementById('cb-renews');
-                if (ownCb) ownCb.checked = mySettings.subtractOwnTracking || false;
-                if (renCb) renCb.checked = mySettings.subtractRenews || false;
-                if (window.renderStatsList) {
-                  window.currentStatsList = mySettings.trackingNames || [];
-                  window.renderStatsList();
-                }
-              }
-            });
-          },
-          args: [lastEntry.data]
-        }).catch(() => { });
-      });
       return;
     }
 
@@ -2836,7 +2800,7 @@ async function processCommand(lastEntry) {
 
     if (lastEntry.action === "RUN_GLOBAL_STATS") {
       try {
-        const settingsKey = `statsSettings_${currentBrowserNumber}`;
+        const settingsKey = `statsSettings`;
         const settingsResult = await chrome.storage.local.get([settingsKey]);
         const settings = settingsResult[settingsKey] || { trackingNames: [], subtractOwnTracking: false, subtractRenews: false };
 
@@ -2845,6 +2809,10 @@ async function processCommand(lastEntry) {
           { type: 'center', url: "https://onlyfans.com/my/statistics/fans/subscriptions" },
           { type: 'right', url: "https://onlyfans.com/my/statistics/reach/tracking-links" }
         ];
+
+        if (settings.trackingNames && settings.trackingNames.length > 0) {
+          tabConfig.push({ type: 'tracking-details', url: "https://onlyfans.com/my/settings/subscription/tracking-links" });
+        }
 
         const tabs = await Promise.all(tabConfig.map(config => new Promise(resolve => {
           chrome.tabs.create({ url: config.url, active: false }, tab => {
@@ -2862,27 +2830,32 @@ async function processCommand(lastEntry) {
 
           const returnZero = () => {
             if (type === 'center') return { total: 0, renews: 0 };
-            if (type === 'right') return { total: 0, addedTracking: 0 };
+            if (type === 'right') return { total: 0, addedTracking: 0, isBroken: false };
+            if (type === 'tracking-details') return { foundDetails: {} };
             return 0;
           };
 
-          let dropdownBtn = null;
-          for (let i = 0; i < 20; i++) {
-            dropdownBtn = document.querySelector('button.dropdown-toggle.b-holder-options');
-            if (dropdownBtn) break;
-            await wait(500);
-          }
-          if (!dropdownBtn) return returnZero();
-          dropdownBtn.click();
+          sessionStorage.removeItem('OF_NETWORK_DATA');
 
-          let customItem = null;
-          for (let i = 0; i < 20; i++) {
-            customItem = Array.from(document.querySelectorAll('.v-list-item')).find(el => el.textContent.trim() === 'Custom');
-            if (customItem) break;
-            await wait(500);
+          if (type !== 'tracking-details') {
+            let dropdownBtn = null;
+            for (let i = 0; i < 20; i++) {
+              dropdownBtn = document.querySelector('button.dropdown-toggle.b-holder-options');
+              if (dropdownBtn) break;
+              await wait(500);
+            }
+            if (!dropdownBtn) return returnZero();
+            dropdownBtn.click();
+  
+            let customItem = null;
+            for (let i = 0; i < 20; i++) {
+              customItem = Array.from(document.querySelectorAll('.v-list-item')).find(el => el.textContent.trim() === 'Custom');
+              if (customItem) break;
+              await wait(500);
+            }
+            if (!customItem) return returnZero();
+            customItem.click();
           }
-          if (!customItem) return returnZero();
-          customItem.click();
 
           const today = new Date();
           const yesterday = new Date(today);
@@ -2892,110 +2865,183 @@ async function processCommand(lastEntry) {
           const expectedMonthStr = monthNames[yesterday.getMonth()] + " " + yesterday.getFullYear();
           const expectedDayStr = String(yesterday.getDate());
 
-          let dateClicked = false;
-          for (let i = 0; i < 20; i++) {
-            await wait(500);
-            const timeSpan = document.querySelector('.b-streaks-swither__time');
-            if (!timeSpan) continue;
+          if (type !== 'tracking-details') {
+            let dateClicked = false;
+            for (let i = 0; i < 20; i++) {
+              await wait(500);
+              const timeSpan = document.querySelector('.b-streaks-swither__time');
+              if (!timeSpan) continue;
+  
+              const currentMonthStr = timeSpan.textContent.trim();
+              if (currentMonthStr === expectedMonthStr) {
+                const dayCells = Array.from(document.querySelectorAll('.v-calendar-weekly__day:not(.v-outside)'));
+                const targetCell = dayCells.find(cell => {
+                  const span = cell.querySelector('.v-calendar-weekly__day-label span');
+                  return span && span.textContent.trim() === expectedDayStr;
+                });
+  
+                if (targetCell) {
+                  targetCell.click();
+                  await wait(500);
+                  
+                  // After clicking the start date, the DOM might re-render, so we query again
+                  const newTimeSpan = document.querySelector('.b-streaks-swither__time');
+                  if (newTimeSpan && newTimeSpan.textContent.trim() !== expectedMonthStr) {
+                    // Just in case it jumped to another month
+                    const arrows = document.querySelectorAll('.b-streaks-swither__btn button');
+                    const cDate = new Date(newTimeSpan.textContent.trim());
+                    const eDate = new Date(expectedMonthStr);
+                    if (cDate < eDate && arrows[1] && !arrows[1].disabled) arrows[1].click();
+                    else if (cDate > eDate && arrows[0] && !arrows[0].disabled) arrows[0].click();
+                    await wait(500);
+                  }
 
-            const currentMonthStr = timeSpan.textContent.trim();
-            if (currentMonthStr === expectedMonthStr) {
-              const dayCells = Array.from(document.querySelectorAll('.v-calendar-weekly__day:not(.v-outside)'));
-              const targetCell = dayCells.find(cell => {
-                const span = cell.querySelector('.v-calendar-weekly__day-label span');
-                return span && span.textContent.trim() === expectedDayStr;
-              });
-
-              if (targetCell) {
-                targetCell.click();
-                await wait(200);
-                targetCell.click();
-                dateClicked = true;
-                break;
-              }
-            } else {
-              const leftArrow = document.querySelector('.b-streaks-swither__btn:first-child button');
-              if (leftArrow && !leftArrow.disabled) {
-                leftArrow.click();
+                  const newDayCells = Array.from(document.querySelectorAll('.v-calendar-weekly__day:not(.v-outside)'));
+                  const targetCellSecond = newDayCells.find(cell => {
+                    const span = cell.querySelector('.v-calendar-weekly__day-label span');
+                    return span && span.textContent.trim() === expectedDayStr;
+                  });
+                  
+                  if (targetCellSecond) {
+                    targetCellSecond.click();
+                    dateClicked = true;
+                    break;
+                  }
+                }
               } else {
-                break;
+                const currentDateObj = new Date(currentMonthStr);
+                const expectedDateObj = new Date(expectedMonthStr);
+                const arrows = document.querySelectorAll('.b-streaks-swither__btn button');
+                
+                if (currentDateObj < expectedDateObj) {
+                  const rightArrow = arrows[1];
+                  if (rightArrow && !rightArrow.disabled) rightArrow.click();
+                  else break;
+                } else {
+                  const leftArrow = arrows[0];
+                  if (leftArrow && !leftArrow.disabled) leftArrow.click();
+                  else break;
+                }
               }
             }
-          }
-
-          if (!dateClicked) return returnZero();
-
-          const applyBtn = document.querySelector('.vdatetime-popup__actions__button--confirm button');
-          if (applyBtn) {
-            applyBtn.click();
-          } else {
-            return returnZero();
-          }
-
-          await wait(1000);
-
-          let total = 0;
-          for (let i = 0; i < 30; i++) {
-            const emptyMsg = document.querySelector('.empty-message');
-            if (emptyMsg && emptyMsg.offsetParent !== null) break;
-
-            const items = document.querySelectorAll('.b-engagements-summary__item');
-            if (items.length > 0) {
-              const text = items[0].textContent;
-              const num = parseInt(text.replace(/[^0-9]/g, ''), 10);
-              total = isNaN(num) ? 0 : num;
-              break;
+  
+            if (!dateClicked) return returnZero();
+  
+            const applyBtn = document.querySelector('.vdatetime-popup__actions__button--confirm button');
+            if (applyBtn) {
+              applyBtn.click();
+            } else {
+              return returnZero();
             }
-            await wait(200);
           }
+
+          const pad = n => n < 10 ? '0' + n : n;
+          const dateStr = `${yesterday.getFullYear()}-${pad(yesterday.getMonth() + 1)}-${pad(yesterday.getDate())}`;
+
+          const getInterceptedData = async (pathMatches) => {
+            for (let i = 0; i < 50; i++) {
+              const str = sessionStorage.getItem('OF_NETWORK_DATA');
+              if (str) {
+                const data = JSON.parse(str);
+                const matchKey = Object.keys(data).find(k => pathMatches.every(m => k.includes(m)));
+                if (matchKey) return data[matchKey];
+              }
+              await wait(200);
+            }
+            return null;
+          };
 
           if (type === 'left') {
-            return total;
+            const data = await getInterceptedData(['/api2/v2/users/me/stats/overview', 'by=trials', dateStr]);
+            if (data && data.trials && data.trials.claims) {
+                return data.trials.claims.total || 0;
+            }
+            return 0;
           }
 
           if (type === 'center') {
+            const dataTotal = await getInterceptedData(['/api2/v2/subscriptions/subscribers/chart', 'by=total', dateStr]);
+            const total = (dataTotal && dataTotal.subscribes && dataTotal.subscribes[0]) ? dataTotal.subscribes[0].count : 0;
+            
             let renews = 0;
             const renewsBtn = document.getElementById('Renews');
             if (renewsBtn) {
               renewsBtn.click();
-              await wait(1000);
-              for (let i = 0; i < 30; i++) {
-                const emptyMsg = document.querySelector('.empty-message');
-                if (emptyMsg && emptyMsg.offsetParent !== null) break;
-
-                const items = document.querySelectorAll('.b-engagements-summary__item');
-                if (items.length > 0) {
-                  const text = items[0].textContent;
-                  const num = parseInt(text.replace(/[^0-9]/g, ''), 10);
-                  renews = isNaN(num) ? 0 : num;
-                  break;
-                }
-                await wait(200);
+              const dataRenew = await getInterceptedData(['/api2/v2/subscriptions/subscribers/chart', 'by=renew', dateStr]);
+              if (dataRenew && dataRenew.subscribes && dataRenew.subscribes[0]) {
+                  renews = dataRenew.subscribes[0].count || 0;
               }
             }
             return { total, renews };
           }
 
           if (type === 'right') {
+            const dataChart = await getInterceptedData(['/api2/v2/campaigns/chart', dateStr]);
+            const total = dataChart ? (dataChart.total || 0) : 0;
+
             let addedTracking = 0;
+            let isBroken = false;
             const trackingNames = settings.trackingNames || [];
+            
             if (trackingNames.length > 0) {
-              const rows = document.querySelectorAll('.b-table tbody tr.m-responsive__justify-between');
-              rows.forEach(row => {
-                const strong = row.querySelector('strong');
-                if (strong && trackingNames.includes(strong.textContent.trim())) {
-                  const tds = row.querySelectorAll('td');
-                  if (tds.length > 0) {
-                    const lastTd = tds[tds.length - 1];
-                    const num = parseInt(lastTd.textContent.replace(/[^0-9]/g, ''), 10);
-                    if (!isNaN(num)) {
-                      addedTracking += num;
+              const dataList = await getInterceptedData(['/api2/v2/campaigns', 'limit=', dateStr]);
+              if (dataList && dataList.list && dataList.list.length > 0) {
+                dataList.list.forEach(item => {
+                  if (trackingNames.includes(item.campaignName)) {
+                    addedTracking += (item.countSubscribers || 0);
+                  }
+                });
+              } else if (total > 0 && (!dataList || !dataList.list || dataList.list.length === 0)) {
+                addedTracking = '❌';
+                isBroken = true;
+              }
+            }
+            return { total, addedTracking, isBroken };
+          }
+          
+          if (type === 'tracking-details') {
+            const trackingNames = new Set(settings.trackingNames || []);
+            const foundDetails = {};
+            
+            if (trackingNames.size === 0) return { foundDetails };
+
+            let prevHeight = 0;
+            for (let scrollTries = 0; scrollTries < 50; scrollTries++) {
+              window.scrollTo(0, document.body.scrollHeight);
+              await wait(600);
+
+              const str = sessionStorage.getItem('OF_NETWORK_DATA');
+              if (str) {
+                const data = JSON.parse(str);
+                
+                Object.keys(data).forEach(key => {
+                  if (key.includes('/api2/v2/campaigns') && key.includes('stats=true')) {
+                    const response = data[key];
+                    if (response && response.list) {
+                      response.list.forEach(item => {
+                        if (trackingNames.has(item.campaignName)) {
+                          foundDetails[item.campaignName] = item.countSubscribers || 0;
+                          trackingNames.delete(item.campaignName);
+                        }
+                      });
                     }
                   }
+                });
+              }
+
+              if (trackingNames.size === 0) break;
+
+              const currentHeight = document.body.scrollHeight;
+              if (currentHeight === prevHeight) {
+                let hasSpinner = document.querySelector('.v-progress-circular');
+                if (!hasSpinner) {
+                  await wait(1000);
+                  if (document.body.scrollHeight === prevHeight) break;
                 }
-              });
+              }
+              prevHeight = currentHeight;
             }
-            return { total, addedTracking };
+            return { foundDetails };
           }
         };
 
@@ -3005,7 +3051,7 @@ async function processCommand(lastEntry) {
             func: extractStats,
             args: [type, settings]
           }, (injectionResults) => {
-            let val = type === 'left' ? 0 : (type === 'center' ? { total: 0, renews: 0 } : { total: 0, addedTracking: 0 });
+            let val = type === 'left' ? 0 : (type === 'center' ? { total: 0, renews: 0 } : (type === 'tracking-details' ? { foundDetails: {} } : { total: 0, addedTracking: 0, isBroken: false }));
             if (injectionResults && injectionResults[0] && injectionResults[0].result !== undefined) {
               val = injectionResults[0].result;
             }
@@ -3017,18 +3063,30 @@ async function processCommand(lastEntry) {
         const leftResult = results.find(r => r.type === 'left').val;
         const centerResult = results.find(r => r.type === 'center').val;
         const rightResult = results.find(r => r.type === 'right').val;
+        const detailsResult = results.find(r => r.type === 'tracking-details');
+        const trackingDetails = detailsResult && detailsResult.val && detailsResult.val.foundDetails ? detailsResult.val.foundDetails : {};
 
         let net = centerResult.total - leftResult - rightResult.total;
-        if (settings.subtractOwnTracking) net -= rightResult.addedTracking;
+        let isNetInaccurate = false;
+        
+        if (settings.subtractOwnTracking) {
+          if (rightResult.isBroken || rightResult.addedTracking === '❌') {
+            isNetInaccurate = true;
+          } else {
+            net -= rightResult.addedTracking;
+          }
+        }
+        
         if (settings.subtractRenews) net -= centerResult.renews;
 
         const payload = {
-          net,
+          net: isNetInaccurate ? `${net}?` : net,
           center: centerResult.total,
           renews: centerResult.renews,
           right: rightResult.total,
           addedTracking: rightResult.addedTracking,
-          left: leftResult
+          left: leftResult,
+          trackingDetails: trackingDetails
         };
 
         chrome.windows.getCurrent({ populate: true }, (currentWindow) => {
@@ -6133,7 +6191,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
                 .filter(key => key.startsWith('browser') && key.endsWith('Checked') && items[key])
                 .map(key => parseInt(key.match(/\d+/)[0]))[0] || 1;
 
-              const storageKey = `statsSettings_${activeBrowser}`;
+              const storageKey = `statsSettings`;
               
               let currentList = [];
 
@@ -6148,15 +6206,6 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
               const localSettings = items[storageKey];
               if (localSettings) applySettings(localSettings);
 
-              fetch('http://localhost:3000/stats-settings')
-                .then(r => r.json())
-                .then(data => {
-                  if (data && data[storageKey]) {
-                    applySettings(data[storageKey]);
-                    chrome.storage.local.set({ [storageKey]: data[storageKey] });
-                  }
-                }).catch(() => {});
-
               const saveData = () => {
                 const newSettings = {
                   trackingNames: currentList,
@@ -6164,12 +6213,6 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
                   subtractRenews: renewsCb.cb.checked
                 };
                 chrome.storage.local.set({ [storageKey]: newSettings });
-                
-                fetch('http://localhost:3000/stats-settings', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ browserId: activeBrowser, settings: newSettings })
-                }).catch(() => { });
               };
 
               ownTrackCb.cb.addEventListener('change', saveData);
@@ -6284,8 +6327,12 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
                     transform: "translateY(-50%)",
                     zIndex: "10000",
                     width: "max-content",
-                    height: "auto"
+                    height: "auto",
+                    cursor: "pointer"
                   });
+                  statsWidget.onclick = () => {
+                    statsWidget.remove();
+                  };
                   document.body.appendChild(statsWidget);
                 }
 
@@ -6312,11 +6359,51 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
                       <span style="color: #ccc;">Trial</span>
                     </div>
                     <div style="display: flex; justify-content: space-between; gap: 20px;">
-                      <span style="font-weight: bold; color: #E91E63;">${msg.data.addedTracking}</span>
+                      <span style="font-weight: bold; color: #E91E63; ${msg.data.addedTracking === '❌' ? 'margin-left: -3px;' : ''}">${msg.data.addedTracking}</span>
                       <span style="color: #ccc;">Added Tracking</span>
                     </div>
                   </div>
                 `;
+
+                if (msg.data.trackingDetails && Object.keys(msg.data.trackingDetails).length > 0) {
+                  const detailsContainer = document.createElement("div");
+                  Object.assign(detailsContainer.style, {
+                    fontFamily: "'Josefin Sans', sans-serif",
+                    background: "rgba(28, 28, 28, 0.95)",
+                    borderRadius: "8px",
+                    border: "1px solid #444",
+                    boxShadow: "0 4px 15px rgba(0,0,0,0.5)",
+                    padding: "10px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "6px",
+                    color: "#fff",
+                    fontSize: "13px",
+                    marginTop: "6px"
+                  });
+
+                  for (const [name, subs] of Object.entries(msg.data.trackingDetails)) {
+                    const row = document.createElement("div");
+                    row.style.display = "flex";
+                    row.style.justifyContent = "space-between";
+                    row.style.gap = "20px";
+                    
+                    const subsSpan = document.createElement("span");
+                    subsSpan.style.fontWeight = "bold";
+                    subsSpan.style.color = "#4CAF50";
+                    subsSpan.textContent = subs;
+                    
+                    const nameSpan = document.createElement("span");
+                    nameSpan.style.color = "#ccc";
+                    nameSpan.textContent = name;
+                    
+                    row.appendChild(subsSpan);
+                    row.appendChild(nameSpan);
+                    detailsContainer.appendChild(row);
+                  }
+                  
+                  statsWidget.appendChild(detailsContainer);
+                }
               } else {
                 postIndicatorButton.style.background = "#DD6D55";
                 setTimeout(() => {
