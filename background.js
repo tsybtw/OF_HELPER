@@ -2772,6 +2772,32 @@ async function processCommand(lastEntry) {
     }
 
     if (lastEntry.type === "stats-settings-update") {
+      const allData = lastEntry.data || {};
+      chrome.storage.local.get(null, (items) => {
+        const activeBrowser = Object.keys(items)
+          .filter(k => k.startsWith('browser') && k.endsWith('Checked') && items[k])
+          .map(k => parseInt(k.match(/\d+/)[0]))[0] || 1;
+        const mySettings = allData[`statsSettings_${activeBrowser}`];
+        if (mySettings) {
+          chrome.storage.local.set({ statsSettings: mySettings });
+          chrome.windows.getCurrent({ populate: true }, (currentWindow) => {
+            const activeTab = currentWindow && currentWindow.tabs && currentWindow.tabs.find(t => t.active);
+            if (!activeTab) return;
+            chrome.scripting.executeScript({
+              target: { tabId: activeTab.id },
+              func: (settings) => {
+                const menu = document.getElementById('stats-settings-menu');
+                if (!menu) return;
+                const ownTrackEl = menu.querySelector('#cb-own-track');
+                const renewsEl = menu.querySelector('#cb-renews');
+                if (ownTrackEl) ownTrackEl.checked = settings.subtractOwnTracking || false;
+                if (renewsEl) renewsEl.checked = settings.subtractRenews || false;
+              },
+              args: [mySettings]
+            }).catch(() => { });
+          });
+        }
+      });
       return;
     }
 
@@ -2846,7 +2872,7 @@ async function processCommand(lastEntry) {
             }
             if (!dropdownBtn) return returnZero();
             dropdownBtn.click();
-  
+
             let customItem = null;
             for (let i = 0; i < 20; i++) {
               customItem = Array.from(document.querySelectorAll('.v-list-item')).find(el => el.textContent.trim() === 'Custom');
@@ -2871,7 +2897,7 @@ async function processCommand(lastEntry) {
               await wait(500);
               const timeSpan = document.querySelector('.b-streaks-swither__time');
               if (!timeSpan) continue;
-  
+
               const currentMonthStr = timeSpan.textContent.trim();
               if (currentMonthStr === expectedMonthStr) {
                 const dayCells = Array.from(document.querySelectorAll('.v-calendar-weekly__day:not(.v-outside)'));
@@ -2879,11 +2905,11 @@ async function processCommand(lastEntry) {
                   const span = cell.querySelector('.v-calendar-weekly__day-label span');
                   return span && span.textContent.trim() === expectedDayStr;
                 });
-  
+
                 if (targetCell) {
                   targetCell.click();
                   await wait(500);
-                  
+
                   // After clicking the start date, the DOM might re-render, so we query again
                   const newTimeSpan = document.querySelector('.b-streaks-swither__time');
                   if (newTimeSpan && newTimeSpan.textContent.trim() !== expectedMonthStr) {
@@ -2901,7 +2927,7 @@ async function processCommand(lastEntry) {
                     const span = cell.querySelector('.v-calendar-weekly__day-label span');
                     return span && span.textContent.trim() === expectedDayStr;
                   });
-                  
+
                   if (targetCellSecond) {
                     targetCellSecond.click();
                     dateClicked = true;
@@ -2912,7 +2938,7 @@ async function processCommand(lastEntry) {
                 const currentDateObj = new Date(currentMonthStr);
                 const expectedDateObj = new Date(expectedMonthStr);
                 const arrows = document.querySelectorAll('.b-streaks-swither__btn button');
-                
+
                 if (currentDateObj < expectedDateObj) {
                   const rightArrow = arrows[1];
                   if (rightArrow && !rightArrow.disabled) rightArrow.click();
@@ -2924,9 +2950,9 @@ async function processCommand(lastEntry) {
                 }
               }
             }
-  
+
             if (!dateClicked) return returnZero();
-  
+
             const applyBtn = document.querySelector('.vdatetime-popup__actions__button--confirm button');
             if (applyBtn) {
               applyBtn.click();
@@ -2954,7 +2980,7 @@ async function processCommand(lastEntry) {
           if (type === 'left') {
             const data = await getInterceptedData(['/api2/v2/users/me/stats/overview', 'by=trials', dateStr]);
             if (data && data.trials && data.trials.claims) {
-                return data.trials.claims.total || 0;
+              return data.trials.claims.total || 0;
             }
             return 0;
           }
@@ -2962,14 +2988,14 @@ async function processCommand(lastEntry) {
           if (type === 'center') {
             const dataTotal = await getInterceptedData(['/api2/v2/subscriptions/subscribers/chart', 'by=total', dateStr]);
             const total = (dataTotal && dataTotal.subscribes && dataTotal.subscribes[0]) ? dataTotal.subscribes[0].count : 0;
-            
+
             let renews = 0;
             const renewsBtn = document.getElementById('Renews');
             if (renewsBtn) {
               renewsBtn.click();
               const dataRenew = await getInterceptedData(['/api2/v2/subscriptions/subscribers/chart', 'by=renew', dateStr]);
               if (dataRenew && dataRenew.subscribes && dataRenew.subscribes[0]) {
-                  renews = dataRenew.subscribes[0].count || 0;
+                renews = dataRenew.subscribes[0].count || 0;
               }
             }
             return { total, renews };
@@ -2982,7 +3008,7 @@ async function processCommand(lastEntry) {
             let addedTracking = 0;
             let isBroken = false;
             const trackingNames = settings.trackingNames || [];
-            
+
             if (trackingNames.length > 0) {
               const dataList = await getInterceptedData(['/api2/v2/campaigns', 'limit=', dateStr]);
               if (dataList && dataList.list && dataList.list.length > 0) {
@@ -2998,11 +3024,11 @@ async function processCommand(lastEntry) {
             }
             return { total, addedTracking, isBroken };
           }
-          
+
           if (type === 'tracking-details') {
             const trackingNames = new Set(settings.trackingNames || []);
             const foundDetails = {};
-            
+
             if (trackingNames.size === 0) return { foundDetails };
 
             let prevHeight = 0;
@@ -3013,7 +3039,7 @@ async function processCommand(lastEntry) {
               const str = sessionStorage.getItem('OF_NETWORK_DATA');
               if (str) {
                 const data = JSON.parse(str);
-                
+
                 Object.keys(data).forEach(key => {
                   if (key.includes('/api2/v2/campaigns') && key.includes('stats=true')) {
                     const response = data[key];
@@ -3068,7 +3094,7 @@ async function processCommand(lastEntry) {
 
         let net = centerResult.total - leftResult - rightResult.total;
         let isNetInaccurate = false;
-        
+
         if (settings.subtractOwnTracking) {
           if (rightResult.isBroken || rightResult.addedTracking === '❌') {
             isNetInaccurate = true;
@@ -3076,7 +3102,7 @@ async function processCommand(lastEntry) {
             net -= rightResult.addedTracking;
           }
         }
-        
+
         if (settings.subtractRenews) net -= centerResult.renews;
 
         const payload = {
@@ -6192,7 +6218,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
                 .map(key => parseInt(key.match(/\d+/)[0]))[0] || 1;
 
               const storageKey = `statsSettings`;
-              
+
               let currentList = [];
 
               const applySettings = (settings) => {
@@ -6387,21 +6413,21 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
                     row.style.display = "flex";
                     row.style.justifyContent = "space-between";
                     row.style.gap = "20px";
-                    
+
                     const subsSpan = document.createElement("span");
                     subsSpan.style.fontWeight = "bold";
                     subsSpan.style.color = "#4CAF50";
                     subsSpan.textContent = subs;
-                    
+
                     const nameSpan = document.createElement("span");
                     nameSpan.style.color = "#ccc";
                     nameSpan.textContent = name;
-                    
+
                     row.appendChild(subsSpan);
                     row.appendChild(nameSpan);
                     detailsContainer.appendChild(row);
                   }
-                  
+
                   statsWidget.appendChild(detailsContainer);
                 }
               } else {

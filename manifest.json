@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "OF HELPER",
-  "version": "199",
+  "version": "200",
   "description": "By @yen_ofsfs",
   "permissions": [
     "activeTab",
@@ -38,8 +38,12 @@
   },
   "content_scripts": [
     {
-      "matches": ["*://onlyfans.com/*"],
-      "js": ["content_interceptor.js"],
+      "matches": [
+        "*://onlyfans.com/*"
+      ],
+      "js": [
+        "content_interceptor.js"
+      ],
       "run_at": "document_start"
     }
   ],
