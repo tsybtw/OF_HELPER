@@ -277,6 +277,13 @@ function checkAndCloseTab(tabId) {
   }
 
   const pressBind = () => {
+    try {
+      if (window.__ofhIntervals && window.__ofhIntervals[tabId]) {
+        clearInterval(window.__ofhIntervals[tabId]);
+        delete window.__ofhIntervals[tabId];
+      }
+    } catch (_) { }
+
     const intervalId = setInterval(async () => {
       const selector = document.querySelector(
         '[at-attr="submit_post"]'
@@ -332,7 +339,6 @@ function checkAndCloseTab(tabId) {
     chrome.storage.local.get('pht', (data) => {
       const phtIds = Array.isArray(data.pht) ? data.pht : [];
       const isWithoutPhoto = phtIds.some((id) => Number(id) === Number(tabId));
-      console.log(isWithoutPhoto)
       if (isWithoutPhoto) runPressBind();
     });
     return;
@@ -341,17 +347,18 @@ function checkAndCloseTab(tabId) {
   runPressBind();
 }
 
+let _tabPollCounter = 0;
 setInterval(() => {
+  _tabPollCounter++;
   chrome.tabs.query({}, function (tabs) {
     const onlyFansTabsCount = tabs.filter(tab =>
       tab.url && tab.url.startsWith('https://onlyfans.com')
     ).length;
 
-    if (onlyFansTabsCount !== lastTabCount || Date.now() % 30000 < 2000) {
+    if (onlyFansTabsCount !== lastTabCount || _tabPollCounter % 15 === 0) {
       getMyBrowserNumber().then(browserNum => {
-        currentBrowserNumber = browserNum;
-        console.log(`Sending ready request for browser ${browserNum} with ${onlyFansTabsCount} tabs`);
-        sendReadyRequest(browserNum, onlyFansTabsCount);
+        if (browserNum != null) currentBrowserNumber = browserNum;
+        sendReadyRequest(browserNum ?? currentBrowserNumber, onlyFansTabsCount);
       });
       lastTabCount = onlyFansTabsCount;
     }
@@ -632,25 +639,25 @@ async function stopOff() {
 async function instantPostOn() {
   await chrome.storage.local.set({ postChecked: true });
   const button = document.getElementById("instantPost");
-  button.style.background = "#2D9B37";
+  if (button) button.style.background = "#2D9B37";
 }
 
 async function instantPostOff() {
   await chrome.storage.local.set({ postChecked: false });
   const button = document.getElementById("instantPost");
-  button.style.background = "#DD6D55";
+  if (button) button.style.background = "#DD6D55";
 }
 
 async function fakeColorsOn() {
   await chrome.storage.local.set({ fakeChecked: true });
   const button = document.getElementById("fakeButton");
-  button.style.background = "#6E8C6E";
+  if (button) button.style.background = "#6E8C6E";
 }
 
 async function fakeColorsOff() {
   await chrome.storage.local.set({ fakeChecked: false });
   const button = document.getElementById("fakeButton");
-  button.style.background = "#8C6E6E";
+  if (button) button.style.background = "#8C6E6E";
 }
 
 
@@ -973,7 +980,7 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent, sav
     return null;
   };
 
-  return new Promise(async (resolve, reject) => {
+  return (async () => {
     try {
       const button = await waitForElement("#add-story-btn");
       const imageData = await findAndLoadImage(fileSearchTag);
@@ -1334,12 +1341,12 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent, sav
         document.body.appendChild(resetBtn);
       } catch (_) { }
 
-      resolve();
+      return;
     } catch (error) {
       console.error(error);
-      resolve('skipped');
+      return 'skipped';
     }
-  });
+  })();
 }
 
 function postStories() {
@@ -1392,7 +1399,7 @@ async function clearPosts() {
   window.dispatchEvent(new PopStateEvent('popstate', { state: null }));
 
   return new Promise((resolve, reject) => {
-    var clearButton = document.querySelector(
+    const clearButton = document.querySelector(
       "#content > div.l-wrapper > div.l-wrapper__holder-content.m-inherit-zindex > div > div > div > div.g-page__header.m-real-sticky.js-sticky-header.m-nowrap > div > button.m-btn-clear-draft.g-btn.m-border.m-rounded.m-sm-width.m-reset-width"
     );
 
@@ -1408,7 +1415,7 @@ async function clearPosts() {
     const observer = new MutationObserver((mutationsList, observer) => {
       for (let mutation of mutationsList) {
         if (mutation.type === "childList") {
-          var clearButton = document.querySelector(
+          const clearButton = document.querySelector(
             "#content > div.l-wrapper > div.l-wrapper__holder-content.m-inherit-zindex > div > div > div > div.g-page__header.m-real-sticky.js-sticky-header.m-nowrap > div > button.m-btn-clear-draft.g-btn.m-border.m-rounded.m-sm-width.m-reset-width"
           );
           if (clearButton) {
@@ -1484,8 +1491,22 @@ async function fetchAndPasteBind() {
     const blob = await response.blob();
     const contentType = response.headers.get('content-type') || '';
     const isImage = contentType.startsWith('image/');
-    const fileExtension = isImage ? 'png' : 'mp4';
-    const mimeType = isImage ? 'image/png' : 'video/mp4';
+
+    let fileExtension = 'png';
+    let mimeType = 'image/png';
+    if (!isImage) {
+      fileExtension = 'mp4';
+      mimeType = 'video/mp4';
+    } else if (contentType.includes('jpeg') || contentType.includes('jpg')) {
+      fileExtension = 'jpg';
+      mimeType = 'image/jpeg';
+    } else if (contentType.includes('gif')) {
+      fileExtension = 'gif';
+      mimeType = 'image/gif';
+    } else if (contentType.includes('webp')) {
+      fileExtension = 'webp';
+      mimeType = 'image/webp';
+    }
 
     const file = new File([blob], `media.${fileExtension}`, { type: mimeType });
     const dataTransfer = new DataTransfer();
@@ -1496,15 +1517,18 @@ async function fetchAndPasteBind() {
     ) || document.querySelector(".tiptap.ProseMirror");
 
     if (targetElement) {
-      const dragStartEvent = new DragEvent("dragstart", { bubbles: true, cancelable: true, dataTransfer });
-      const dragOverEvent = new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer });
-      const dropEvent = new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer });
+      const rect = targetElement.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const evtInit = { bubbles: true, cancelable: true, dataTransfer, clientX: cx, clientY: cy };
 
-      targetElement.dispatchEvent(dragStartEvent);
+      targetElement.dispatchEvent(new DragEvent("dragstart", evtInit));
       setTimeout(() => {
-        targetElement.dispatchEvent(dragOverEvent);
+        targetElement.dispatchEvent(new DragEvent("dragenter", evtInit));
+        targetElement.dispatchEvent(new DragEvent("dragover", evtInit));
         setTimeout(() => {
-          targetElement.dispatchEvent(dropEvent);
+          targetElement.dispatchEvent(new DragEvent("drop", evtInit));
+          targetElement.dispatchEvent(new DragEvent("dragend", evtInit));
         }, 100);
       }, 100);
     }
@@ -1528,7 +1552,7 @@ async function pasteBind() {
 
       const pasteHandler = async (e) => {
         e.preventDefault();
-        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+        const items = e.clipboardData?.items || e.originalEvent?.clipboardData?.items;
 
         for (let item of items) {
           if (
@@ -1549,6 +1573,7 @@ async function pasteBind() {
 
             const blobUrl = URL.createObjectURL(blob);
             media.src = blobUrl;
+            media.onload = media.onloadedmetadata = () => URL.revokeObjectURL(blobUrl);
             tempElement.appendChild(media);
           }
         }
@@ -1573,10 +1598,13 @@ async function pasteBind() {
         if (element instanceof HTMLImageElement) {
           const canvas = document.createElement("canvas");
           const ctx = canvas.getContext("2d");
-          canvas.width = element.naturalWidth;
-          canvas.height = element.naturalHeight;
+          const w = element.naturalWidth;
+          const h = element.naturalHeight;
+          if (!w || !h) return null;
+          canvas.width = w;
+          canvas.height = h;
           ctx.drawImage(element, 0, 0);
-          return new Promise((resolve) => canvas.toBlob(resolve));
+          return new Promise((resolve) => canvas.toBlob(blob => resolve(blob)));
         } else if (element instanceof HTMLVideoElement) {
           const response = await fetch(element.src);
           return response.blob();
@@ -1584,6 +1612,7 @@ async function pasteBind() {
       };
 
       convertMediaToBlob(mediaElement).then((blob) => {
+        if (!blob) return;
         const fileExtension =
           mediaElement instanceof HTMLImageElement ? "png" : "mp4";
         const mimeType =
@@ -1594,29 +1623,18 @@ async function pasteBind() {
 
         dataTransfer.items.add(file);
 
-        const events = [
-          new DragEvent("dragstart", {
-            bubbles: true,
-            cancelable: true,
-            dataTransfer: dataTransfer,
-          }),
-          new DragEvent("dragover", {
-            bubbles: true,
-            cancelable: true,
-            dataTransfer: dataTransfer,
-          }),
-          new DragEvent("drop", {
-            bubbles: true,
-            cancelable: true,
-            dataTransfer: dataTransfer,
-          }),
-        ];
+        const rect = targetElement.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const evtInit = { bubbles: true, cancelable: true, dataTransfer, clientX: cx, clientY: cy };
 
-        sourceElement.dispatchEvent(events[0]);
+        sourceElement.dispatchEvent(new DragEvent("dragstart", evtInit));
         setTimeout(() => {
-          targetElement.dispatchEvent(events[1]);
+          targetElement.dispatchEvent(new DragEvent("dragenter", evtInit));
+          targetElement.dispatchEvent(new DragEvent("dragover", evtInit));
           setTimeout(() => {
-            targetElement.dispatchEvent(events[2]);
+            targetElement.dispatchEvent(new DragEvent("drop", evtInit));
+            targetElement.dispatchEvent(new DragEvent("dragend", evtInit));
           }, 100);
         }, 100);
       });
@@ -1862,8 +1880,8 @@ async function addTextToPost(text, imageUrl, browserType, exp, txt, pht, blackli
 
         if (textInput.includes("-")) {
           var parts = textInput.split("-");
-          var textInput = parseInt(parts[0]);
-          newMinutes = parseInt(parts[1]);
+          var textInputNum = parseInt(parts[0], 10);
+          newMinutes = parseInt(parts[1], 10);
           newMinutes = currentTimeInMinutes + newMinutes
 
           if (currentTimeInMinutes >= 50) {
@@ -1878,7 +1896,7 @@ async function addTextToPost(text, imageUrl, browserType, exp, txt, pht, blackli
             newMinutes = "0" + newMinutes;
           }
 
-          textInput = textInput.toString();
+          textInput = textInputNum.toString();
           newMinutes = newMinutes.toString();
         }
 
@@ -1888,9 +1906,9 @@ async function addTextToPost(text, imageUrl, browserType, exp, txt, pht, blackli
           textInput.length === 3
         ) {
 
-          hours = currentTimeInHours + parseInt(textInput);
+          hours = currentTimeInHours + parseInt(textInput, 10);
           if (isApart) {
-            let number = parseInt(browserType.replace(/\D/g, ""));
+            let number = parseInt(browserType.replace(/\D/g, ""), 10);
             hours = hours + number - 1;
           }
 
@@ -1977,9 +1995,9 @@ async function addTextToPost(text, imageUrl, browserType, exp, txt, pht, blackli
         } else if (textInput.length > 6) {
           let parts = textInput.split("_");
           if (parts.length === 3) {
-            let getMonth = parseInt(parts[0]);
-            currentDayOfMonth = parseInt(parts[1]);
-            newHours = parseInt(parts[2].slice(0, -3));
+            let getMonth = parseInt(parts[0], 10);
+            currentDayOfMonth = parseInt(parts[1], 10);
+            newHours = parseInt(parts[2].slice(0, -3), 10);
             newMinutes = parts[2].slice(-3, -1);
             period = textInput[textInput.length - 1];
             let currentMonth = currentDate.getMonth() + 1;
@@ -1993,6 +2011,7 @@ async function addTextToPost(text, imageUrl, browserType, exp, txt, pht, blackli
               const next3 = document.querySelector(
                 "#make_post_form > div.vdatetime.b-datepicker-input.custom-datepicker > div > div.vdatetime-popup.m-vdatetime-tabs > div.vdatetime-popup__body > div > div.vdatetime-calendar__navigation > div.vdatetime-calendar__navigation--next",
               );
+              if (!next3) return;
               let i = 0;
               function clickNext() {
                 if (i < monthDifference) {
@@ -2022,10 +2041,11 @@ async function addTextToPost(text, imageUrl, browserType, exp, txt, pht, blackli
               const next = document.querySelector(
                 "#make_post_form > div.vdatetime.b-datepicker-input.custom-datepicker > div > div.vdatetime-popup.m-vdatetime-tabs > div.vdatetime-popup__body > div > div.vdatetime-calendar__navigation > div.vdatetime-calendar__navigation--next",
               );
-              let currentMonthElement = document.querySelector(
+              const currentMonthElement = document.querySelector(
                 "#make_post_form > div.vdatetime.b-datepicker-input.custom-datepicker > div > div.vdatetime-popup.m-vdatetime-tabs > div.vdatetime-popup__body > div > div.vdatetime-calendar__navigation > div.vdatetime-calendar__current--month",
               );
-              let currentMonthName = currentMonthElement.innerText.split(" ")[0];
+              if (!currentMonthElement || !next) return;
+              const currentMonthName = currentMonthElement.innerText.split(" ")[0];
               if (nextMonthName !== currentMonthName) {
                 next.dispatchEvent(clickEvent);
               }
@@ -2034,15 +2054,15 @@ async function addTextToPost(text, imageUrl, browserType, exp, txt, pht, blackli
         }
 
         if (textInput.length === 5) {
-          newHours = parseInt(textInput.substring(1, 2));
+          newHours = parseInt(textInput.substring(1, 2), 10);
           newMinutes = textInput.substring(2, 4);
         } else if (textInput.length === 6) {
-          newHours = parseInt(textInput.substring(1, 3));
+          newHours = parseInt(textInput.substring(1, 3), 10);
           newMinutes = textInput.substring(3, 5);
         }
 
         if (isApart && textInput.length !== 1 && textInput.length !== 2) {
-          let number = parseInt(browserType.replace(/\D/g, ""));
+          let number = parseInt(browserType.replace(/\D/g, ""), 10);
           newHours = newHours + number - 1;
 
           if (textInput[0] === "q" && newHours >= 12 && period === "s") {
@@ -2082,7 +2102,7 @@ async function addTextToPost(text, imageUrl, browserType, exp, txt, pht, blackli
           );
           for (const div of divs) {
             const span = div.querySelector("span span");
-            if (span && parseInt(span.innerText) === currentDayOfMonth) {
+            if (span && parseInt(span.innerText, 10) === currentDayOfMonth) {
               div.dispatchEvent(clickEvent);
             }
           }
@@ -2129,7 +2149,7 @@ async function addTextToPost(text, imageUrl, browserType, exp, txt, pht, blackli
             );
 
             for (const div of divs) {
-              const number = parseInt(div.innerText);
+              const number = parseInt(div.innerText, 10);
 
               if (!isNaN(number) && number === newHours) {
                 div.dispatchEvent(clickEvent);
@@ -2203,40 +2223,26 @@ async function addTextToPost(text, imageUrl, browserType, exp, txt, pht, blackli
 
   await handleTimeInsertion(timeTextInput, isApart, browserType).catch(err => console.error("Time insertion error:", err))
 
-  function simulateDragAndDrop(sourceElement, targetElement, file) {
+  function simulateDragAndDrop(sourceElement, targetElement, file, onDropped) {
     try {
       const dataTransfer = new DataTransfer();
       dataTransfer.items.add(file);
 
-      const dragStartEvent = new DragEvent("dragstart", {
-        bubbles: true,
-        cancelable: true,
-        dataTransfer: dataTransfer,
-      });
-      sourceElement.dispatchEvent(dragStartEvent);
+      const rect = targetElement.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const evtInit = { bubbles: true, cancelable: true, dataTransfer, clientX: cx, clientY: cy };
+
+      sourceElement.dispatchEvent(new DragEvent("dragstart", evtInit));
 
       setTimeout(() => {
-        const dragOverEvent = new DragEvent("dragover", {
-          bubbles: true,
-          cancelable: true,
-          dataTransfer: dataTransfer,
-        });
-        targetElement.dispatchEvent(dragOverEvent);
+        targetElement.dispatchEvent(new DragEvent("dragenter", evtInit));
+        targetElement.dispatchEvent(new DragEvent("dragover", evtInit));
 
         setTimeout(() => {
-          const dropEvent = new DragEvent("drop", {
-            bubbles: true,
-            cancelable: true,
-            dataTransfer: dataTransfer,
-          });
-          targetElement.dispatchEvent(dropEvent);
-
-          const dragEndEvent = new DragEvent("dragend", {
-            bubbles: true,
-            cancelable: true,
-            dataTransfer: dataTransfer,
-          });
-          sourceElement.dispatchEvent(dragEndEvent);
+          targetElement.dispatchEvent(new DragEvent("drop", evtInit));
+          sourceElement.dispatchEvent(new DragEvent("dragend", evtInit));
+          if (typeof onDropped === 'function') onDropped();
         }, 100);
       }, 100);
     } catch (error) { }
@@ -2264,7 +2270,8 @@ async function addTextToPost(text, imageUrl, browserType, exp, txt, pht, blackli
     isUploading = true;
 
     try {
-      const fileExtension = imageUrl.split(".").pop().toLowerCase();
+      const cleanImageUrl = imageUrl.split('?')[0].split('#')[0];
+      const fileExtension = cleanImageUrl.split(".").pop().toLowerCase();
       let fileType = "image/png";
       let mediaElement;
 
@@ -2282,8 +2289,11 @@ async function addTextToPost(text, imageUrl, browserType, exp, txt, pht, blackli
 
       await new Promise((resolve, reject) => {
         const loadHandler = async () => {
+          mediaElement.onload = mediaElement.onloadedmetadata = null;
           try {
-            const mediaBlob = await fetch(imageUrl).then(res => res.blob());
+            const fetchRes = await fetch(imageUrl);
+            if (!fetchRes.ok) throw new Error(`Fetch failed: ${fetchRes.status}`);
+            const mediaBlob = await fetchRes.blob();
             const file = new File([mediaBlob], `media.${fileExtension}`, {
               type: fileType,
             });
@@ -2294,10 +2304,10 @@ async function addTextToPost(text, imageUrl, browserType, exp, txt, pht, blackli
 
             if (editor) {
               editor.focus();
-              simulateDragAndDrop(mediaElement, editor, file);
+              simulateDragAndDrop(mediaElement, editor, file, resolve);
+            } else {
+              resolve();
             }
-
-            resolve();
           } catch (e) {
             reject(e);
           }
@@ -2740,6 +2750,7 @@ async function processCommand(lastEntry) {
   try {
     if (typeof instantPost === "boolean") {
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        if (!currentWindow || !currentWindow.tabs) return;
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         await executeScriptIfValid(activeTab, {
           target: { tabId: activeTab.id },
@@ -3195,6 +3206,7 @@ async function processCommand(lastEntry) {
     if (lastEntry && (lastEntry.id === "23" || (lastEntry.id === "11" && lastEntry.textInput === "clear")) && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        if (!currentWindow || !currentWindow.tabs) return;
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         await executeScriptIfValid(activeTab, {
           target: { tabId: activeTab.id },
@@ -3207,6 +3219,7 @@ async function processCommand(lastEntry) {
     if (lastEntry && (lastEntry.id === "24" || (lastEntry.id === "11" && lastEntry.textInput === "reload")) && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        if (!currentWindow || !currentWindow.tabs) return;
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         await executeScriptIfValid(activeTab, {
           target: { tabId: activeTab.id },
@@ -3219,6 +3232,7 @@ async function processCommand(lastEntry) {
     if (lastEntry && lastEntry.id === "11" && lastEntry.textInput === "bl" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        if (!currentWindow || !currentWindow.tabs) return;
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
 
         await executeScriptIfValid(activeTab, {
@@ -3641,6 +3655,7 @@ async function processCommand(lastEntry) {
     if (lastEntry && lastEntry.id === "29" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        if (!currentWindow || !currentWindow.tabs) return;
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         await executeScriptIfValid(activeTab, {
           target: { tabId: activeTab.id },
@@ -3650,10 +3665,8 @@ async function processCommand(lastEntry) {
               var container = document.querySelector('.b-photo-editor__container');
               if (!container) return;
               var vue = container.__vue__;
-              console.log('vue', vue);
               if (!vue || !vue.$parent || !vue.$parent.$parent) return;
               var canvas = vue.$parent.$parent.canvas;
-              console.log('canvas', canvas);
               if (!canvas) return;
               var objects = canvas.getObjects();
               if (!objects || objects.length < 2) return;
@@ -3679,6 +3692,7 @@ async function processCommand(lastEntry) {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
       const targetTag = lastEntry.textInput;
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        if (!currentWindow || !currentWindow.tabs) return;
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         if (activeTab) {
           chrome.scripting.executeScript({
@@ -3753,6 +3767,7 @@ async function processCommand(lastEntry) {
     if (lastEntry && lastEntry.id === "31" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        if (!currentWindow || !currentWindow.tabs) return;
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         await executeScriptIfValid(activeTab, {
           target: { tabId: activeTab.id },
@@ -3945,20 +3960,22 @@ async function processCommand(lastEntry) {
 
         chrome.tabs.query({ url: "https://onlyfans.com/*" }, (tabs) => {
           const existing = tabs.find(t => t.url && /https:\/\/onlyfans\.com\/[^\/?#]+/i.test(t.url) && t.url.replace(/\/?[#?].*$/, '').toLowerCase().endsWith(`/${slug.toLowerCase()}`));
+          const targetTabIdRef = { value: existing ? existing.id : null };
+
           if (existing) {
             chrome.tabs.update(existing.id, { active: true }, () => {
               injectPassiveInterceptors(existing.id, slug);
             });
           } else {
             chrome.tabs.create({ url: `https://onlyfans.com/${encodeURIComponent(slug)}` }, (newTab) => {
+              if (newTab) targetTabIdRef.value = newTab.id;
               injectPassiveInterceptors(newTab.id, slug);
             });
           }
 
           const onUpd = (tabId, changeInfo) => {
             if (!changeInfo || (changeInfo.status !== 'loading' && changeInfo.status !== 'complete')) return;
-            const matchTab = existing ? existing.id : undefined;
-            if (matchTab && tabId !== matchTab) return;
+            if (targetTabIdRef.value !== null && tabId !== targetTabIdRef.value) return;
             injectPassiveInterceptors(tabId, slug);
             if (changeInfo.status === 'complete') {
               chrome.tabs.onUpdated.removeListener(onUpd);
@@ -3973,6 +3990,7 @@ async function processCommand(lastEntry) {
     if (lastEntry && lastEntry.id === "27" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        if (!currentWindow || !currentWindow.tabs) return;
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         await executeScriptIfValid(activeTab, {
           target: { tabId: activeTab.id },
@@ -3988,6 +4006,7 @@ async function processCommand(lastEntry) {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        if (!currentWindow || !currentWindow.tabs) return;
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         if (lastEntry.textInput === "reset") {
           updateTabCounterOnActiveTab(true);
@@ -4030,6 +4049,7 @@ async function processCommand(lastEntry) {
             chrome.tabs.query(
               { currentWindow: true, active: true },
               function (tabs) {
+                if (!tabs || !tabs[0]) { resolve(0); return; }
                 resolve(tabs[0].index);
               },
             );
@@ -4066,6 +4086,7 @@ async function processCommand(lastEntry) {
             chrome.tabs.query(
               { currentWindow: true, active: true },
               function (tabs) {
+                if (!tabs || !tabs[0]) { resolve(0); return; }
                 resolve(tabs[0].index);
               },
             );
@@ -4143,6 +4164,7 @@ async function processCommand(lastEntry) {
 
         imageUrl = await findCorrectImageUrl(pattern);
         chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+          if (!currentWindow || !currentWindow.tabs) return;
           const activeTab = currentWindow.tabs.find((tab) => tab.active);
           await executeScriptIfValid(activeTab, {
             target: { tabId: activeTab.id },
@@ -4153,6 +4175,7 @@ async function processCommand(lastEntry) {
       }
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        if (!currentWindow || !currentWindow.tabs) return;
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
 
         if ((!pht || !addPhoto) && activeTab) {
@@ -4178,6 +4201,7 @@ async function processCommand(lastEntry) {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        if (!currentWindow || !currentWindow.tabs) return;
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         await executeScriptIfValid(activeTab, {
           target: { tabId: activeTab.id },
@@ -4191,6 +4215,7 @@ async function processCommand(lastEntry) {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        if (!currentWindow || !currentWindow.tabs) return;
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         await executeScriptIfValid(activeTab, {
           target: { tabId: activeTab.id },
@@ -4205,6 +4230,7 @@ async function processCommand(lastEntry) {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        if (!currentWindow || !currentWindow.tabs) return;
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
 
         await chrome.scripting.executeScript({
@@ -4289,6 +4315,7 @@ async function processCommand(lastEntry) {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        if (!currentWindow || !currentWindow.tabs) return;
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         await executeScriptIfValid(activeTab, {
           target: { tabId: activeTab.id },
@@ -4302,6 +4329,7 @@ async function processCommand(lastEntry) {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        if (!currentWindow || !currentWindow.tabs) return;
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         await executeScriptIfValid(activeTab, {
           target: { tabId: activeTab.id },
@@ -4315,6 +4343,7 @@ async function processCommand(lastEntry) {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        if (!currentWindow || !currentWindow.tabs) return;
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         await executeScriptIfValid(activeTab, {
           target: { tabId: activeTab.id },
@@ -4328,6 +4357,7 @@ async function processCommand(lastEntry) {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        if (!currentWindow || !currentWindow.tabs) return;
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         await executeScriptIfValid(activeTab, {
           target: { tabId: activeTab.id },
@@ -4362,7 +4392,9 @@ async function processCommand(lastEntry) {
     if (lastEntry && lastEntry.id === "20" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        if (!currentWindow || !currentWindow.tabs) return;
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
+        if (!currentWindow || !currentWindow.tabs) return;
         const previousTab = currentWindow.tabs.find(
           (tab) => tab.index === activeTab.index - 1,
         );
@@ -4480,6 +4512,7 @@ async function processCommand(lastEntry) {
     if (lastEntry && lastEntry.id === "22" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
       chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+        if (!tabs || !tabs[0]) return;
         const currentTabId = tabs[0].id;
         chrome.tabs.query({ url: "https://onlyfans.com/*" }, function (matchingTabs) {
           if (matchingTabs.length > 1) {
@@ -4505,6 +4538,7 @@ async function processCommand(lastEntry) {
     if (lastEntry && lastEntry.id === "33" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        if (!currentWindow || !currentWindow.tabs) return;
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         if (activeTab && lastEntry.url) {
           chrome.tabs.update(activeTab.id, { url: lastEntry.url });
@@ -4567,6 +4601,7 @@ async function processCommand(lastEntry) {
 
       if (result.singleStop) {
         chrome.tabs.query({ active: true, currentWindow: true }, function (activeTabs) {
+          if (!activeTabs || !activeTabs[0]) return;
           const currentTabId = activeTabs[0].id;
           chrome.tabs.query({ url: "https://onlyfans.com/*" }, function (ofTabs) {
             const tabsToClose = ofTabs
@@ -4580,6 +4615,7 @@ async function processCommand(lastEntry) {
         });
       } else {
         chrome.tabs.query({ active: true, currentWindow: true }, async function (tabs) {
+          if (!tabs || !tabs[0]) return;
           const currentTabId = tabs[0].id;
           chrome.tabs.query({ url: "https://onlyfans.com/*" }, async function (matchingTabs) {
             const otherTabs = matchingTabs.filter(tab => tab.id !== currentTabId);
@@ -4608,6 +4644,7 @@ async function processCommand(lastEntry) {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        if (!currentWindow || !currentWindow.tabs) return;
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         await executeScriptIfValid(activeTab, {
           target: { tabId: activeTab.id },
@@ -4622,6 +4659,7 @@ async function processCommand(lastEntry) {
 
       if (lastEntry.targetBrowser && (lastEntry.targetBrowser === browserType || lastEntry.targetBrowser === "all")) {
         chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+          if (!currentWindow || !currentWindow.tabs) return;
           const activeTab = currentWindow.tabs.find((tab) => tab.active);
           await executeScriptIfValid(activeTab, {
             target: { tabId: activeTab.id },
@@ -4636,6 +4674,7 @@ async function processCommand(lastEntry) {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        if (!currentWindow || !currentWindow.tabs) return;
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         await executeScriptIfValid(activeTab, {
           target: { tabId: activeTab.id },
@@ -4648,6 +4687,7 @@ async function processCommand(lastEntry) {
     if (lastEntry && lastEntry.id === "118" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        if (!currentWindow || !currentWindow.tabs) return;
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         await executeScriptIfValid(activeTab, {
           target: { tabId: activeTab.id },
@@ -4661,6 +4701,7 @@ async function processCommand(lastEntry) {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
 
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        if (!currentWindow || !currentWindow.tabs) return;
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         await executeScriptIfValid(activeTab, {
           target: { tabId: activeTab.id },
@@ -7104,6 +7145,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             chrome.tabs.create({ url: targetUrl }, function (newTab) {
               chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
                 if (info.status === "complete" && tabId === newTab.id) {
+                  chrome.tabs.onUpdated.removeListener(listener);
                   chrome.scripting.executeScript({
                     target: { tabId: newTab.id },
                     func: () => {
@@ -7137,7 +7179,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                       setTimeout(() => observer.disconnect(), 10000);
                     },
                   });
-                  chrome.tabs.onUpdated.removeListener(listener);
                   resolve(newTab.id);
                 }
               });
@@ -7248,7 +7289,7 @@ async function pressBind(tabIdFromArg) {
   const mediaWrapperExists = document.querySelector('.b-make-post__media-wrapper');
 
   const storageData = await new Promise(resolve => {
-    chrome.storage.local.get(['pht', 'syncStop', 'singleStop', `blacklisted_${window.location.href.split('/').pop()}`], resolve);
+    chrome.storage.local.get(['pht', 'syncStop', 'singleStop', `blacklisted_${currentTabId}`], resolve);
   });
   const phtIds = Array.isArray(storageData.pht) ? storageData.pht : [];
   const isIntentionallyWithoutPhoto = currentTabId != null && phtIds.some((id) => Number(id) === Number(currentTabId));
@@ -7269,7 +7310,7 @@ async function pressBind(tabIdFromArg) {
       );
     if (selector) {
       const { syncStop = false, singleStop = false } = storageData;
-      const isBlacklisted = storageData[`blacklisted_${window.location.href.split('/').pop()}`] || false;
+      const isBlacklisted = storageData[`blacklisted_${currentTabId}`] || false;
 
       if (!syncStop && !singleStop && !isBlacklisted) {
 
@@ -7382,6 +7423,7 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
         clearInterval(navPollId);
       }
     }, 50);
+    window.__ofhNavPollId = navPollId;
   }
 
   if (!singleTabMode) {
@@ -7428,14 +7470,10 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
               message: innerDiv.textContent,
             });
             if (innerDiv.textContent.includes("tag")) {
-              let username = innerDiv.textContent.split("@")[1].trim();
-              let url = `https://onlyfans.com/my/collections/user-lists/blocked?search=${username}`;
-
-              chrome.runtime.sendMessage({
-                action: "createNotif",
-                tabId: tab.id,
-                message: innerDiv.textContent,
-              });
+              const parts = innerDiv.textContent.split("@");
+              const username = parts.length > 1 ? parts[1].trim() : '';
+              if (!username) return;
+              const url = `https://onlyfans.com/my/collections/user-lists/blocked?search=${username}`;
 
               chrome.runtime.sendMessage({
                 action: "blacklist",
@@ -7612,14 +7650,15 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
               await delay(7000);
             }
             else if (!innerDiv.textContent.includes("[OFH]")) {
-              // In singleTabMode keep retrying, otherwise give up
+
               if (singleTabMode && !singleTabDone) {
                 setTimeout(intervalFunc, 2000);
               }
               return
             }
             else {
-              delay(10000);
+              await delay(10000);
+              setTimeout(intervalFunc, 2000);
             }
           }
         }
@@ -8492,8 +8531,7 @@ async function collectOnlyfansData(tabId) {
                   });
                 }
               } catch (_) { }
-            },
-            { once: true }
+            }
           );
 
           return { ua, xbc, tag, overlayPresent: true };
