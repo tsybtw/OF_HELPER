@@ -688,6 +688,7 @@ function updateMentionPosition(newX, newY) {
   } catch (_) { }
 }
 
+let __textScaleOriginal = null;
 function updateTextScale(scalePercent) {
   try {
     const container = document.querySelector('.b-photo-editor__container');
