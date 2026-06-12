@@ -3568,7 +3568,10 @@ async function processCommand(lastEntry) {
                               target.set({ angle: settings.angle - 90 });
                               changed = true;
                             }
-                            if (changed && canvas.renderAll) canvas.renderAll();
+                            if (changed && canvas.renderAll) {
+                              target.setCoords();
+                              canvas.renderAll();
+                            }
                           } catch (e) {
                             setTimeout(checkAndApply, 100);
                           }
