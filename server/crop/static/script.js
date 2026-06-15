@@ -1882,12 +1882,16 @@ function updateQueueStatus(queueData = null, browserData = null) {
     });
 
     try {
-      const activeUser = data.users && typeof currentActiveUser === 'number' ? data.users[currentActiveUser] : null;
-      const activeChatId = activeUser ? activeUser.chat_id : null;
-      if (activeChatId) {
-        const targetId = String(activeChatId);
-        if (targetId !== lastHintsChatIdRefreshed) {
-          refreshHintsByChatId(targetId, currentActiveUser);
+      if (data.skip_chat_id && data.skip_chat_id !== lastHintsChatIdRefreshed) {
+        refreshHintsByChatId(data.skip_chat_id, null);
+      } else {
+        const activeUser = data.users && typeof currentActiveUser === 'number' ? data.users[currentActiveUser] : null;
+        const activeChatId = activeUser ? activeUser.chat_id : null;
+        if (activeChatId) {
+          const targetId = String(activeChatId);
+          if (targetId !== lastHintsChatIdRefreshed) {
+            refreshHintsByChatId(targetId, currentActiveUser);
+          }
         }
       }
     } catch (_) { }
