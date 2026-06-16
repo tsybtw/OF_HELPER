@@ -7338,6 +7338,7 @@ async function pressBind(tabIdFromArg) {
 async function pressBindFix(tab, browserType, singleTabMode = false) {
 
   let savedMediaLink = null;
+  let fixMediaAttempts = 0;
 
   async function getMediaLinkBeforeSubmit() {
     const imageElement = document.querySelector('.media-file.m-default-bg.m-media-el');
@@ -7501,13 +7502,17 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
             }
             else if (/(attached|issue)/i.test(innerDiv.textContent)) {
 
+              fixMediaAttempts++;
+              if (fixMediaAttempts > 3) {
+                fixMediaAttempts = 0;
+                return;
+              }
 
               let mediaLink = savedMediaLink;
 
               if (mediaLink) {
-                let elements = document.querySelectorAll(
-                  ".b-dropzone__preview__delete.g-btn.m-rounded.m-reset-width.m-thumb-r-corner-pos.m-btn-remove.m-sm-icon-size.has-tooltip",
-                );
+                const deleteSelector = ".b-dropzone__preview__delete.g-btn.m-rounded.m-reset-width.m-thumb-r-corner-pos.m-btn-remove.m-sm-icon-size.has-tooltip";
+                let elements = document.querySelectorAll(deleteSelector);
                 let divs = document.querySelectorAll(
                   "#make_post_form > div.b-make-post.m-with-free-options > div > div.b-make-post__main-wrapper > div.b-make-post__media-wrapper > div > div > div > div > div > div",
                 );
@@ -7517,6 +7522,18 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
                       element.click();
                     }
                   });
+                });
+
+                await new Promise((resolve) => {
+                  const start = Date.now();
+                  const check = () => {
+                    if (!document.querySelector(deleteSelector) || Date.now() - start > 4000) {
+                      resolve();
+                    } else {
+                      setTimeout(check, 200);
+                    }
+                  };
+                  check();
                 });
 
                 function simulateDragAndDrop(
@@ -7562,87 +7579,102 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
                 }
 
                 async function handleImageUpload(imageUrl) {
-                  let fileType = "image/png";
-                  let mediaElement;
-
-                  if (imageUrl.includes("/media.") || imageUrl.includes("/image.")) {
-                    fileType = "image/png";
-                    mediaElement = new Image();
-                  } else {
+                  try {
                     const urlParts = imageUrl.split("/");
                     const fileName = urlParts[urlParts.length - 1].split("?")[0];
-                    const fileExtension = fileName.split(".").pop().toLowerCase();
+                    const fileExtension = fileName.split(".").pop().toLowerCase() || "png";
+                    let fileType = "image/png";
+                    if (fileExtension === "gif") fileType = "image/gif";
+                    else if (fileExtension === "mp4") fileType = "video/mp4";
 
-                    if (fileExtension === "gif") {
-                      fileType = "image/gif";
-                      mediaElement = new Image();
-                    } else if (fileExtension === "mp4") {
-                      fileType = "video/mp4";
-                      mediaElement = document.createElement("video");
-                    } else {
-                      fileType = "image/png";
-                      mediaElement = new Image();
-                    }
-                  }
+                    const editor = document.querySelector(
+                      ".tiptap.ProseMirror.b-text-editor.js-text-editor.m-native-custom-scrollbar.m-scrollbar-y.m-scroll-behavior-auto.m-overscroll-behavior-auto"
+                    );
 
-                  mediaElement.crossOrigin = "anonymous";
-                  mediaElement.src = imageUrl;
+                    if (fileExtension === "mp4") {
+                      const fetchController = new AbortController();
+                      const fetchTimeout = setTimeout(() => fetchController.abort(), 90000);
+                      try {
+                        const fetchRes = await fetch(imageUrl, { signal: fetchController.signal });
+                        clearTimeout(fetchTimeout);
+                        if (!fetchRes.ok) throw new Error(`Fetch failed: ${fetchRes.status}`);
+                        const originalBlob = await fetchRes.blob();
 
-                  mediaElement.onload = mediaElement.onloadedmetadata = async function () {
-                    try {
-                      const cropLeft = Math.floor(Math.random() * 3) + 1;
-                      const cropRight = Math.floor(Math.random() * 3) + 1;
-                      const cropTop = Math.floor(Math.random() * 3) + 1;
-                      const cropBottom = Math.floor(Math.random() * 3) + 1;
+                        let videoBlob = originalBlob;
+                        try {
+                          const formData = new FormData();
+                          formData.append("video", new File([originalBlob], "media.mp4", { type: "video/mp4" }));
+                          formData.append("url", imageUrl);
+                          const cropController = new AbortController();
+                          const cropTimeout = setTimeout(() => cropController.abort(), 60000);
+                          const cropRes = await fetch("http://localhost:8765/crop-video-fix", {
+                            method: "POST",
+                            body: formData,
+                            signal: cropController.signal,
+                          });
+                          clearTimeout(cropTimeout);
+                          if (cropRes.ok) {
+                            videoBlob = await cropRes.blob();
+                          }
+                        } catch (cropErr) {
+                          console.error("Ошибка crop-video-fix, используется оригинал:", cropErr);
+                        }
 
-                      const canvas = document.createElement("canvas");
-                      const sourceWidth = mediaElement.width || 800;
-                      const sourceHeight = mediaElement.height || 600;
-
-                      const newWidth = sourceWidth - cropLeft - cropRight;
-                      const newHeight = sourceHeight - cropTop - cropBottom;
-
-                      canvas.width = newWidth;
-                      canvas.height = newHeight;
-
-                      const ctx = canvas.getContext("2d");
-
-                      ctx.drawImage(
-                        mediaElement,
-                        cropLeft, cropTop,
-                        sourceWidth - cropLeft - cropRight,
-                        sourceHeight - cropTop - cropBottom,
-                        0, 0,
-                        newWidth, newHeight
-                      );
-
-                      const blob = await new Promise((resolve) => {
-                        canvas.toBlob(resolve, fileType);
-                      });
-
-                      const extension = fileType.split("/")[1];
-                      const file = new File([blob], `media.${extension}`, {
-                        type: fileType,
-                      });
-
-                      const editor = document.querySelector(
-                        ".tiptap.ProseMirror.b-text-editor.js-text-editor.m-native-custom-scrollbar.m-scrollbar-y.m-scroll-behavior-auto.m-overscroll-behavior-auto"
-                      );
-                      if (editor) {
-                        editor.focus();
-                        simulateDragAndDrop(mediaElement, editor, file);
+                        const file = new File([videoBlob], "media.mp4", { type: "video/mp4" });
+                        if (editor) {
+                          editor.focus();
+                          const dummySource = document.createElement("div");
+                          simulateDragAndDrop(dummySource, editor, file);
+                        }
+                      } catch (e) {
+                        clearTimeout(fetchTimeout);
+                        console.error("Ошибка при загрузке видео:", e);
                       }
+                    } else {
+                      const imgFetchController = new AbortController();
+                      const imgFetchTimeout = setTimeout(() => imgFetchController.abort(), 30000);
+                      try {
+                        const imgRes = await fetch(imageUrl, { signal: imgFetchController.signal });
+                        clearTimeout(imgFetchTimeout);
+                        if (!imgRes.ok) throw new Error(`Fetch failed: ${imgRes.status}`);
+                        const originalBlob = await imgRes.blob();
 
-                      isUploading = false;
-                    } catch (error) {
-                      console.error("Ошибка при обработке изображения:", error);
-                      isUploading = false;
+                        let imageBlob = originalBlob;
+                        try {
+                          const formData = new FormData();
+                          formData.append("image", new File([originalBlob], `media.${fileExtension}`, { type: fileType }));
+                          formData.append("url", imageUrl);
+                          const imgCropController = new AbortController();
+                          const imgCropTimeout = setTimeout(() => imgCropController.abort(), 30000);
+                          const cropRes = await fetch("http://localhost:8765/crop-image-fix", {
+                            method: "POST",
+                            body: formData,
+                            signal: imgCropController.signal,
+                          });
+                          clearTimeout(imgCropTimeout);
+                          if (cropRes.ok) {
+                            imageBlob = await cropRes.blob();
+                          }
+                        } catch (cropErr) {
+                          console.error("Ошибка crop-image-fix, используется оригинал:", cropErr);
+                        }
+
+                        const ext = fileExtension || fileType.split("/")[1];
+                        const file = new File([imageBlob], `media.${ext}`, { type: fileType });
+                        if (editor) {
+                          editor.focus();
+                          const dummySource = document.createElement("div");
+                          simulateDragAndDrop(dummySource, editor, file);
+                        }
+                      } catch (e) {
+                        clearTimeout(imgFetchTimeout);
+                        console.error("Ошибка при загрузке изображения:", e);
+                      }
                     }
-                  };
-
-                  mediaElement.onerror = function (error) {
-                    isUploading = false;
-                  };
+                  } catch (error) {
+                    console.error("Ошибка при обработке медиа:", error);
+                  }
+                  isUploading = false;
                 }
                 await handleImageUpload(mediaLink);
               }
