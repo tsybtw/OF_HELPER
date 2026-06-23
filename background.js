@@ -729,7 +729,7 @@ function updateTextRotation(angleDeg) {
   } catch (_) { }
 }
 
-async function processImageAndUpload(imageTag, storyColor, blacklistContent, savedSettings = null) {
+async function processImageAndUpload(imageTag, storyColor, blacklistContent, savedSettings = null, photoHash = null) {
   function createJoystick() {
     const containerSize = 100;
     const handleSize = 10;
@@ -841,7 +841,7 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent, sav
         fetch('http://localhost:3000/tag-settings', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tag: cleanTag, settings: { joyX: currentX, joyY: currentY, canvasX: newTagX, canvasY: newTagY } })
+          body: JSON.stringify({ tag: settingsTagKey, settings: { joyX: currentX, joyY: currentY, canvasX: newTagX, canvasY: newTagY } })
         }).catch(() => { });
       }
     });
@@ -905,6 +905,7 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent, sav
   });
 
   const cleanTag = imageTag.trim();
+  const settingsTagKey = photoHash ? cleanTag.replace(/^@/, '') + '_' + photoHash : cleanTag.replace(/^@/, '');
 
   let currentUsername = "";
   try {
@@ -1150,7 +1151,7 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent, sav
           fetch('http://localhost:3000/tag-settings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tag: cleanTag, settings: { scale: scale } })
+            body: JSON.stringify({ tag: settingsTagKey, settings: { scale: scale } })
           }).catch(() => { });
         });
       } catch (_) { }
@@ -1296,7 +1297,7 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent, sav
           fetch('http://localhost:3000/tag-settings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tag: cleanTag, settings: { angle: angle } })
+            body: JSON.stringify({ tag: settingsTagKey, settings: { angle: angle } })
           }).catch(() => { });
         });
       } catch (_) { }
@@ -1335,7 +1336,7 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent, sav
           fetch('http://localhost:3000/tag-settings-reset', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tag: cleanTag })
+            body: JSON.stringify({ tag: settingsTagKey })
           }).catch(() => { });
         });
 
@@ -3402,6 +3403,48 @@ async function processCommand(lastEntry) {
           const stopState = await chrome.storage.local.get(['storiesStop']);
           if (stopState && stopState.storiesStop) { break; }
 
+          const cleanTag = tag.trim().replace(/^@/, '');
+          const fileSearchTag = cleanTag.replace(/\./g, "-");
+          let photoHash = null;
+          try {
+            const exts = [".png", ".jpg", ".jpeg", ".heic", ""];
+            for (const ext of exts) {
+              const imgRes = await fetch(chrome.runtime.getURL(`server/crop/images/${fileSearchTag}${ext}`));
+              if (imgRes.ok) {
+                const blob = await imgRes.blob();
+                const bitmap = await createImageBitmap(blob);
+                const oc = new OffscreenCanvas(9, 8);
+                const ctx = oc.getContext('2d');
+                ctx.drawImage(bitmap, 0, 0, 9, 8);
+                const { data } = ctx.getImageData(0, 0, 9, 8);
+                let bits = '';
+                for (let y = 0; y < 8; y++) {
+                  for (let x = 0; x < 8; x++) {
+                    const i = (y * 9 + x) * 4;
+                    const g1 = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+                    const i2 = (y * 9 + x + 1) * 4;
+                    const g2 = data[i2] * 0.299 + data[i2 + 1] * 0.587 + data[i2 + 2] * 0.114;
+                    bits += g1 > g2 ? '1' : '0';
+                  }
+                }
+                let hex = '';
+                for (let i = 0; i < 64; i += 4) hex += parseInt(bits.slice(i, i + 4), 2).toString(16);
+                photoHash = hex;
+                break;
+              }
+            }
+          } catch (e) {}
+          const settingsTagKey = photoHash ? cleanTag + '_' + photoHash : cleanTag;
+
+          const hexHamming = (a, b) => {
+            if (!a || !b || a.length !== b.length) return Infinity;
+            const lut = [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4];
+            let d = 0;
+            for (let i = 0; i < a.length; i++) d += lut[parseInt(a[i], 16) ^ parseInt(b[i], 16)];
+            return d;
+          };
+          const PHASH_THRESHOLD = 8;
+
           await new Promise(resolve => {
             fetch('http://localhost:3000/tag-settings')
               .then(res => res.json())
@@ -3410,9 +3453,22 @@ async function processCommand(lastEntry) {
                 if (!isStoriesEnabled) {
                   return resolve();
                 }
-                const cleanTag = tag.trim().replace(/^@/, '');
-                const savedSettings = ts[cleanTag] || null;
-                const hookFabricFunc = (tagStr, syncEnabled) => {
+                let savedSettings = null;
+                if (photoHash) {
+                  const prefix = cleanTag + '_';
+                  let minDist = Infinity;
+                  for (const [key, val] of Object.entries(ts)) {
+                    if (!key.startsWith(prefix)) continue;
+                    const dist = hexHamming(photoHash, key.slice(prefix.length));
+                    if (dist < minDist) { minDist = dist; savedSettings = val; }
+                  }
+                  if (minDist > PHASH_THRESHOLD) savedSettings = null;
+                  // Fallback: migrate old-format key (stored without hash suffix)
+                  if (!savedSettings && ts[cleanTag]) savedSettings = ts[cleanTag];
+                } else {
+                  savedSettings = ts[settingsTagKey] || null;
+                }
+                const hookFabricFunc = (tagStr, syncEnabled, photoHash) => {
                   if (window.__OFH_SYNC_ENABLED === undefined) {
                     window.__OFH_SYNC_ENABLED = syncEnabled;
                   }
@@ -3508,7 +3564,7 @@ async function processCommand(lastEntry) {
                           fetch('http://localhost:3000/tag-settings', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ tag: tagStr, settings: { scale: scale, angle: angle, joyX: joyX, joyY: joyY, canvasX: target.left, canvasY: target.top } })
+                            body: JSON.stringify({ tag: photoHash ? tagStr + '_' + photoHash : tagStr, settings: { scale: scale, angle: angle, joyX: joyX, joyY: joyY, canvasX: target.left, canvasY: target.top } })
                           }).catch(() => { });
                         }
                       };
@@ -3530,7 +3586,7 @@ async function processCommand(lastEntry) {
                 chrome.scripting.executeScript({
                   target: { tabId: tab.id },
                   func: processImageAndUpload,
-                  args: [tag, colorQueue[i] || null, blacklistContent, savedSettings]
+                  args: [tag, colorQueue[i] || null, blacklistContent, savedSettings, photoHash]
                 }, () => {
                   if (savedSettings) {
                     chrome.scripting.executeScript({
@@ -3584,7 +3640,7 @@ async function processCommand(lastEntry) {
                         target: { tabId: tab.id },
                         world: 'MAIN',
                         func: hookFabricFunc,
-                        args: [cleanTag, isSyncCanvasEnabled]
+                        args: [cleanTag, isSyncCanvasEnabled, photoHash]
                       }, () => resolve());
                     });
                   } else {
@@ -6412,6 +6468,10 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
                     <div style="display: flex; justify-content: space-between; gap: 20px;">
                       <span style="font-weight: bold; color: #4CAF50;">${msg.data.center}</span>
                       <span style="color: #ccc;">Total</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; gap: 20px;">
+                      <span style="font-weight: bold;">${(Number(msg.data.right) || 0) + (Number(msg.data.left) || 0)}</span>
+                      <span style="color: #ccc;">Links</span>
                     </div>
                     <div style="display: flex; justify-content: space-between; gap: 20px;">
                       <span style="font-weight: bold; color: #ff9900;">${msg.data.net}</span>
