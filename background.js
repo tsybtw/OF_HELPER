@@ -7327,12 +7327,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           style.fontWeight = 'bold';
           style.cursor = 'pointer';
           document.body.appendChild(btn);
-          btn.addEventListener('click', () => { window.open(url, '_blank'); });
+          btn.addEventListener('click', () => { window.open(url, '_blank'); btn.remove(); });
         } catch (e) { console.error(e); }
       },
       args: [request.url]
     });
-    chrome.storage.local.set({ [`blacklisted_${request.tabId}`]: true });
+    if (!request.singleTabMode) {
+      chrome.storage.local.set({ [`blacklisted_${request.tabId}`]: true });
+    }
   }
 
   if (request.action === "closeTab" && sender.tab?.id) {
@@ -7544,9 +7546,12 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
                 action: "blacklist",
                 url,
                 tabId: tab.id,
+                singleTabMode,
               });
 
-              chrome.storage.local.set({ [`blacklisted_${tab.id}`]: true });
+              if (!singleTabMode) {
+                chrome.storage.local.set({ [`blacklisted_${tab.id}`]: true });
+              }
               return;
             }
             else if (/(Daily|Nothing)/.test(innerDiv.textContent)) {
