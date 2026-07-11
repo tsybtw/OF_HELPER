@@ -1,4 +1,5 @@
 const ALL_ACTIONS_DELAY = 0;
+const MAX_POST_TABS = 2;
 const TAB_COUNT = 30
 const DELAY_GREEN_BUTTON = 500;
 
@@ -3433,7 +3434,7 @@ async function processCommand(lastEntry) {
                 break;
               }
             }
-          } catch (e) {}
+          } catch (e) { }
           const settingsTagKey = photoHash ? cleanTag + '_' + photoHash : cleanTag;
 
           const hexHamming = (a, b) => {
@@ -7073,7 +7074,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       const activeWorkingTabs = tabs.filter(t => !blacklistedTabIds.has(t.id));
       const effectiveIndex = activeWorkingTabs.findIndex(t => t.id === request.tabId);
 
-      if (effectiveIndex !== -1 && effectiveIndex < 3) {
+      if (effectiveIndex !== -1 && effectiveIndex < MAX_POST_TABS) {
         sendResponse({ shouldClick: true });
       } else {
         sendResponse({ shouldClick: false });
