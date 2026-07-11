@@ -7651,6 +7651,8 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
                     let fileType = "image/png";
                     if (fileExtension === "gif") fileType = "image/gif";
                     else if (fileExtension === "mp4") fileType = "video/mp4";
+                    else if (fileExtension === "jpg" || fileExtension === "jpeg") fileType = "image/jpeg";
+                    else if (fileExtension === "webp") fileType = "image/webp";
 
                     const editor = document.querySelector(
                       ".tiptap.ProseMirror.b-text-editor.js-text-editor.m-native-custom-scrollbar.m-scrollbar-y.m-scroll-behavior-auto.m-overscroll-behavior-auto"
