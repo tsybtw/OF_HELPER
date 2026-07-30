@@ -5391,17 +5391,24 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           title.style.marginBottom = '5px';
           menu.appendChild(title);
 
-          const fields = [
-            { label: 'SS Delay (ms)', key: 'ss_delay' },
-            { label: 'Lightshot Delay (ms)', key: 'lightshot_delay' },
-            { label: 'TG Delay (ms)', key: 'tg_delay' }
-          ];
-
           let config = {};
           try {
             const response = await fetch('http://localhost:3000/ss-config');
             config = await response.json();
           } catch (e) { }
+
+          const fields = config.platform === 'darwin'
+            ? [
+              { label: 'SS Delay (ms)', key: 'ss_delay' },
+              { label: 'Confirm Delay (ms)', key: 'enter_delay' },
+              { label: 'Max Wait For Screenshot Window (ms)', key: 'enter_max_wait' },
+              { label: 'TG Delay (ms)', key: 'tg_delay' }
+            ]
+            : [
+              { label: 'SS Delay (ms)', key: 'ss_delay' },
+              { label: 'Lightshot Delay (ms)', key: 'lightshot_delay' },
+              { label: 'TG Delay (ms)', key: 'tg_delay' }
+            ];
 
           const inputs = {};
 

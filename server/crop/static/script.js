@@ -3644,6 +3644,10 @@ function saveBetweenQueueUsers() {
     return Promise.resolve();
   }
 
+  if (currentQueueData?.skip_chat_id) {
+    return Promise.resolve();
+  }
+
   return new Promise((resolve, reject) => {
     try {
       const currentHtml = document.documentElement.outerHTML;
