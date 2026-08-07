@@ -2557,6 +2557,8 @@ function listenForButtonClicks(arg, tabId) {
 
 let lastTabId;
 
+const singleTabFinishCallbacks = new Map();
+
 chrome.tabs.onRemoved.addListener(function (tabId) {
   injectedTabs.delete(tabId);
   protectedTabs.delete(tabId);
@@ -2689,6 +2691,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }).catch(() => { });
       });
     });
+    return true;
+  }
+  if (message.type === 'single-tab-returned') {
+    const cb = singleTabFinishCallbacks.get(message.tabId);
+    if (cb) {
+      singleTabFinishCallbacks.delete(message.tabId);
+      cb();
+    }
+    sendResponse({ ok: true });
     return true;
   }
   if (message.type === 'ws-displaced') {
@@ -4314,6 +4325,7 @@ async function processCommand(lastEntry) {
             if (confirmed) return;
             confirmed = true;
             chrome.tabs.onUpdated.removeListener(listener);
+            singleTabFinishCallbacks.delete(activeTab.id);
 
             closedTabsCount++;
             lastClosedTime = new Date();
@@ -4322,20 +4334,19 @@ async function processCommand(lastEntry) {
             sendWsConfirm(lastEntry.cmdId, currentBrowserNumber);
           };
 
+          singleTabFinishCallbacks.set(activeTab.id, finish);
+
           const listener = (tabId, changeInfo, tab) => {
             if (tabId !== activeTab.id) return;
 
             if (changeInfo.url) {
               if (!changeInfo.url.includes('/posts/create')) {
                 hasNavigatedAway = true;
-              } else if (hasNavigatedAway && changeInfo.url.includes('/posts/create')) {
-                // URL is back on /posts/create — now wait for full load to inject hiding
               }
             }
 
             if (hasNavigatedAway && changeInfo.status === 'complete' &&
               tab && tab.url && tab.url.includes('/posts/create')) {
-              // Inject element-hiding script after page fully loaded
               chrome.scripting.executeScript({
                 target: { tabId: activeTab.id },
                 func: () => {
@@ -7467,6 +7478,25 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
           });
         }
 
+        if (singleTabMode) {
+          let returnAttempts = 0;
+          const returnIntervalId = setInterval(() => {
+            const anchorElement = document.querySelector('a[data-name="PostsCreate"][href="/posts/create"]');
+            if (anchorElement && !anchorElement.classList.contains("m-disabled")) {
+              clearInterval(returnIntervalId);
+              anchorElement.click();
+              return;
+            }
+            returnAttempts++;
+            if (returnAttempts >= 15) {
+              clearInterval(returnIntervalId);
+              if (!window.location.href.includes('/posts/create')) {
+                window.location.href = 'https://onlyfans.com/posts/create';
+              }
+            }
+          }, 1000);
+        }
+
         setTimeout(function () {
           const buttons = document.querySelectorAll("button.g-btn.m-flat.m-btn-gaps.m-reset-width");
           buttons.forEach(function (button) {
@@ -7496,6 +7526,7 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
       } else if (singleTabWentAway && isOnCreate) {
         singleTabDone = true;
         clearInterval(navPollId);
+        chrome.runtime.sendMessage({ type: 'single-tab-returned', tabId: tabId });
       }
     }, 50);
     window.__ofhNavPollId = navPollId;

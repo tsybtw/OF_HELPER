@@ -1374,6 +1374,7 @@ function updateQueueStatus(queueData = null, browserData = null) {
   if (!data) return;
 
   checkQueueCompletion(data);
+  updateRestoreActiveUserButton(data);
 
   if (browserInfo) {
     data.browser_tab_counts = browserInfo.browser_tab_counts;
@@ -2414,6 +2415,27 @@ function reloadCurrentAssistant() {
       console.error('Error duplicating content:', err);
       showStatus('Error duplicating content', 'error');
     });
+}
+
+function restoreActiveQueueUser() {
+  const btn = document.getElementById('restore-active-user-btn');
+  if (btn && btn.disabled) return;
+
+  const userIndex = currentQueueData?.current_user;
+  if (userIndex === null || userIndex === undefined) {
+    showStatus('No active queue user to restore', 'error');
+    return;
+  }
+
+  switchToUser(userIndex, true);
+}
+
+function updateRestoreActiveUserButton(queueData) {
+  const btn = document.getElementById('restore-active-user-btn');
+  if (!btn) return;
+
+  const shouldBeActive = !!(queueData && queueData.queue_mode_enabled && queueData.skip_chat_id);
+  btn.disabled = !shouldBeActive;
 }
 
 function updateActiveButton(activeNumber) {

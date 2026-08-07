@@ -689,7 +689,8 @@ input[type="checkbox"] {
 
 #add-hint-btn,
 #add-general-hint-btn,
-#reload-content-btn {
+#reload-content-btn,
+#restore-active-user-btn {
   position: fixed;
   background: none;
   border-radius: 5px;
@@ -738,6 +739,29 @@ input[type="checkbox"] {
 #reload-content-btn:hover {
   background-color: #fbdf56;
   color: black;
+}
+
+#restore-active-user-btn {
+  left: 550px;
+  top: 60px;
+  border: 2px dashed #56d6fb;
+  color: #56d6fb;
+  font-size: 15px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#restore-active-user-btn:hover:not(:disabled) {
+  background-color: #56d6fb;
+  color: black;
+}
+
+#restore-active-user-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  border-style: dotted;
 }
 
 .modal {
