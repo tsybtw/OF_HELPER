@@ -1,3 +1,36 @@
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+}
+
+button::-moz-focus-inner {
+  border: 0;
+  padding: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  line-height: normal;
+}
+
+button:focus,
+input:focus,
+a:focus {
+  outline: none;
+}
+
+button:focus-visible,
+input:focus-visible,
+a:focus-visible {
+  outline: 2px solid #fb8556;
+  outline-offset: 2px;
+}
+
 body {
   background-color: #000000;
   color: white;
@@ -328,7 +361,7 @@ video {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: normal;
-  padding: 10px;
+  padding: 30px 10px 10px 10px;
   width: 190px;
   transition: all 1s;
 }
@@ -464,9 +497,9 @@ video {
 .button3,
 .button4 {
   display: flex;
-  top: 2;
-  left: 87px;
-  width: 50px;
+  top: 2px;
+  left: 80px;
+  width: 70px;
   height: 30px;
   z-index: 5;
   border-radius: 5px;
@@ -476,7 +509,6 @@ video {
   align-items: center;
   font-size: 16px;
   color: black;
-  padding: 2px;
   transition: all 0.5s;
   will-change: filter;
 }
@@ -484,7 +516,7 @@ video {
 .button4 {
   left: 200px;
   width: 100px;
-  height: 15px;
+  height: 30px;
 }
 
 #button-text {
@@ -565,6 +597,8 @@ video {
 
 html {
   scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #fb8556 #000000;
 }
 
 #hints-container {
@@ -577,7 +611,7 @@ html {
   z-index: 0;
   max-height: calc(100vh - 270px);
   min-height: 50px;
-  min-width: 170px;
+  min-width: 190px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -586,8 +620,8 @@ html {
 
 .hints-wrapper {
   flex-grow: 1;
-  overflow-y: auto;
   padding: 5px 5px 0px 5px;
+  scrollbar-color: rgba(0, 0, 0, 0.2) rgba(0, 0, 0, 0.1);
 }
 
 .hints-wrapper::-webkit-scrollbar {
@@ -690,7 +724,8 @@ input[type="checkbox"] {
 #add-hint-btn,
 #add-general-hint-btn,
 #reload-content-btn,
-#restore-active-user-btn {
+#restore-active-user-btn,
+#hint-swap-settings-btn {
   position: fixed;
   background: none;
   border-radius: 5px;
@@ -698,6 +733,16 @@ input[type="checkbox"] {
   padding: 5px 10px;
   transition: all 0.3s ease;
   z-index: 100;
+  font-size: 15px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#add-hint-btn,
+#add-general-hint-btn {
+  font-size: 18px;
 }
 
 #add-hint-btn {
@@ -719,11 +764,6 @@ input[type="checkbox"] {
   top: 60px;
   border: 2px dashed #fbdf56;
   color: #fbdf56;
-  font-size: 15px;
-  font-weight: bold;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 #add-hint-btn:hover {
@@ -746,11 +786,6 @@ input[type="checkbox"] {
   top: 60px;
   border: 2px dashed #56d6fb;
   color: #56d6fb;
-  font-size: 15px;
-  font-weight: bold;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 #restore-active-user-btn:hover:not(:disabled) {
@@ -762,6 +797,54 @@ input[type="checkbox"] {
   opacity: 0.35;
   cursor: not-allowed;
   border-style: dotted;
+}
+
+#hint-swap-settings-btn {
+  left: 580px;
+  top: 10px;
+  border: 2px dashed #c3f57c;
+  color: #c3f57c;
+}
+
+#hint-swap-settings-btn:hover {
+  background-color: #c3f57c;
+  color: black;
+}
+
+#hint-swap-settings-dropdown {
+  position: fixed;
+  left: 580px;
+  top: 45px;
+  background: #000000;
+  border: 3px solid #c3f57c;
+  padding: 15px;
+  min-width: 240px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
+  color: white;
+  display: none;
+  z-index: 101;
+}
+
+#hint-swap-settings-dropdown.show {
+  display: block;
+}
+
+.hint-swap-dropdown-header {
+  font-size: 14px;
+  font-weight: bold;
+  margin-bottom: 12px;
+  text-align: center;
+  color: #c3f57c;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.hint-swap-row {
+  margin-bottom: 10px;
+}
+
+.hint-swap-row:last-child {
+  margin-bottom: 0;
 }
 
 .modal {
@@ -956,6 +1039,7 @@ input[type="checkbox"] {
   border: none;
   cursor: pointer;
   background: none;
+  padding: 2px;
 }
 
 .sort-btn svg {
@@ -976,7 +1060,7 @@ input[type="checkbox"] {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: 170px;
+  width: 180px;
   transition: all 0.3s ease;
   background: none;
 }
@@ -1062,7 +1146,7 @@ input[type="checkbox"] {
   padding: 8px 8px;
   background: #f8f9fa;
   border-radius: 6px;
-  width: 90%;
+  width: 100%;
   justify-content: center;
   font-weight: 600;
   transition: color 0.3s ease;
@@ -1359,6 +1443,11 @@ input[type="checkbox"] {
 
 .queue-dropdown::-webkit-scrollbar-thumb:hover {
   background-color: #fb8556;
+}
+
+.queue-dropdown {
+  scrollbar-width: thin;
+  scrollbar-color: #fb8556 #000000;
 }
 
 .queue-dropdown.show {
@@ -1829,6 +1918,10 @@ input[type="checkbox"] {
   height: 20px;
 }
 
+.hint-item {
+  padding-left: 6px;
+}
+
 .switch-tabs-row .setting-label {
   min-width: 0;
 }
@@ -1916,11 +2009,13 @@ input[type="checkbox"] {
   text-align: center;
   outline: none;
   -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 .setting-input::-webkit-outer-spin-button,
 .setting-input::-webkit-inner-spin-button {
   -webkit-appearance: none;
+  appearance: none;
   margin: 0;
 }
 
@@ -2600,9 +2695,6 @@ body.drag-active-cursor {
   }
 }
 
-/* ===================== AUTO QUEUE ===================== */
-
-/* --- Candidate list rows --- */
 .aq-item {
   display: flex;
   align-items: center;
@@ -2708,7 +2800,6 @@ body.drag-active-cursor {
   border-color: rgba(251, 223, 86, 0.1);
 }
 
-/* --- Dialog modal overlay --- */
 #aq-dialog-modal,
 .aqd-modal {
   position: fixed;
@@ -2849,7 +2940,6 @@ body.drag-active-cursor {
   font-family: 'Varela Round', sans-serif;
 }
 
-/* --- Message rows --- */
 .aqd-msg {
   padding: 5px 9px;
   margin-bottom: 2px;

@@ -1374,7 +1374,6 @@ function updateQueueStatus(queueData = null, browserData = null) {
   if (!data) return;
 
   checkQueueCompletion(data);
-  updateRestoreActiveUserButton(data);
 
   if (browserInfo) {
     data.browser_tab_counts = browserInfo.browser_tab_counts;
@@ -1832,7 +1831,8 @@ function updateQueueStatus(queueData = null, browserData = null) {
         active_hint: u.active_hint
       })),
       current_user: currentActiveUser,
-      can_delete: canDelete
+      can_delete: canDelete,
+      skip_chat_id: data.skip_chat_id || null
     });
 
     if (userButtonsDiv.getAttribute('data-state-hash') === stateHash) {
@@ -1845,7 +1845,7 @@ function updateQueueStatus(queueData = null, browserData = null) {
 
     let newUserButtonsHTML = '';
     data.users.forEach((user, index) => {
-      const activeClass = index === currentActiveUser ? ' active' : '';
+      const activeClass = (index === currentActiveUser && !data.skip_chat_id) ? ' active' : '';
       const completedClass = user.status === 'completed' ? ' completed' : '';
       const processingClass = user.status === 'processing' ? ' processing' : '';
       const deleteButtonDisabled = !canDelete ? ' disabled' : '';
@@ -2418,24 +2418,15 @@ function reloadCurrentAssistant() {
 }
 
 function restoreActiveQueueUser() {
-  const btn = document.getElementById('restore-active-user-btn');
-  if (btn && btn.disabled) return;
+  const skipActive = !!currentQueueData?.skip_chat_id;
+  const userIndex = skipActive ? currentQueueData?.current_user : currentQueueData?.previous_user;
 
-  const userIndex = currentQueueData?.current_user;
   if (userIndex === null || userIndex === undefined) {
-    showStatus('No active queue user to restore', 'error');
+    showStatus('No previous user to restore', 'error');
     return;
   }
 
   switchToUser(userIndex, true);
-}
-
-function updateRestoreActiveUserButton(queueData) {
-  const btn = document.getElementById('restore-active-user-btn');
-  if (!btn) return;
-
-  const shouldBeActive = !!(queueData && queueData.queue_mode_enabled && queueData.skip_chat_id);
-  btn.disabled = !shouldBeActive;
 }
 
 function updateActiveButton(activeNumber) {
