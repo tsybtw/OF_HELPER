@@ -84,7 +84,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       ws.send(JSON.stringify({
         type: 'done',
         cmdId: message.cmdId,
-        browserNumber: message.browserNumber
+        browserNumber: message.browserNumber,
+        data: message.data
       }));
     }
     sendResponse({ ok: true });

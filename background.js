@@ -2558,6 +2558,7 @@ function listenForButtonClicks(arg, tabId) {
 let lastTabId;
 
 const singleTabFinishCallbacks = new Map();
+const singleTabListeners = new Map();
 
 chrome.tabs.onRemoved.addListener(function (tabId) {
   injectedTabs.delete(tabId);
@@ -4318,6 +4319,12 @@ async function processCommand(lastEntry) {
         });
 
         if (lastEntry.singleTabMode) {
+          const stale = singleTabListeners.get(activeTab.id);
+          if (stale) {
+            chrome.tabs.onUpdated.removeListener(stale.listener);
+            singleTabListeners.delete(activeTab.id);
+          }
+
           let hasNavigatedAway = false;
           let confirmed = false;
 
@@ -4325,6 +4332,7 @@ async function processCommand(lastEntry) {
             if (confirmed) return;
             confirmed = true;
             chrome.tabs.onUpdated.removeListener(listener);
+            singleTabListeners.delete(activeTab.id);
             singleTabFinishCallbacks.delete(activeTab.id);
 
             closedTabsCount++;
@@ -4339,14 +4347,13 @@ async function processCommand(lastEntry) {
           const listener = (tabId, changeInfo, tab) => {
             if (tabId !== activeTab.id) return;
 
-            if (changeInfo.url) {
-              if (!changeInfo.url.includes('/posts/create')) {
-                hasNavigatedAway = true;
-              }
+            if (changeInfo.url && !changeInfo.url.includes('/posts/create')) {
+              hasNavigatedAway = true;
             }
 
-            if (hasNavigatedAway && changeInfo.status === 'complete' &&
-              tab && tab.url && tab.url.includes('/posts/create')) {
+            if (hasNavigatedAway && tab && tab.status === 'complete' &&
+              tab.url && tab.url.includes('/posts/create')) {
+              // Inject element-hiding script after page fully loaded
               chrome.scripting.executeScript({
                 target: { tabId: activeTab.id },
                 func: () => {
@@ -4374,11 +4381,36 @@ async function processCommand(lastEntry) {
             }
           };
 
+          singleTabListeners.set(activeTab.id, { listener });
           chrome.tabs.onUpdated.addListener(listener);
 
         } else {
           sendWsConfirm(lastEntry.cmdId, currentBrowserNumber);
         }
+      });
+      return
+    }
+
+    if (lastEntry && lastEntry.id === "105" && browserType !== "") {
+      chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        if (!currentWindow || !currentWindow.tabs) return;
+        const activeTab = currentWindow.tabs.find((tab) => tab.active);
+        let state = { onPostsCreate: false, textEmpty: false };
+        try {
+          const execResults = await chrome.scripting.executeScript({
+            target: { tabId: activeTab.id },
+            func: () => {
+              const onPostsCreate = window.location.href.includes('/posts/create');
+              const editor = document.querySelector('.tiptap.ProseMirror');
+              const text = editor ? editor.textContent.trim() : '';
+              return { onPostsCreate, textEmpty: text.length === 0 };
+            }
+          });
+          if (execResults && execResults[0] && execResults[0].result) {
+            state = execResults[0].result;
+          }
+        } catch (_) { }
+        sendWsConfirm(lastEntry.cmdId, currentBrowserNumber, state);
       });
       return
     }
@@ -8171,13 +8203,14 @@ chrome.tabs.onCreated.addListener(function (tab) {
 
 setInterval(() => updateTabCounterOnActiveTab(false), 1000);
 
-function sendWsConfirm(cmdId, browserNumber) {
+function sendWsConfirm(cmdId, browserNumber, data) {
   try {
     if (!cmdId) return;
     chrome.runtime.sendMessage({
       type: 'ws-confirm',
       cmdId: cmdId,
-      browserNumber: browserNumber
+      browserNumber: browserNumber,
+      data: data
     });
   } catch (_) { }
 }
