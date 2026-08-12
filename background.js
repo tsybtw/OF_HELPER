@@ -7241,12 +7241,64 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
 
-  function handleTabOpen() {
+  function handleTabOpen(forceOpenAtEnd) {
     return new Promise((resolve) => {
+      const targetUrl = "https://onlyfans.com/posts/create";
+
+      const openBrandNewTabAtEnd = () => {
+        chrome.tabs.query({ currentWindow: true }, function (tabs) {
+          chrome.tabs.create({ url: targetUrl, index: tabs.length, active: true }, function (newTab) {
+            chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
+              if (info.status === "complete" && tabId === newTab.id) {
+                chrome.tabs.onUpdated.removeListener(listener);
+                chrome.scripting.executeScript({
+                  target: { tabId: newTab.id },
+                  func: () => {
+                    const selector1 = "#content > div.l-wrapper > div.l-wrapper__holder-content.m-inherit-zindex > div > div > div > div.g-page__header.m-real-sticky.js-sticky-header.m-nowrap > div > button.m-btn-clear-draft.g-btn.m-border.m-rounded.m-sm-width.m-reset-width";
+                    const selector2 = "#content > div.l-wrapper > div > div > div > div > div.stories-list.g-negative-sides-gaps";
+                    const observer = new MutationObserver((mutationsList) => {
+                      for (let mutation of mutationsList) {
+                        if (mutation.type === "childList") {
+                          const element1 = document.querySelector(selector1);
+                          if (element1) {
+                            element1.click();
+                            element1.style.display = "none";
+                          }
+
+                          const element2 = document.querySelector(selector2);
+                          if (element2) {
+                            element2.parentNode.removeChild(element2);
+                          }
+
+                          if (element1 && element2) {
+                            observer.disconnect();
+                          }
+                        }
+                      }
+                    });
+
+                    observer.observe(document, {
+                      childList: true,
+                      subtree: true,
+                    });
+                    setTimeout(() => observer.disconnect(), 10000);
+                  },
+                });
+                resolve(newTab.id);
+              }
+            });
+          });
+        });
+      };
+
+      if (forceOpenAtEnd) {
+        openBrandNewTabAtEnd();
+        return;
+      }
+
       chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
         const currentTab = tabs[0];
         const currentTabIndex = currentTab.index;
-        const targetUrl = "https://onlyfans.com/posts/create";
 
         chrome.tabs.query({}, function (tabs) {
           if (currentTabIndex < tabs.length - 1) {
@@ -7257,47 +7309,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               chrome.tabs.update(nextTab.id, { active: true }, () => resolve(nextTab.id));
             }
           } else {
-            chrome.tabs.create({ url: targetUrl }, function (newTab) {
-              chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
-                if (info.status === "complete" && tabId === newTab.id) {
-                  chrome.tabs.onUpdated.removeListener(listener);
-                  chrome.scripting.executeScript({
-                    target: { tabId: newTab.id },
-                    func: () => {
-                      const selector1 = "#content > div.l-wrapper > div.l-wrapper__holder-content.m-inherit-zindex > div > div > div > div.g-page__header.m-real-sticky.js-sticky-header.m-nowrap > div > button.m-btn-clear-draft.g-btn.m-border.m-rounded.m-sm-width.m-reset-width";
-                      const selector2 = "#content > div.l-wrapper > div > div > div > div > div.stories-list.g-negative-sides-gaps";
-                      const observer = new MutationObserver((mutationsList) => {
-                        for (let mutation of mutationsList) {
-                          if (mutation.type === "childList") {
-                            const element1 = document.querySelector(selector1);
-                            if (element1) {
-                              element1.click();
-                              element1.style.display = "none";
-                            }
-
-                            const element2 = document.querySelector(selector2);
-                            if (element2) {
-                              element2.parentNode.removeChild(element2);
-                            }
-
-                            if (element1 && element2) {
-                              observer.disconnect();
-                            }
-                          }
-                        }
-                      });
-
-                      observer.observe(document, {
-                        childList: true,
-                        subtree: true,
-                      });
-                      setTimeout(() => observer.disconnect(), 10000);
-                    },
-                  });
-                  resolve(newTab.id);
-                }
-              });
-            });
+            openBrandNewTabAtEnd();
           }
         });
       });
@@ -7323,7 +7335,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === "openNewTab") {
-    handleTabOpen().then(tabId => {
+    handleTabOpen(request.source !== "pressBindFix").then(tabId => {
       if (request.source === "pressBindFix") {
         fetch('http://localhost:3000/tabOpened', {
           method: 'POST',
