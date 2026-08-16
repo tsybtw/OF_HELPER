@@ -619,9 +619,14 @@ html {
 }
 
 .hints-wrapper {
-  flex-grow: 1;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
   padding: 5px 5px 0px 5px;
-  scrollbar-color: rgba(0, 0, 0, 0.2) rgba(0, 0, 0, 0.1);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.35) rgba(0, 0, 0, 0.1);
 }
 
 .hints-wrapper::-webkit-scrollbar {
@@ -634,9 +639,13 @@ html {
 }
 
 .hints-wrapper::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.35);
   border-radius: 4px;
-  border-width: 2px;
+  border: none;
+}
+
+.hints-wrapper::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.55);
 }
 
 input[type="checkbox"] {
@@ -1033,6 +1042,7 @@ input[type="checkbox"] {
   align-items: center;
   justify-content: space-evenly;
   padding: 2px 5px 7px 5px;
+  flex-shrink: 0;
 }
 
 .sort-btn {

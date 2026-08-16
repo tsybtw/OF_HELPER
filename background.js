@@ -617,15 +617,19 @@ async function toggleColors(noDelay = false) {
   if (noDelay) {
     styleDeleteButtons(getDeleteButtons());
   } else {
+    try { if (window.__ofhDropzoneIntervalId) clearInterval(window.__ofhDropzoneIntervalId); } catch (_) { }
+
     const checkDropzoneElements = setInterval(() => {
       const elements = getDeleteButtons();
       if (elements.length >= 2) {
         setTimeout(() => {
           styleDeleteButtons(getDeleteButtons());
           clearInterval(checkDropzoneElements);
+          if (window.__ofhDropzoneIntervalId === checkDropzoneElements) window.__ofhDropzoneIntervalId = null;
         }, 1000);
       }
     }, 500);
+    window.__ofhDropzoneIntervalId = checkDropzoneElements;
   }
 }
 
@@ -2508,6 +2512,8 @@ function listenForButtonClicks(arg, tabId) {
   let timeoutId = "";
 
   function clickPost(tabId) {
+    try { if (window.__ofhClickPostIntervalId) clearInterval(window.__ofhClickPostIntervalId); } catch (_) { }
+
     const intervalId = setInterval(() => {
       const anchorElement = document.querySelector(
         'a[data-name="PostsCreate"][href="/posts/create"]',
@@ -2520,14 +2526,17 @@ function listenForButtonClicks(arg, tabId) {
             chrome.storage.local.set({ [tabId]: true });
           }
           clearInterval(intervalId);
+          if (window.__ofhClickPostIntervalId === intervalId) window.__ofhClickPostIntervalId = null;
         } else {
           disabledCount++;
           if (disabledCount >= 10) {
             clearInterval(intervalId);
+            if (window.__ofhClickPostIntervalId === intervalId) window.__ofhClickPostIntervalId = null;
           }
         }
       }
     }, 1000);
+    window.__ofhClickPostIntervalId = intervalId;
   }
 
   function handleClick() {
@@ -2560,9 +2569,52 @@ let lastTabId;
 const singleTabFinishCallbacks = new Map();
 const singleTabListeners = new Map();
 
+const tabScopedUpdateListeners = new Map();
+
+function trackTabScopedUpdateListener(tabId, listener) {
+  if (tabId == null) return;
+  let set = tabScopedUpdateListeners.get(tabId);
+  if (!set) {
+    set = new Set();
+    tabScopedUpdateListeners.set(tabId, set);
+  }
+  set.add(listener);
+}
+
+function addTabScopedUpdateListener(tabId, listener) {
+  chrome.tabs.onUpdated.addListener(listener);
+  trackTabScopedUpdateListener(tabId, listener);
+}
+
+function removeTabScopedUpdateListener(tabId, listener) {
+  try { chrome.tabs.onUpdated.removeListener(listener); } catch (_) { }
+  if (tabId == null) return;
+  const set = tabScopedUpdateListeners.get(tabId);
+  if (!set) return;
+  set.delete(listener);
+  if (set.size === 0) tabScopedUpdateListeners.delete(tabId);
+}
+
+function cleanupTabScopedUpdateListeners(tabId) {
+  const set = tabScopedUpdateListeners.get(tabId);
+  if (!set) return;
+  for (const listener of set) {
+    try { chrome.tabs.onUpdated.removeListener(listener); } catch (_) { }
+  }
+  tabScopedUpdateListeners.delete(tabId);
+}
+
 chrome.tabs.onRemoved.addListener(function (tabId) {
   injectedTabs.delete(tabId);
   protectedTabs.delete(tabId);
+
+  singleTabFinishCallbacks.delete(tabId);
+  const singleTabEntry = singleTabListeners.get(tabId);
+  if (singleTabEntry) {
+    try { chrome.tabs.onUpdated.removeListener(singleTabEntry.listener); } catch (_) { }
+    singleTabListeners.delete(tabId);
+  }
+  cleanupTabScopedUpdateListeners(tabId);
 
   if (closedTabIds.has(tabId)) {
     closedTabIds.delete(tabId);
@@ -2868,9 +2920,9 @@ async function processCommand(lastEntry) {
 
         const tabs = await Promise.all(tabConfig.map(config => new Promise(resolve => {
           chrome.tabs.create({ url: config.url, active: false }, tab => {
-            chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
+            addTabScopedUpdateListener(tab && tab.id, function listener(tabId, info) {
               if (tabId === tab.id && info.status === 'complete') {
-                chrome.tabs.onUpdated.removeListener(listener);
+                removeTabScopedUpdateListener(tab.id, listener);
                 resolve({ tab, type: config.type });
               }
             });
@@ -3406,11 +3458,11 @@ async function processCommand(lastEntry) {
           await new Promise(resolve => {
             const listener = (tabId, changeInfo) => {
               if (tabId === tab.id && changeInfo.status === 'complete') {
-                chrome.tabs.onUpdated.removeListener(listener);
+                removeTabScopedUpdateListener(tab.id, listener);
                 resolve();
               }
             };
-            chrome.tabs.onUpdated.addListener(listener);
+            addTabScopedUpdateListener(tab.id, listener);
           });
 
           const stopState = await chrome.storage.local.get(['storiesStop']);
@@ -4035,6 +4087,15 @@ async function processCommand(lastEntry) {
           const existing = tabs.find(t => t.url && /https:\/\/onlyfans\.com\/[^\/?#]+/i.test(t.url) && t.url.replace(/\/?[#?].*$/, '').toLowerCase().endsWith(`/${slug.toLowerCase()}`));
           const targetTabIdRef = { value: existing ? existing.id : null };
 
+          const onUpd = (tabId, changeInfo) => {
+            if (!changeInfo || (changeInfo.status !== 'loading' && changeInfo.status !== 'complete')) return;
+            if (targetTabIdRef.value !== null && tabId !== targetTabIdRef.value) return;
+            injectPassiveInterceptors(tabId, slug);
+            if (changeInfo.status === 'complete') {
+              removeTabScopedUpdateListener(targetTabIdRef.value, onUpd);
+            }
+          };
+
           if (existing) {
             chrome.tabs.update(existing.id, { active: true }, () => {
               injectPassiveInterceptors(existing.id, slug);
@@ -4042,19 +4103,15 @@ async function processCommand(lastEntry) {
           } else {
             chrome.tabs.create({ url: `https://onlyfans.com/${encodeURIComponent(slug)}` }, (newTab) => {
               if (newTab) targetTabIdRef.value = newTab.id;
+              if (newTab) trackTabScopedUpdateListener(newTab.id, onUpd);
               injectPassiveInterceptors(newTab.id, slug);
             });
           }
 
-          const onUpd = (tabId, changeInfo) => {
-            if (!changeInfo || (changeInfo.status !== 'loading' && changeInfo.status !== 'complete')) return;
-            if (targetTabIdRef.value !== null && tabId !== targetTabIdRef.value) return;
-            injectPassiveInterceptors(tabId, slug);
-            if (changeInfo.status === 'complete') {
-              chrome.tabs.onUpdated.removeListener(onUpd);
-            }
-          };
-          try { chrome.tabs.onUpdated.addListener(onUpd); } catch (_) { }
+          try {
+            chrome.tabs.onUpdated.addListener(onUpd);
+            if (targetTabIdRef.value !== null) trackTabScopedUpdateListener(targetTabIdRef.value, onUpd);
+          } catch (_) { }
         });
       } catch (_) { }
       return;
@@ -7248,9 +7305,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       const openBrandNewTabAtEnd = () => {
         chrome.tabs.query({ currentWindow: true }, function (tabs) {
           chrome.tabs.create({ url: targetUrl, index: tabs.length, active: true }, function (newTab) {
-            chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
+            addTabScopedUpdateListener(newTab && newTab.id, function listener(tabId, info) {
               if (info.status === "complete" && tabId === newTab.id) {
-                chrome.tabs.onUpdated.removeListener(listener);
+                removeTabScopedUpdateListener(newTab && newTab.id, listener);
                 chrome.scripting.executeScript({
                   target: { tabId: newTab.id },
                   func: () => {
@@ -7563,6 +7620,8 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
   let singleTabDone = false;
   let singleTabWentAway = false;
   if (singleTabMode) {
+    try { if (window.__ofhStopSingleCycle) window.__ofhStopSingleCycle(); } catch (_) { }
+
     const navPollId = setInterval(() => {
       const isOnCreate = window.location.href.includes('/posts/create');
       if (!isOnCreate) {
@@ -7574,6 +7633,12 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
       }
     }, 50);
     window.__ofhNavPollId = navPollId;
+
+    window.__ofhStopSingleCycle = () => {
+      singleTabDone = true;
+      clearInterval(navPollId);
+      if (window.__ofhNavPollId === navPollId) window.__ofhNavPollId = null;
+    };
   }
 
   if (!singleTabMode) {

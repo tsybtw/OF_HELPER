@@ -2407,6 +2407,10 @@ function reloadCurrentAssistant() {
     .then(data => {
       if (data.success) {
         showStatus('Duplicating content...', 'info');
+        if (data.queue_mode_just_enabled) {
+          updateQueueModeUI(true);
+          loadInitialQueueData();
+        }
       } else {
         showStatus(data.error || 'Failed to reload assistant', 'error');
       }
