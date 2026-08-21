@@ -665,7 +665,6 @@ async function fakeColorsOff() {
   if (button) button.style.background = "#8C6E6E";
 }
 
-
 function updateMentionPosition(newX, newY) {
   try {
     const container = document.querySelector('.b-photo-editor__container');
