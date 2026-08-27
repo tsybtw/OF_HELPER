@@ -587,9 +587,10 @@ function ensurePersistQueueControl() {
       persistRow = document.createElement('div');
       persistRow.className = 'persist-queue-row setting-row-inline';
       persistRow.innerHTML = `
-          <input type="checkbox" id="persist-queue-enabled" class="hint-checkbox" onchange="updateQueueSettings()">
-          <label for="persist-queue-enabled" class="setting-label">Save queue on exit</label>
-        `;
+          <span class="setting-label" style="margin-right: auto; font-size: 14px;">Save queue on exit</span>
+          <input type="checkbox" id="persist-queue-enabled" style="display:none;" onchange="updateQueueSettings()">
+          <div id="persist-queue-toggle" class="queue-mode-toggle" onclick="document.getElementById('persist-queue-enabled').click(); this.classList.toggle('active', document.getElementById('persist-queue-enabled').checked)"></div>
+      `;
       modeSwitch.appendChild(persistRow);
     }
   } catch (_) { }
@@ -1412,7 +1413,7 @@ function updateQueueStatus(queueData = null, browserData = null) {
                         <div class="browser-settings-header">Browser Settings</div>
                         <div class="setting-row setting-row-inline">
                             <input type="checkbox" class="hint-checkbox" disabled style="visibility:hidden">
-                            <span class="setting-label">Upper tabs limit:</span>
+                            <span class="setting-label">Upper tabs limit</span>
                             <div class="spin-wrap">
                                 <button class="spin-btn" onclick="spinInput('tab-threshold-input',-1)">&#8722;</button>
                                 <input type="number" id="tab-threshold-input" class="setting-input"
@@ -1423,7 +1424,7 @@ function updateQueueStatus(queueData = null, browserData = null) {
                         </div>
                         <div class="setting-row setting-row-inline">
                             <input type="checkbox" id="min-override-enabled" class="hint-checkbox" ${minEnabled ? 'checked' : ''} onchange="updateQueueSettings()">
-                            <label for="min-override-enabled" class="setting-label">Lower tabs limit:</label>
+                            <label for="min-override-enabled" class="setting-label">Lower tabs limit</label>
                             <div class="spin-wrap">
                                 <button class="spin-btn" onclick="spinInput('min-override-tabs',-1)" ${minEnabled ? '' : 'disabled'}>&#8722;</button>
                                 <input type="number" id="min-override-tabs" class="setting-input" value="${minTabs}" min="1" max="100" ${minEnabled ? '' : 'disabled'} onchange="updateQueueSettings()">
@@ -1731,20 +1732,20 @@ function updateQueueStatus(queueData = null, browserData = null) {
                 <div class="queue-status-header">Queue Processing Status</div>
                 <div class="queue-status-grid">
                     <div class="queue-status-item">
-                        <span class="queue-status-label">Current User:</span>
+                        <span class="queue-status-label">Current User</span>
                         <span class="queue-status-value">
                             <span class="queue-total-users">${data.current_user + 1}/${data.total_users}</span>
                         </span>
                     </div>
                     ${totalPosts > 0 ? `
                     <div class="queue-status-item">
-                        <span class="queue-status-label">Total Posts:</span>
+                        <span class="queue-status-label">Total Posts</span>
                         <span class="queue-status-value">
                             <span class="queue-total-posts">${totalPosts}</span>
                         </span>
                     </div>` : ''}
                     <div class="queue-status-item">
-                        <span class="queue-status-label">Browsers Ready:</span>
+                        <span class="queue-status-label">Browsers Ready</span>
                         <span class="queue-status-value">
                             <span class="queue-status-icon ${browsersReady ? 'success' : 'error'}">
                                 ${browsersReady ? '✓' : '✗'}
@@ -1753,7 +1754,7 @@ function updateQueueStatus(queueData = null, browserData = null) {
                     </div>
                     ${screenshotsHTML ? `
                     <div class="queue-status-item full-width">
-                        <span class="queue-status-label">Screenshots Status:</span>
+                        <span class="queue-status-label">Screenshots Status</span>
                         <div class="screenshots-status-grid">
                             ${screenshotsHTML}
                         </div>
@@ -1777,21 +1778,21 @@ function updateQueueStatus(queueData = null, browserData = null) {
                     <div class="queue-status-header">Queue Status</div>
                     <div class="queue-status-grid">
                         <div class="queue-status-item">
-                            <span class="queue-status-label">Status:</span>
+                            <span class="queue-status-label">Status</span>
                             <span class="queue-status-value">
                                 <span style="color: #ccc;">${data.total_users} loaded</span>
                             </span>
                         </div>
                         ${totalPosts > 0 ? `
                         <div class="queue-status-item">
-                            <span class="queue-status-label">Total Posts:</span>
+                            <span class="queue-status-label">Total Posts</span>
                             <span class="queue-status-value">
                                 <span class="queue-total-posts">${totalPosts}</span>
                             </span>
                         </div>` : ''}
                         ${screenshotsHTML ? `
                         <div class="queue-status-item full-width">
-                            <span class="queue-status-label">Screenshots Status:</span>
+                            <span class="queue-status-label">Screenshots Status</span>
                             <div class="screenshots-status-grid">
                                 ${screenshotsHTML}
                             </div>
@@ -2773,7 +2774,7 @@ function recropImage(mediaId, imagePath) {
   };
 
   const cancelButton = document.createElement('button');
-  cancelButton.textContent = 'Cancel';
+  cancelButton.textContent = 'Stop';
   cancelButton.className = 'button cancel-button';
   cancelButton.onmouseover = function () {
     this.classList.add('button-hover');
@@ -4569,6 +4570,8 @@ function loadAppState() {
           const persistEl = dropdown ? dropdown.querySelector('#persist-queue-enabled') : null;
           if (persistEl && typeof data.persist_queue_enabled !== 'undefined') {
             persistEl.checked = !!data.persist_queue_enabled;
+            const toggle = dropdown.querySelector('#persist-queue-toggle');
+            if (toggle) toggle.classList.toggle('active', persistEl.checked);
           }
         } catch (_) { }
 
