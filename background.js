@@ -1350,7 +1350,7 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent, sav
       return;
     } catch (error) {
       console.error(error);
-      return 'skipped';
+      return 'failed';
     }
   })();
 }
@@ -1393,6 +1393,35 @@ function postStories() {
 }
 
 const STORY_POST_BUTTON_SELECTOR = '.g-btn.m-btn-editor-style.m-rounded.m-reset-width.d-inline-flex';
+const STORY_SKIPPED_TAB_KEY = '__OFH_STORY_SKIPPED';
+
+async function markSkippedStoryTab(tabId) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (key) => {
+        try { sessionStorage.setItem(key, '1'); } catch (_) { }
+      },
+      args: [STORY_SKIPPED_TAB_KEY]
+    });
+  } catch (_) { }
+}
+
+async function isSkippedStoryTab(tab) {
+  if (!tab || !tab.url || tab.url.startsWith("chrome://")) return false;
+  try {
+    const injection = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: (key) => {
+        try { return sessionStorage.getItem(key) === '1'; } catch (_) { return false; }
+      },
+      args: [STORY_SKIPPED_TAB_KEY]
+    });
+    return !!(injection && injection[0] && injection[0].result);
+  } catch (_) {
+    return false;
+  }
+}
 
 async function closeTabWhenStoryPosted(tabId, timeoutMs = 180000) {
   const deadline = Date.now() + timeoutMs;
@@ -3422,7 +3451,7 @@ async function processCommand(lastEntry) {
           const targetTagLower = cleanTag.toLowerCase().replace(/^@/, '');
 
           if (currentUsername && currentUsername.toLowerCase() === targetTagLower) {
-            return true;
+            return 'self-tag';
           }
 
           if (blacklistContent && currentUsername) {
@@ -3440,14 +3469,14 @@ async function processCommand(lastEntry) {
                   if (blacklistedTag === targetTagLower) {
                     const bannedModels = parts[1].split(',').map(m => m.trim().toLowerCase().replace(/^@/, ''));
                     if (bannedModels.includes(currentModelLower)) {
-                      return true;
+                      return 'blacklist';
                     }
                   }
                 }
               } else {
                 const globalBanTag = trimmedLine.toLowerCase().replace(/^@/, '');
                 if (globalBanTag === targetTagLower) {
-                  return true;
+                  return 'blacklist';
                 }
               }
             }
@@ -3458,15 +3487,15 @@ async function processCommand(lastEntry) {
           for (const ext of extensions) {
             try {
               const response = await fetch(chrome.runtime.getURL(`server/crop/images/${fileSearchTag}${ext}`));
-              if (response.ok) return false;
+              if (response.ok) return null;
             } catch (e) { }
           }
           try {
             const response = await fetch(chrome.runtime.getURL(`server/crop/images/${fileSearchTag}`));
-            if (response.ok) return false;
+            if (response.ok) return null;
           } catch (e) { }
 
-          return true;
+          return 'no-image';
         }
 
         let isStoriesEnabled = true;
@@ -3479,10 +3508,12 @@ async function processCommand(lastEntry) {
 
         for (let i = 0; i < tags.length; i++) {
           const tag = tags[i];
-          let skipped = await isTagSkipped(tag, currentUsername, blacklistContent);
+          let skipReason = await isTagSkipped(tag, currentUsername, blacklistContent);
+          let skipped = skipReason !== null;
 
           if (!isStoriesEnabled) {
             skipped = true;
+            skipReason = 'stories-disabled';
           }
 
           const tabUrl = skipped ? "https://onlyfans.com/posts/create" : "https://onlyfans.com/";
@@ -3506,6 +3537,10 @@ async function processCommand(lastEntry) {
 
           const stopState = await chrome.storage.local.get(['storiesStop']);
           if (stopState && stopState.storiesStop) { break; }
+
+          if (skipReason === 'self-tag' || skipReason === 'blacklist' || skipReason === 'stories-disabled') {
+            await markSkippedStoryTab(tab.id);
+          }
 
           const cleanTag = tag.trim().replace(/^@/, '');
           const fileSearchTag = cleanTag.replace(/\./g, "-");
@@ -3691,7 +3726,13 @@ async function processCommand(lastEntry) {
                   target: { tabId: tab.id },
                   func: processImageAndUpload,
                   args: [tag, colorQueue[i] || null, blacklistContent, savedSettings, photoHash]
-                }, () => {
+                }, (injectionResults) => {
+                  const outcome = (injectionResults && injectionResults[0]) ? injectionResults[0].result : undefined;
+
+                  if (!skipped && outcome === 'skipped') {
+                    markSkippedStoryTab(tab.id);
+                  }
+
                   if (savedSettings) {
                     chrome.scripting.executeScript({
                       target: { tabId: tab.id },
@@ -3791,19 +3832,23 @@ async function processCommand(lastEntry) {
         const currentTabIndex = tabs.findIndex(tab => tab.active);
         const currentTab = tabs[currentTabIndex];
 
-        let storyPosted = false;
-        try {
-          if (currentTab && currentTab.url && !currentTab.url.startsWith("chrome://")) {
-            const injection = await chrome.scripting.executeScript({
-              target: { tabId: currentTab.id },
-              func: postStories
-            });
-            storyPosted = !!(injection && injection[0] && injection[0].result);
-          }
-        } catch (_) { }
+        const isSkippedTab = await isSkippedStoryTab(currentTab);
 
-        if (storyPosted) {
-          closeTabWhenStoryPosted(currentTab.id).catch(() => { });
+        if (!isSkippedTab) {
+          let storyPosted = false;
+          try {
+            if (currentTab && currentTab.url && !currentTab.url.startsWith("chrome://")) {
+              const injection = await chrome.scripting.executeScript({
+                target: { tabId: currentTab.id },
+                func: postStories
+              });
+              storyPosted = !!(injection && injection[0] && injection[0].result);
+            }
+          } catch (_) { }
+
+          if (storyPosted) {
+            closeTabWhenStoryPosted(currentTab.id).catch(() => { });
+          }
         }
 
         setTimeout(() => {
@@ -3812,6 +3857,10 @@ async function processCommand(lastEntry) {
             chrome.tabs.update(tabs[nextTabIndex].id, { active: true });
           } else {
             chrome.tabs.create({ url: 'https://onlyfans.com' });
+          }
+
+          if (isSkippedTab) {
+            chrome.tabs.remove(currentTab.id).catch(() => { });
           }
         }, delay);
       });
