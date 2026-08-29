@@ -4550,7 +4550,7 @@ async function processCommand(lastEntry) {
       chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
         if (!currentWindow || !currentWindow.tabs) return;
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
-        let state = { onPostsCreate: false, textEmpty: false };
+        let state = { onPostsCreate: false, textEmpty: false, hasMedia: true, hasSchedule: true };
         try {
           const execResults = await chrome.scripting.executeScript({
             target: { tabId: activeTab.id },
@@ -4558,7 +4558,13 @@ async function processCommand(lastEntry) {
               const onPostsCreate = window.location.href.includes('/posts/create');
               const editor = document.querySelector('.tiptap.ProseMirror');
               const text = editor ? editor.textContent.trim() : '';
-              return { onPostsCreate, textEmpty: text.length === 0 };
+              const hasMedia = document.querySelector(
+                '.media-file.m-default-bg.m-media-el, .media-file.m-default-bg.m-video-el, .media-file.m-lightbox-el, .b-dropzone__preview__delete'
+              ) !== null;
+              const hasSchedule = document.querySelector(
+                '.b-post-piece.b-dropzone__preview.m-schedule'
+              ) !== null;
+              return { onPostsCreate, textEmpty: text.length === 0, hasMedia, hasSchedule };
             }
           });
           if (execResults && execResults[0] && execResults[0].result) {

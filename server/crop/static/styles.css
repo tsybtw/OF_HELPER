@@ -991,7 +991,8 @@ input[type="checkbox"] {
   50% { opacity: 0.5; }
 }
 
-#sticker-message-input {
+#sticker-message-input,
+.sticker-message-input {
   width: 100%;
   padding: 6px 8px;
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -1002,6 +1003,69 @@ input[type="checkbox"] {
   font-size: 13px;
   box-sizing: border-box;
   margin-bottom: 8px;
+}
+
+#sticker-message-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.sticker-message-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sticker-message-row .sticker-message-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.remove-message-variant-btn {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  margin-bottom: 8px;
+  padding: 0;
+  line-height: 1;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: none;
+  color: rgba(255, 255, 255, 0.5);
+  border-radius: 5px;
+  cursor: pointer;
+  font-family: 'Varela Round', sans-serif;
+  font-size: 15px;
+  transition: all 0.3s ease;
+}
+
+.remove-message-variant-btn:hover:not(:disabled) {
+  border-color: #eb8a8a;
+  color: #eb8a8a;
+}
+
+.remove-message-variant-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+#add-message-variant-btn {
+  width: 100%;
+  padding: 4px 12px;
+  border: 2px solid #d98aeb;
+  background: none;
+  color: #d98aeb;
+  border-radius: 5px;
+  cursor: pointer;
+  font-family: 'Varela Round', sans-serif;
+  font-weight: bold;
+  font-size: 15px;
+  line-height: 1.2;
+  transition: all 0.3s ease;
+}
+
+#add-message-variant-btn:hover {
+  background-color: #d98aeb;
+  color: black;
 }
 
 .modal {
