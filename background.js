@@ -1,7 +1,7 @@
 const ALL_ACTIONS_DELAY = 0;
 const MAX_POST_TABS = 2;
-const TAB_COUNT = 30
 const DELAY_GREEN_BUTTON = 500;
+const MULTI_TAB_RETRY_DELAY_DEFAULT = 3000;
 
 function updateArrowButtonOnTab(tabId, state, locked, lockedByMe) {
   chrome.scripting.executeScript({
@@ -296,9 +296,13 @@ function checkAndCloseTab(tabId) {
       }
 
       if (selector?.disabled === false) {
-        const { syncStop = false, singleStop = false } = await new Promise(resolve => {
-          chrome.storage.local.get(['syncStop', 'singleStop'], resolve);
+        const store = await new Promise(resolve => {
+          chrome.storage.local.get(
+            ['syncStop', 'singleStop', 'lastPostAt', 'singleTabFirstTryDelay'], resolve);
         });
+        const { syncStop = false, singleStop = false } = store;
+        const cooldown = store.singleTabFirstTryDelay !== undefined ? store.singleTabFirstTryDelay : 9500;
+        if (store.lastPostAt && Date.now() - store.lastPostAt < cooldown) return;
         if (!syncStop && !singleStop) {
           selector.click();
           chrome.storage.local.get(['tabsToClose'], (result) => {
@@ -488,16 +492,6 @@ function updateTabCounterOnActiveTab(isReset) {
               }
 
               if (
-                tab.url === "https://onlyfans.com/posts/create" &&
-                tab.url !== "https://onlyfans.com/my/collections/user-lists/blocked" &&
-                tabs.length >= TAB_COUNT
-              ) {
-                chrome.scripting.executeScript({
-                  target: { tabId: tab.id },
-                  func: checkAndCloseTab,
-                  args: [tab.id],
-                });
-              } else if (
                 tab.url.startsWith("https://onlyfans.com") &&
                 tab.url !== "https://onlyfans.com/posts/create" &&
                 tab.url !== "https://onlyfans.com/my/collections/user-lists/blocked" &&
@@ -2623,6 +2617,25 @@ function listenForButtonClicks(arg, tabId) {
 
 let lastTabId;
 
+const SINGLE_TAB_FIRST_TRY_DELAY_DEFAULT = 9500;
+const SINGLE_TAB_RETRY_DELAY_DEFAULT = 3000;
+let singleTabLastPostAt = null;
+
+async function syncPostingSettings() {
+  try {
+    const res = await fetch('http://localhost:3000/posting-settings');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data && typeof data === 'object') chrome.storage.local.set(data);
+  } catch (_) { }
+}
+syncPostingSettings();
+
+function markPostDone() {
+  singleTabLastPostAt = Date.now();
+  try { chrome.storage.local.set({ lastPostAt: singleTabLastPostAt }); } catch (_) { }
+}
+
 function stopSingleTabCycle(tabId) {
   if (tabId == null) return Promise.resolve();
   return chrome.scripting.executeScript({
@@ -2687,6 +2700,7 @@ chrome.tabs.onRemoved.addListener(function (tabId) {
     closedTabIds.delete(tabId);
     closedTabsCount++;
     lastClosedTime = new Date();
+    markPostDone();
   }
 
   const tabIdStr = String(tabId);
@@ -3236,6 +3250,11 @@ async function processCommand(lastEntry) {
           singleTabMode: false
         });
       }
+      return;
+    }
+
+    if (lastEntry.type === "posting-settings-update") {
+      if (lastEntry.data) chrome.storage.local.set(lastEntry.data);
       return;
     }
 
@@ -4482,10 +4501,30 @@ async function processCommand(lastEntry) {
           args: [activeTab.id]
         });
 
+        let firstTryDelayMs = 0;
+        let retryDelayMs = SINGLE_TAB_RETRY_DELAY_DEFAULT;
+
+        const cfg = await chrome.storage.local.get(
+          ['singleTabFirstTryDelay', 'singleTabRetryDelay', 'multiTabRetryDelay']);
+
+        if (lastEntry.singleTabMode) {
+          const firstTry = cfg.singleTabFirstTryDelay !== undefined
+            ? cfg.singleTabFirstTryDelay : SINGLE_TAB_FIRST_TRY_DELAY_DEFAULT;
+          retryDelayMs = cfg.singleTabRetryDelay !== undefined
+            ? cfg.singleTabRetryDelay : SINGLE_TAB_RETRY_DELAY_DEFAULT;
+
+          if (singleTabLastPostAt) {
+            firstTryDelayMs = Math.max(0, firstTry - (Date.now() - singleTabLastPostAt));
+          }
+        } else {
+          retryDelayMs = cfg.multiTabRetryDelay !== undefined
+            ? cfg.multiTabRetryDelay : MULTI_TAB_RETRY_DELAY_DEFAULT;
+        }
+
         await executeScriptIfValid(activeTab, {
           target: { tabId: activeTab.id },
           func: pressBindFix,
-          args: [activeTab, browserType, lastEntry.singleTabMode || false],
+          args: [activeTab, browserType, lastEntry.singleTabMode || false, firstTryDelayMs, retryDelayMs],
         });
 
         if (lastEntry.singleTabMode) {
@@ -4507,6 +4546,7 @@ async function processCommand(lastEntry) {
 
             closedTabsCount++;
             lastClosedTime = new Date();
+            markPostDone();
             updateTabCounterOnActiveTab(false);
 
             stopSingleTabCycle(activeTab.id);
@@ -5057,7 +5097,12 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
         }
 
         async function bindRequest() {
-          await makeRequest("http://localhost:3000/bind", DELAY_GREEN_BUTTON);
+          let delay = DELAY_GREEN_BUTTON;
+          try {
+            const res = await chrome.storage.local.get('postDelay');
+            if (res.postDelay !== undefined) delay = res.postDelay;
+          } catch (_) { }
+          await makeRequest("http://localhost:3000/bind", delay);
         }
 
         async function stopRequest() {
@@ -5526,16 +5571,11 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             input.addEventListener('change', () => {
               const val = parseInt(input.value) || 0;
               chrome.storage.local.set({ [storageKey]: val }, () => {
-                chrome.storage.local.get(['singleTabScreenshotDelay', 'singleTabFakeButtonDelay'], (allRes) => {
-                  fetch('http://localhost:3000/updateSingleTabSettings', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      screenshotDelay: allRes.singleTabScreenshotDelay !== undefined ? allRes.singleTabScreenshotDelay : 5000,
-                      fakeButtonDelay: allRes.singleTabFakeButtonDelay !== undefined ? allRes.singleTabFakeButtonDelay : 3000
-                    })
-                  }).catch(() => { });
-                });
+                fetch('http://localhost:3000/posting-settings', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ [storageKey]: val })
+                }).catch(() => { });
               });
             });
 
@@ -5546,6 +5586,8 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
 
           menu.appendChild(createInput('Fake Button Delay (ms)', 'singleTabFakeButtonDelay', 3000));
           menu.appendChild(createInput('Screenshot Delay (ms)', 'singleTabScreenshotDelay', 5000));
+          menu.appendChild(createInput('First Try Delay (ms)', 'singleTabFirstTryDelay', 9500));
+          menu.appendChild(createInput('Retry Delay (ms)', 'singleTabRetryDelay', 3000));
 
           const closeBtn = document.createElement('button');
           closeBtn.textContent = 'Close';
@@ -5570,6 +5612,215 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
           menu.appendChild(closeBtn);
+          document.body.appendChild(menu);
+
+          const clickOutside = (e) => {
+            if (!menu.contains(e.target) && e.target !== menu) {
+              menu.remove();
+              document.removeEventListener('mousedown', clickOutside);
+            }
+          };
+          setTimeout(() => document.addEventListener('mousedown', clickOutside), 0);
+        }
+
+        function createMultiTabSettingsMenu() {
+          if (document.getElementById('multi-tab-settings-menu')) return;
+
+          const menu = document.createElement('div');
+          menu.id = 'multi-tab-settings-menu';
+          Object.assign(menu.style, {
+            position: 'fixed',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            backgroundColor: 'rgba(28, 28, 28, 0.95)',
+            border: '2px solid #000',
+            borderRadius: '10px',
+            padding: '20px',
+            zIndex: '2147483647',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '15px',
+            color: 'white',
+            fontFamily: "'Josefin Sans', sans-serif",
+            boxShadow: '0 4px 15px rgba(0,0,0,0.5)',
+            minWidth: '280px'
+          });
+
+          const title = document.createElement('div');
+          title.textContent = 'Multi Tab Settings';
+          title.style.textAlign = 'center';
+          title.style.fontSize = '18px';
+          title.style.marginBottom = '5px';
+          menu.appendChild(title);
+
+          function createInput(labelText, storageKey, defaultValue) {
+            const container = document.createElement('div');
+            container.style.display = 'flex';
+            container.style.flexDirection = 'column';
+            container.style.gap = '5px';
+
+            const label = document.createElement('label');
+            label.textContent = labelText;
+            label.style.fontSize = '14px';
+            label.style.color = '#ccc';
+
+            const input = document.createElement('input');
+            input.type = 'number';
+            Object.assign(input.style, {
+              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+              border: '1px solid #444',
+              borderRadius: '5px',
+              padding: '8px',
+              color: 'white',
+              fontFamily: "'Josefin Sans', sans-serif",
+              outline: 'none'
+            });
+
+            chrome.storage.local.get([storageKey], (res) => {
+              input.value = res[storageKey] !== undefined ? res[storageKey] : defaultValue;
+            });
+
+            input.addEventListener('change', () => {
+              const val = parseInt(input.value) || 0;
+              chrome.storage.local.set({ [storageKey]: val }, () => {
+                fetch('http://localhost:3000/posting-settings', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ [storageKey]: val })
+                }).catch(() => { });
+              });
+            });
+
+            container.appendChild(label);
+            container.appendChild(input);
+            return container;
+          }
+
+          menu.appendChild(createInput('First Try Delay (ms)', 'singleTabFirstTryDelay', 9500));
+          menu.appendChild(createInput('Retry Delay (ms)', 'multiTabRetryDelay', 3000));
+          menu.appendChild(createInput('Max Posting Tabs', 'maxPostTabs', 2));
+
+          const closeBtn = document.createElement('button');
+          closeBtn.textContent = 'Close';
+          Object.assign(closeBtn.style, {
+            marginTop: '10px',
+            padding: '8px',
+            backgroundColor: 'rgb(221, 109, 85)',
+            border: 'none',
+            borderRadius: '5px',
+            color: 'white',
+            cursor: 'pointer',
+            fontFamily: "'Josefin Sans', sans-serif",
+            fontSize: '14px',
+            transition: 'background 0.3s'
+          });
+          closeBtn.onmouseover = () => closeBtn.style.backgroundColor = '#e38571';
+          closeBtn.onmouseout = () => closeBtn.style.backgroundColor = 'rgb(221, 109, 85)';
+          closeBtn.addEventListener('click', () => menu.remove());
+          menu.appendChild(closeBtn);
+
+          document.body.appendChild(menu);
+
+          const clickOutside = (e) => {
+            if (!menu.contains(e.target) && e.target !== menu) {
+              menu.remove();
+              document.removeEventListener('mousedown', clickOutside);
+            }
+          };
+          setTimeout(() => document.addEventListener('mousedown', clickOutside), 0);
+        }
+
+        function createPostDelayMenu() {
+          if (document.getElementById('post-delay-menu')) return;
+
+          const menu = document.createElement('div');
+          menu.id = 'post-delay-menu';
+          Object.assign(menu.style, {
+            position: 'fixed',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            backgroundColor: 'rgba(28, 28, 28, 0.95)',
+            border: '2px solid #000',
+            borderRadius: '10px',
+            padding: '20px',
+            zIndex: '2147483647',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '15px',
+            color: 'white',
+            fontFamily: "'Josefin Sans', sans-serif",
+            boxShadow: '0 4px 15px rgba(0,0,0,0.5)',
+            minWidth: '280px'
+          });
+
+          const title = document.createElement('div');
+          title.textContent = 'Post Settings';
+          title.style.textAlign = 'center';
+          title.style.fontSize = '18px';
+          title.style.marginBottom = '5px';
+          menu.appendChild(title);
+
+          const label = document.createElement('label');
+          label.textContent = 'Post Delay (ms)';
+          label.style.fontSize = '14px';
+          label.style.color = '#ccc';
+
+          const input = document.createElement('input');
+          input.type = 'number';
+          Object.assign(input.style, {
+            backgroundColor: 'rgba(255, 255, 255, 0.1)',
+            border: '1px solid #444',
+            borderRadius: '5px',
+            padding: '8px',
+            color: 'white',
+            fontFamily: "'Josefin Sans', sans-serif",
+            outline: 'none'
+          });
+
+          chrome.storage.local.get(['postDelay'], (res) => {
+            input.value = res.postDelay !== undefined ? res.postDelay : 500;
+          });
+
+          input.addEventListener('change', () => {
+            const val = parseInt(input.value) || 0;
+            chrome.storage.local.set({ postDelay: val }, () => {
+              fetch('http://localhost:3000/posting-settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ postDelay: val })
+              }).catch(() => { });
+            });
+          });
+
+          const field = document.createElement('div');
+          field.style.display = 'flex';
+          field.style.flexDirection = 'column';
+          field.style.gap = '5px';
+          field.appendChild(label);
+          field.appendChild(input);
+          menu.appendChild(field);
+
+          const closeBtn = document.createElement('button');
+          closeBtn.textContent = 'Close';
+          Object.assign(closeBtn.style, {
+            marginTop: '10px',
+            padding: '8px',
+            backgroundColor: 'rgb(221, 109, 85)',
+            border: 'none',
+            borderRadius: '5px',
+            color: 'white',
+            cursor: 'pointer',
+            fontFamily: "'Josefin Sans', sans-serif",
+            fontSize: '14px',
+            transition: 'background 0.3s'
+          });
+          closeBtn.onmouseover = () => closeBtn.style.backgroundColor = '#e38571';
+          closeBtn.onmouseout = () => closeBtn.style.backgroundColor = 'rgb(221, 109, 85)';
+          closeBtn.addEventListener('click', () => menu.remove());
+          menu.appendChild(closeBtn);
+
           document.body.appendChild(menu);
 
           const clickOutside = (e) => {
@@ -6105,6 +6356,14 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             rightPart.addEventListener("click", (e) => {
               e.stopPropagation();
               animateButton(button, rightPart, callbackRight);
+            });
+          }
+
+          if (id === "split-button2") {
+            rightPart.addEventListener("contextmenu", (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              createPostDelayMenu();
             });
           }
 
@@ -6877,7 +7136,13 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
 
           const toggleSingleTabMode = (e) => {
             e.preventDefault();
-            chrome.runtime.sendMessage({ action: "toggleSingleTabMode" });
+            chrome.storage.local.get(['autoRestartEnabled', 'singleTabMode'], (result) => {
+              if (result.autoRestartEnabled && !result.singleTabMode) {
+                createMultiTabSettingsMenu();
+              } else {
+                chrome.runtime.sendMessage({ action: "toggleSingleTabMode" });
+              }
+            });
           };
 
           arrowButton.addEventListener("click", toggleAutoRestart);
@@ -7311,7 +7576,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       const activeWorkingTabs = tabs.filter(t => !blacklistedTabIds.has(t.id));
       const effectiveIndex = activeWorkingTabs.findIndex(t => t.id === request.tabId);
 
-      if (effectiveIndex !== -1 && effectiveIndex < MAX_POST_TABS) {
+      const storedMax = Number(storageData.maxPostTabs);
+      const maxPostTabs = Number.isFinite(storedMax) && storedMax > 0 ? storedMax : MAX_POST_TABS;
+
+      if (effectiveIndex !== -1 && effectiveIndex < maxPostTabs) {
         sendResponse({ shouldClick: true });
       } else {
         sendResponse({ shouldClick: false });
@@ -7647,7 +7915,7 @@ async function pressBind(tabIdFromArg) {
   }
 }
 
-async function pressBindFix(tab, browserType, singleTabMode = false) {
+async function pressBindFix(tab, browserType, singleTabMode = false, firstTryDelayMs = 0, retryDelayMs = 3000) {
 
   let savedMediaLink = null;
   let fixMediaAttempts = 0;
@@ -7742,8 +8010,28 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
 
   window.__OFH_CURRENT_TAB_ID__ = tabId;
 
+  const runId = Date.now() + Math.random();
+  window.__ofhBindFixRunId = runId;
+
+  let mediaFixInProgress = false;
+  let mediaFixGaveUp = false;
+
   function delay(time) {
     return new Promise((resolve) => setTimeout(resolve, time));
+  }
+
+  function waitForMediaElement(maxWaitMs) {
+    return new Promise((resolve) => {
+      const start = Date.now();
+      const check = () => {
+        const media = document.querySelector(
+          '.media-file.m-default-bg.m-media-el, .media-file.m-default-bg.m-video-el, .media-file.m-lightbox-el'
+        );
+        if (media || Date.now() - start > maxWaitMs) resolve(!!media);
+        else setTimeout(check, 250);
+      };
+      check();
+    });
   }
 
 
@@ -7787,6 +8075,17 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
 
   function intervalFunc() {
 
+    if (window.__ofhBindFixRunId !== runId) return;
+
+    let rescheduled = false;
+    const scheduleNext = (ms) => {
+      if (rescheduled) return;
+      rescheduled = true;
+      if (singleTabMode && singleTabDone) return;
+      if (window.__ofhBindFixRunId !== runId) return;
+      setTimeout(intervalFunc, Math.max(0, ms));
+    };
+
     if (singleTabMode) {
       if (singleTabWentAway && window.location.href.includes('/posts/create')) {
         singleTabDone = true;
@@ -7794,9 +8093,16 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
       if (singleTabDone) return;
     }
 
-    chrome.storage.local.get(["isPaused", `blacklisted_${tab.id}`], async function (data) {
-      if (data.isPaused) {
-        setTimeout(intervalFunc, 1000);
+    chrome.storage.local.get(
+      ["isPaused", "lastPostAt", "singleTabFirstTryDelay", `blacklisted_${tab.id}`],
+      async function (data) {
+      const cooldown = data.singleTabFirstTryDelay !== undefined
+        ? data.singleTabFirstTryDelay : 9500;
+      const sincePost = data.lastPostAt ? Date.now() - data.lastPostAt : Infinity;
+      const remaining = cooldown - sincePost;
+
+      if (data.isPaused || remaining > 0) {
+        scheduleNext(data.isPaused ? 1000 : Math.max(200, Math.min(remaining, 2000)));
         return;
       } else if (data[`blacklisted_${tab.id}`]) {
         return;
@@ -7845,15 +8151,38 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
             }
             else if (/(attached|issue)/i.test(innerDiv.textContent)) {
 
+              if (mediaFixInProgress) {
+                scheduleNext(2000);
+                return;
+              }
+
               fixMediaAttempts++;
               if (fixMediaAttempts > 3) {
-                fixMediaAttempts = 0;
+                if (!mediaFixGaveUp) {
+                  mediaFixGaveUp = true;
+                  chrome.runtime.sendMessage({
+                    action: "createNotif",
+                    tabId: tab.id,
+                    message: "[OFH] Media fix failed after 3 attempts",
+                  });
+                }
+                innerDiv.textContent = "[OFH] Media fix failed";
+                scheduleNext(30000);
                 return;
               }
 
               let mediaLink = savedMediaLink;
 
+              if (!mediaLink) {
+                try {
+                  mediaLink = await getMediaLinkBeforeSubmit();
+                } catch (_) { }
+                if (mediaLink) savedMediaLink = mediaLink;
+              }
+
               if (mediaLink) {
+                mediaFixInProgress = true;
+                try {
                 const deleteSelector = ".b-dropzone__preview__delete.g-btn.m-rounded.m-reset-width.m-thumb-r-corner-pos.m-btn-remove.m-sm-icon-size.has-tooltip";
                 let elements = document.querySelectorAll(deleteSelector);
                 let divs = document.querySelectorAll(
@@ -7948,7 +8277,7 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
                         let videoBlob = originalBlob;
                         try {
                           const formData = new FormData();
-                          formData.append("video", new File([originalBlob], "media.mp4", { type: "video/mp4" }));
+                          formData.append("video", originalBlob, "media.mp4");
                           formData.append("url", imageUrl);
                           const cropController = new AbortController();
                           const cropTimeout = setTimeout(() => cropController.abort(), 60000);
@@ -8019,29 +8348,38 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
                   } catch (error) {
                     console.error("Ошибка при обработке медиа:", error);
                   }
-                  isUploading = false;
                 }
                 await handleImageUpload(mediaLink);
+                } finally {
+                  mediaFixInProgress = false;
+                }
               }
               else {
                 innerDiv.textContent = "[OFH] No saved media link available";
+                scheduleNext(5000);
                 return
               }
               innerDiv.textContent = "[OFH] Fixing media";
-              await delay(7000);
+              await waitForMediaElement(20000);
+              await delay(5000);
             }
             else if (!innerDiv.textContent.includes("[OFH]")) {
 
               if (singleTabMode && !singleTabDone) {
-                setTimeout(intervalFunc, 2000);
+                scheduleNext(2000);
+              } else {
+                scheduleNext(30000);
               }
               return
             }
             else {
               await delay(10000);
-              setTimeout(intervalFunc, 2000);
             }
           }
+        }
+        else {
+          fixMediaAttempts = 0;
+          mediaFixGaveUp = false;
         }
 
         try {
@@ -8070,7 +8408,7 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
 
           if (singleTabMode) {
             if (singleTabDone) return;
-            setTimeout(intervalFunc, 2000);
+            scheduleNext(Math.max(0, retryDelayMs - 1000));
             return;
           }
 
@@ -8086,14 +8424,19 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
               chrome.runtime.sendMessage({ action: "closeCurrentTab" });
               chrome.storage.local.set({ [tabId]: false });
             } else {
-              setTimeout(intervalFunc, 2000);
+              scheduleNext(Math.max(0, retryDelayMs - 1000));
             }
           });
         }, 1000);
       }
     });
   }
-  intervalFunc();
+
+  if (singleTabMode && firstTryDelayMs > 0) {
+    setTimeout(intervalFunc, firstTryDelayMs);
+  } else {
+    intervalFunc();
+  }
 }
 
 chrome.runtime.onInstalled.addListener(function (details) {
