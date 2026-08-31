@@ -2623,6 +2623,16 @@ function listenForButtonClicks(arg, tabId) {
 
 let lastTabId;
 
+function stopSingleTabCycle(tabId) {
+  if (tabId == null) return Promise.resolve();
+  return chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      try { if (window.__ofhStopSingleCycle) window.__ofhStopSingleCycle(); } catch (_) { }
+    }
+  }).catch(() => { });
+}
+
 const singleTabFinishCallbacks = new Map();
 const singleTabListeners = new Map();
 
@@ -2804,9 +2814,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (message.type === 'single-tab-returned') {
-    const cb = singleTabFinishCallbacks.get(message.tabId);
+    const finishTabId = Number(message.tabId);
+    const cb = singleTabFinishCallbacks.get(finishTabId);
     if (cb) {
-      singleTabFinishCallbacks.delete(message.tabId);
+      singleTabFinishCallbacks.delete(finishTabId);
       cb();
     }
     sendResponse({ ok: true });
@@ -4406,6 +4417,10 @@ async function processCommand(lastEntry) {
         if (!currentWindow || !currentWindow.tabs) return;
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
 
+        if (lastEntry.singleTabMode && activeTab) {
+          await stopSingleTabCycle(activeTab.id);
+        }
+
         if ((!pht || !addPhoto) && activeTab) {
           const { pht: phtIds = [] } = await chrome.storage.local.get('pht');
           const arr = Array.isArray(phtIds) ? phtIds : [];
@@ -4493,6 +4508,8 @@ async function processCommand(lastEntry) {
             closedTabsCount++;
             lastClosedTime = new Date();
             updateTabCounterOnActiveTab(false);
+
+            stopSingleTabCycle(activeTab.id);
 
             sendWsConfirm(lastEntry.cmdId, currentBrowserNumber);
           };
@@ -7742,7 +7759,7 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
       } else if (singleTabWentAway && isOnCreate) {
         singleTabDone = true;
         clearInterval(navPollId);
-        chrome.runtime.sendMessage({ type: 'single-tab-returned', tabId: tabId });
+        chrome.runtime.sendMessage({ type: 'single-tab-returned', tabId: tab.id });
       }
     }, 50);
     window.__ofhNavPollId = navPollId;
@@ -8039,6 +8056,7 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
         chrome.runtime.sendMessage(
           { action: "checkTab", tabId: tab.id },
           async function (response) {
+            if (singleTabMode && singleTabDone) return;
             if (response && response.shouldClick) {
               await pressBind();
             }
@@ -8049,13 +8067,14 @@ async function pressBindFix(tab, browserType, singleTabMode = false) {
           let anchorElement = document.querySelector(
             'a[data-name="PostsCreate"][href="/posts/create"]',
           );
-          tabId = tabId.toString();
 
           if (singleTabMode) {
             if (singleTabDone) return;
             setTimeout(intervalFunc, 2000);
             return;
           }
+
+          tabId = tabId.toString();
 
           chrome.storage.local.get(tabId, function (data) {
             if (

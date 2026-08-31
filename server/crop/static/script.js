@@ -2010,7 +2010,77 @@ function switchAutoSend() {
     });
 }
 
+function showConfirmDialog(title, text, onConfirm) {
+  const existing = document.getElementById('ofh-confirm-modal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'ofh-confirm-modal';
+  modal.className = 'modal';
+
+  const content = document.createElement('div');
+  content.className = 'modal-content';
+
+  const header = document.createElement('div');
+  header.className = 'confirm-header';
+  header.textContent = title;
+
+  const message = document.createElement('div');
+  message.className = 'confirm-text';
+  message.textContent = text;
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'btn-wrapper';
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'confirm-btn cancel';
+  cancelBtn.textContent = 'Cancel';
+
+  const okBtn = document.createElement('button');
+  okBtn.className = 'confirm-btn ok';
+  okBtn.textContent = 'OK';
+
+  const close = () => {
+    document.removeEventListener('keydown', onKey);
+    modal.remove();
+  };
+
+  const onKey = (event) => {
+    if (event.key === 'Escape') close();
+    else if (event.key === 'Enter') { close(); onConfirm(); }
+  };
+
+  cancelBtn.addEventListener('click', close);
+  okBtn.addEventListener('click', () => { close(); onConfirm(); });
+  modal.addEventListener('click', (event) => { if (event.target === modal) close(); });
+  document.addEventListener('keydown', onKey);
+
+  wrapper.appendChild(cancelBtn);
+  wrapper.appendChild(okBtn);
+  content.appendChild(header);
+  content.appendChild(message);
+  content.appendChild(wrapper);
+  modal.appendChild(content);
+  document.body.appendChild(modal);
+}
+
 function toggleAutoDelete() {
+  const currentSwitch = document.querySelector('.toggle-switch');
+  const turningOn = !(currentSwitch && currentSwitch.classList.contains('active'));
+
+  if (turningOn) {
+    showConfirmDialog(
+      'Delete all media?',
+      'Turning autodelete on clears the media folder. This cannot be undone.',
+      applyAutoDeleteToggle
+    );
+    return;
+  }
+
+  applyAutoDeleteToggle();
+}
+
+function applyAutoDeleteToggle() {
   fetch('/toggle_auto_delete', {
     method: 'POST',
     headers: {
@@ -2030,6 +2100,12 @@ function toggleAutoDelete() {
           element.classList.remove('show');
           element.style.animation = 'none';
         }, 5000);
+      }
+      if (data.enabled && data.cleared) {
+        var countEl = document.getElementById('file-count');
+        if (countEl) countEl.textContent = '0';
+        var sizeEl = document.getElementById('file-size');
+        if (sizeEl) sizeEl.textContent = '0 B';
       }
     })
     .catch(error => console.error('Error:', error));
@@ -3887,7 +3963,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }, { passive: true });
     }
 
-    const aqShouldOpen = localStorage.getItem('autoQueuePanelOpen') === 'true';
+    const aqShouldOpen = shouldOpen && localStorage.getItem('autoQueuePanelOpen') === 'true';
     const aqPanel = document.getElementById('auto-queue-panel');
     if (aqPanel) {
       if (aqShouldOpen) {

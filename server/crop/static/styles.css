@@ -1146,6 +1146,73 @@ input[type="checkbox"] {
   align-items: center;
 }
 
+#ofh-confirm-modal {
+  background-color: rgba(0, 0, 0, 0.65);
+  z-index: 1200;
+}
+
+#ofh-confirm-modal .modal-content {
+  background: #000000;
+  border: 3px solid #f44336;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
+  color: white;
+  width: 340px;
+  padding: 20px;
+}
+
+#ofh-confirm-modal .confirm-header {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 12px;
+  text-align: center;
+  color: #f44336;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-family: 'Varela Round', sans-serif;
+}
+
+#ofh-confirm-modal .confirm-text {
+  color: rgba(255, 255, 255, 0.85);
+  font-family: 'Varela Round', sans-serif;
+  font-size: 15px;
+  text-align: center;
+  line-height: 1.45;
+}
+
+#ofh-confirm-modal .btn-wrapper {
+  margin-top: 18px;
+  gap: 10px;
+}
+
+#ofh-confirm-modal .confirm-btn {
+  flex: 1;
+  padding: 12px 15px;
+  font-family: 'Varela Round', sans-serif;
+  font-size: 16px;
+  font-weight: bold;
+  border: 2px solid black;
+  border-radius: 10px;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: all 0.3s ease;
+}
+
+#ofh-confirm-modal .confirm-btn.ok {
+  background: #f44336;
+  color: white;
+}
+
+#ofh-confirm-modal .confirm-btn.cancel {
+  background: #3a3a3a;
+  color: white;
+}
+
+#ofh-confirm-modal .confirm-btn:hover {
+  filter: brightness(1.15);
+}
+
 ::placeholder {
   font-size: 16px;
 }
