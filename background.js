@@ -3941,6 +3941,27 @@ async function processCommand(lastEntry) {
       })
     }
 
+    if (lastEntry && lastEntry.id === "35" && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
+      chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        if (!currentWindow || !currentWindow.tabs) return;
+        const activeTab = currentWindow.tabs.find((tab) => tab.active);
+        if (!activeTab) return;
+        await executeScriptIfValid(activeTab, {
+          target: { tabId: activeTab.id },
+          func: () => {
+            const autoButton = document.getElementById("autopost-button");
+            if (autoButton && !autoButton.disabled) {
+              autoButton.click();
+            }
+          },
+        });
+        sendWsConfirm(lastEntry.cmdId, currentBrowserNumber);
+        return
+      })
+      return
+    }
+
     if (lastEntry && lastEntry.id === "34" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
       const targetTag = lastEntry.textInput;
