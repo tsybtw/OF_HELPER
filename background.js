@@ -1417,6 +1417,26 @@ async function isSkippedStoryTab(tab) {
   }
 }
 
+async function isLastTabInItsWindow(tabId) {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    const tabsInWindow = await chrome.tabs.query({ windowId: tab.windowId });
+    return !tabsInWindow || tabsInWindow.length <= 1;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function closeStoryTabSafely(tabId) {
+  if (await isLastTabInItsWindow(tabId)) return false;
+  try {
+    await chrome.tabs.remove(tabId);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 async function closeTabWhenStoryPosted(tabId, timeoutMs = 180000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -1436,7 +1456,7 @@ async function closeTabWhenStoryPosted(tabId, timeoutMs = 180000) {
     }
 
     if (stillPresent === false) {
-      try { await chrome.tabs.remove(tabId); } catch (_) { }
+      await closeStoryTabSafely(tabId);
       return;
     }
   }
@@ -3890,7 +3910,7 @@ async function processCommand(lastEntry) {
           }
 
           if (isSkippedTab) {
-            chrome.tabs.remove(currentTab.id).catch(() => { });
+            closeStoryTabSafely(currentTab.id).catch(() => { });
           }
         }, delay);
       });
@@ -8117,340 +8137,340 @@ async function pressBindFix(tab, browserType, singleTabMode = false, firstTryDel
     chrome.storage.local.get(
       ["isPaused", "lastPostAt", "singleTabFirstTryDelay", `blacklisted_${tab.id}`],
       async function (data) {
-      const cooldown = data.singleTabFirstTryDelay !== undefined
-        ? data.singleTabFirstTryDelay : 9500;
-      const sincePost = data.lastPostAt ? Date.now() - data.lastPostAt : Infinity;
-      const remaining = cooldown - sincePost;
+        const cooldown = data.singleTabFirstTryDelay !== undefined
+          ? data.singleTabFirstTryDelay : 9500;
+        const sincePost = data.lastPostAt ? Date.now() - data.lastPostAt : Infinity;
+        const remaining = cooldown - sincePost;
 
-      if (data.isPaused || remaining > 0) {
-        scheduleNext(data.isPaused ? 1000 : Math.max(200, Math.min(remaining, 2000)));
-        return;
-      } else if (data[`blacklisted_${tab.id}`]) {
-        return;
-      } else {
-        const secondTargetNode = document.querySelector(
-          ".b-reminder-form.m-error",
-        );
-        const innerDiv = secondTargetNode
-          ? secondTargetNode.querySelector("div")
-          : null;
-        if (innerDiv) {
-          if (!innerDiv.textContent.includes("10")) {
-            chrome.runtime.sendMessage({
-              action: "createNotif",
-              tabId: tab.id,
-              message: innerDiv.textContent,
-            });
-            if (innerDiv.textContent.includes("tag")) {
-              const parts = innerDiv.textContent.split("@");
-              const username = parts.length > 1 ? parts[1].trim() : '';
-              if (!username) return;
-              const url = `https://onlyfans.com/my/collections/user-lists/blocked?search=${username}`;
-
-              chrome.runtime.sendMessage({
-                action: "blacklist",
-                url,
-                tabId: tab.id,
-                singleTabMode,
-              });
-
-              if (!singleTabMode) {
-                chrome.storage.local.set({ [`blacklisted_${tab.id}`]: true });
-              }
-              return;
-            }
-            else if (/(Daily|Nothing)/.test(innerDiv.textContent)) {
-              await delay(20000);
-            }
-            else if (/Internal/.test(innerDiv.textContent)) {
+        if (data.isPaused || remaining > 0) {
+          scheduleNext(data.isPaused ? 1000 : Math.max(200, Math.min(remaining, 2000)));
+          return;
+        } else if (data[`blacklisted_${tab.id}`]) {
+          return;
+        } else {
+          const secondTargetNode = document.querySelector(
+            ".b-reminder-form.m-error",
+          );
+          const innerDiv = secondTargetNode
+            ? secondTargetNode.querySelector("div")
+            : null;
+          if (innerDiv) {
+            if (!innerDiv.textContent.includes("10")) {
               chrome.runtime.sendMessage({
                 action: "createNotif",
                 tabId: tab.id,
                 message: innerDiv.textContent,
               });
-              await delay(60000);
-            }
-            else if (/(attached|issue)/i.test(innerDiv.textContent)) {
+              if (innerDiv.textContent.includes("tag")) {
+                const parts = innerDiv.textContent.split("@");
+                const username = parts.length > 1 ? parts[1].trim() : '';
+                if (!username) return;
+                const url = `https://onlyfans.com/my/collections/user-lists/blocked?search=${username}`;
 
-              if (mediaFixInProgress) {
-                scheduleNext(2000);
-                return;
-              }
+                chrome.runtime.sendMessage({
+                  action: "blacklist",
+                  url,
+                  tabId: tab.id,
+                  singleTabMode,
+                });
 
-              fixMediaAttempts++;
-              if (fixMediaAttempts > 3) {
-                if (!mediaFixGaveUp) {
-                  mediaFixGaveUp = true;
-                  chrome.runtime.sendMessage({
-                    action: "createNotif",
-                    tabId: tab.id,
-                    message: "[OFH] Media fix failed after 3 attempts",
-                  });
+                if (!singleTabMode) {
+                  chrome.storage.local.set({ [`blacklisted_${tab.id}`]: true });
                 }
-                innerDiv.textContent = "[OFH] Media fix failed";
-                scheduleNext(30000);
                 return;
               }
-
-              let mediaLink = savedMediaLink;
-
-              if (!mediaLink) {
-                try {
-                  mediaLink = await getMediaLinkBeforeSubmit();
-                } catch (_) { }
-                if (mediaLink) savedMediaLink = mediaLink;
+              else if (/(Daily|Nothing)/.test(innerDiv.textContent)) {
+                await delay(20000);
               }
-
-              if (mediaLink) {
-                mediaFixInProgress = true;
-                try {
-                const deleteSelector = ".b-dropzone__preview__delete.g-btn.m-rounded.m-reset-width.m-thumb-r-corner-pos.m-btn-remove.m-sm-icon-size.has-tooltip";
-                let elements = document.querySelectorAll(deleteSelector);
-                let divs = document.querySelectorAll(
-                  "#make_post_form > div.b-make-post.m-with-free-options > div > div.b-make-post__main-wrapper > div.b-make-post__media-wrapper > div > div > div > div > div > div",
-                );
-                divs.forEach(function (div) {
-                  elements.forEach(function (element) {
-                    if (div.contains(element)) {
-                      element.click();
-                    }
-                  });
+              else if (/Internal/.test(innerDiv.textContent)) {
+                chrome.runtime.sendMessage({
+                  action: "createNotif",
+                  tabId: tab.id,
+                  message: innerDiv.textContent,
                 });
+                await delay(60000);
+              }
+              else if (/(attached|issue)/i.test(innerDiv.textContent)) {
 
-                await new Promise((resolve) => {
-                  const start = Date.now();
-                  const check = () => {
-                    if (!document.querySelector(deleteSelector) || Date.now() - start > 4000) {
-                      resolve();
-                    } else {
-                      setTimeout(check, 200);
-                    }
-                  };
-                  check();
-                });
+                if (mediaFixInProgress) {
+                  scheduleNext(2000);
+                  return;
+                }
 
-                function simulateDragAndDrop(
-                  sourceElement,
-                  targetElement,
-                  file,
-                ) {
-                  const dataTransfer = new DataTransfer();
-
-                  dataTransfer.items.add(file);
-
-                  const dragStartEvent = new DragEvent("dragstart", {
-                    bubbles: true,
-                    cancelable: true,
-                    dataTransfer: dataTransfer,
-                  });
-                  sourceElement.dispatchEvent(dragStartEvent);
-
-                  setTimeout(() => {
-                    const dragOverEvent = new DragEvent("dragover", {
-                      bubbles: true,
-                      cancelable: true,
-                      dataTransfer: dataTransfer,
+                fixMediaAttempts++;
+                if (fixMediaAttempts > 3) {
+                  if (!mediaFixGaveUp) {
+                    mediaFixGaveUp = true;
+                    chrome.runtime.sendMessage({
+                      action: "createNotif",
+                      tabId: tab.id,
+                      message: "[OFH] Media fix failed after 3 attempts",
                     });
-                    targetElement.dispatchEvent(dragOverEvent);
-
-                    setTimeout(() => {
-                      const dropEvent = new DragEvent("drop", {
-                        bubbles: true,
-                        cancelable: true,
-                        dataTransfer: dataTransfer,
-                      });
-                      targetElement.dispatchEvent(dropEvent);
-
-                      const dragEndEvent = new DragEvent("dragend", {
-                        bubbles: true,
-                        cancelable: true,
-                        dataTransfer: dataTransfer,
-                      });
-                      sourceElement.dispatchEvent(dragEndEvent);
-                    }, 100);
-                  }, 100);
+                  }
+                  innerDiv.textContent = "[OFH] Media fix failed";
+                  scheduleNext(30000);
+                  return;
                 }
 
-                async function handleImageUpload(imageUrl) {
+                let mediaLink = savedMediaLink;
+
+                if (!mediaLink) {
                   try {
-                    const urlParts = imageUrl.split("/");
-                    const fileName = urlParts[urlParts.length - 1].split("?")[0];
-                    const fileExtension = fileName.split(".").pop().toLowerCase() || "png";
-                    let fileType = "image/png";
-                    if (fileExtension === "gif") fileType = "image/gif";
-                    else if (fileExtension === "mp4") fileType = "video/mp4";
-                    else if (fileExtension === "jpg" || fileExtension === "jpeg") fileType = "image/jpeg";
-                    else if (fileExtension === "webp") fileType = "image/webp";
+                    mediaLink = await getMediaLinkBeforeSubmit();
+                  } catch (_) { }
+                  if (mediaLink) savedMediaLink = mediaLink;
+                }
 
-                    const editor = document.querySelector(
-                      ".tiptap.ProseMirror.b-text-editor.js-text-editor.m-native-custom-scrollbar.m-scrollbar-y.m-scroll-behavior-auto.m-overscroll-behavior-auto"
+                if (mediaLink) {
+                  mediaFixInProgress = true;
+                  try {
+                    const deleteSelector = ".b-dropzone__preview__delete.g-btn.m-rounded.m-reset-width.m-thumb-r-corner-pos.m-btn-remove.m-sm-icon-size.has-tooltip";
+                    let elements = document.querySelectorAll(deleteSelector);
+                    let divs = document.querySelectorAll(
+                      "#make_post_form > div.b-make-post.m-with-free-options > div > div.b-make-post__main-wrapper > div.b-make-post__media-wrapper > div > div > div > div > div > div",
                     );
+                    divs.forEach(function (div) {
+                      elements.forEach(function (element) {
+                        if (div.contains(element)) {
+                          element.click();
+                        }
+                      });
+                    });
 
-                    if (fileExtension === "mp4") {
-                      const fetchController = new AbortController();
-                      const fetchTimeout = setTimeout(() => fetchController.abort(), 90000);
-                      try {
-                        const fetchRes = await fetch(imageUrl, { signal: fetchController.signal });
-                        clearTimeout(fetchTimeout);
-                        if (!fetchRes.ok) throw new Error(`Fetch failed: ${fetchRes.status}`);
-                        const originalBlob = await fetchRes.blob();
+                    await new Promise((resolve) => {
+                      const start = Date.now();
+                      const check = () => {
+                        if (!document.querySelector(deleteSelector) || Date.now() - start > 4000) {
+                          resolve();
+                        } else {
+                          setTimeout(check, 200);
+                        }
+                      };
+                      check();
+                    });
 
-                        let videoBlob = originalBlob;
-                        try {
-                          const formData = new FormData();
-                          formData.append("video", originalBlob, "media.mp4");
-                          formData.append("url", imageUrl);
-                          const cropController = new AbortController();
-                          const cropTimeout = setTimeout(() => cropController.abort(), 60000);
-                          const cropRes = await fetch("http://localhost:8765/crop-video-fix", {
-                            method: "POST",
-                            body: formData,
-                            signal: cropController.signal,
+                    function simulateDragAndDrop(
+                      sourceElement,
+                      targetElement,
+                      file,
+                    ) {
+                      const dataTransfer = new DataTransfer();
+
+                      dataTransfer.items.add(file);
+
+                      const dragStartEvent = new DragEvent("dragstart", {
+                        bubbles: true,
+                        cancelable: true,
+                        dataTransfer: dataTransfer,
+                      });
+                      sourceElement.dispatchEvent(dragStartEvent);
+
+                      setTimeout(() => {
+                        const dragOverEvent = new DragEvent("dragover", {
+                          bubbles: true,
+                          cancelable: true,
+                          dataTransfer: dataTransfer,
+                        });
+                        targetElement.dispatchEvent(dragOverEvent);
+
+                        setTimeout(() => {
+                          const dropEvent = new DragEvent("drop", {
+                            bubbles: true,
+                            cancelable: true,
+                            dataTransfer: dataTransfer,
                           });
-                          clearTimeout(cropTimeout);
-                          if (cropRes.ok) {
-                            videoBlob = await cropRes.blob();
-                          }
-                        } catch (cropErr) {
-                          console.error("Ошибка crop-video-fix, используется оригинал:", cropErr);
-                        }
+                          targetElement.dispatchEvent(dropEvent);
 
-                        const file = new File([videoBlob], "media.mp4", { type: "video/mp4" });
-                        if (editor) {
-                          editor.focus();
-                          const dummySource = document.createElement("div");
-                          simulateDragAndDrop(dummySource, editor, file);
-                        }
-                      } catch (e) {
-                        clearTimeout(fetchTimeout);
-                        console.error("Ошибка при загрузке видео:", e);
-                      }
-                    } else {
-                      const imgFetchController = new AbortController();
-                      const imgFetchTimeout = setTimeout(() => imgFetchController.abort(), 30000);
-                      try {
-                        const imgRes = await fetch(imageUrl, { signal: imgFetchController.signal });
-                        clearTimeout(imgFetchTimeout);
-                        if (!imgRes.ok) throw new Error(`Fetch failed: ${imgRes.status}`);
-                        const originalBlob = await imgRes.blob();
-
-                        let imageBlob = originalBlob;
-                        try {
-                          const formData = new FormData();
-                          formData.append("image", new File([originalBlob], `media.${fileExtension}`, { type: fileType }));
-                          formData.append("url", imageUrl);
-                          const imgCropController = new AbortController();
-                          const imgCropTimeout = setTimeout(() => imgCropController.abort(), 30000);
-                          const cropRes = await fetch("http://localhost:8765/crop-image-fix", {
-                            method: "POST",
-                            body: formData,
-                            signal: imgCropController.signal,
+                          const dragEndEvent = new DragEvent("dragend", {
+                            bubbles: true,
+                            cancelable: true,
+                            dataTransfer: dataTransfer,
                           });
-                          clearTimeout(imgCropTimeout);
-                          if (cropRes.ok) {
-                            imageBlob = await cropRes.blob();
-                          }
-                        } catch (cropErr) {
-                          console.error("Ошибка crop-image-fix, используется оригинал:", cropErr);
-                        }
+                          sourceElement.dispatchEvent(dragEndEvent);
+                        }, 100);
+                      }, 100);
+                    }
 
-                        const ext = fileExtension || fileType.split("/")[1];
-                        const file = new File([imageBlob], `media.${ext}`, { type: fileType });
-                        if (editor) {
-                          editor.focus();
-                          const dummySource = document.createElement("div");
-                          simulateDragAndDrop(dummySource, editor, file);
+                    async function handleImageUpload(imageUrl) {
+                      try {
+                        const urlParts = imageUrl.split("/");
+                        const fileName = urlParts[urlParts.length - 1].split("?")[0];
+                        const fileExtension = fileName.split(".").pop().toLowerCase() || "png";
+                        let fileType = "image/png";
+                        if (fileExtension === "gif") fileType = "image/gif";
+                        else if (fileExtension === "mp4") fileType = "video/mp4";
+                        else if (fileExtension === "jpg" || fileExtension === "jpeg") fileType = "image/jpeg";
+                        else if (fileExtension === "webp") fileType = "image/webp";
+
+                        const editor = document.querySelector(
+                          ".tiptap.ProseMirror.b-text-editor.js-text-editor.m-native-custom-scrollbar.m-scrollbar-y.m-scroll-behavior-auto.m-overscroll-behavior-auto"
+                        );
+
+                        if (fileExtension === "mp4") {
+                          const fetchController = new AbortController();
+                          const fetchTimeout = setTimeout(() => fetchController.abort(), 90000);
+                          try {
+                            const fetchRes = await fetch(imageUrl, { signal: fetchController.signal });
+                            clearTimeout(fetchTimeout);
+                            if (!fetchRes.ok) throw new Error(`Fetch failed: ${fetchRes.status}`);
+                            const originalBlob = await fetchRes.blob();
+
+                            let videoBlob = originalBlob;
+                            try {
+                              const formData = new FormData();
+                              formData.append("video", originalBlob, "media.mp4");
+                              formData.append("url", imageUrl);
+                              const cropController = new AbortController();
+                              const cropTimeout = setTimeout(() => cropController.abort(), 60000);
+                              const cropRes = await fetch("http://localhost:8765/crop-video-fix", {
+                                method: "POST",
+                                body: formData,
+                                signal: cropController.signal,
+                              });
+                              clearTimeout(cropTimeout);
+                              if (cropRes.ok) {
+                                videoBlob = await cropRes.blob();
+                              }
+                            } catch (cropErr) {
+                              console.error("Ошибка crop-video-fix, используется оригинал:", cropErr);
+                            }
+
+                            const file = new File([videoBlob], "media.mp4", { type: "video/mp4" });
+                            if (editor) {
+                              editor.focus();
+                              const dummySource = document.createElement("div");
+                              simulateDragAndDrop(dummySource, editor, file);
+                            }
+                          } catch (e) {
+                            clearTimeout(fetchTimeout);
+                            console.error("Ошибка при загрузке видео:", e);
+                          }
+                        } else {
+                          const imgFetchController = new AbortController();
+                          const imgFetchTimeout = setTimeout(() => imgFetchController.abort(), 30000);
+                          try {
+                            const imgRes = await fetch(imageUrl, { signal: imgFetchController.signal });
+                            clearTimeout(imgFetchTimeout);
+                            if (!imgRes.ok) throw new Error(`Fetch failed: ${imgRes.status}`);
+                            const originalBlob = await imgRes.blob();
+
+                            let imageBlob = originalBlob;
+                            try {
+                              const formData = new FormData();
+                              formData.append("image", new File([originalBlob], `media.${fileExtension}`, { type: fileType }));
+                              formData.append("url", imageUrl);
+                              const imgCropController = new AbortController();
+                              const imgCropTimeout = setTimeout(() => imgCropController.abort(), 30000);
+                              const cropRes = await fetch("http://localhost:8765/crop-image-fix", {
+                                method: "POST",
+                                body: formData,
+                                signal: imgCropController.signal,
+                              });
+                              clearTimeout(imgCropTimeout);
+                              if (cropRes.ok) {
+                                imageBlob = await cropRes.blob();
+                              }
+                            } catch (cropErr) {
+                              console.error("Ошибка crop-image-fix, используется оригинал:", cropErr);
+                            }
+
+                            const ext = fileExtension || fileType.split("/")[1];
+                            const file = new File([imageBlob], `media.${ext}`, { type: fileType });
+                            if (editor) {
+                              editor.focus();
+                              const dummySource = document.createElement("div");
+                              simulateDragAndDrop(dummySource, editor, file);
+                            }
+                          } catch (e) {
+                            clearTimeout(imgFetchTimeout);
+                            console.error("Ошибка при загрузке изображения:", e);
+                          }
                         }
-                      } catch (e) {
-                        clearTimeout(imgFetchTimeout);
-                        console.error("Ошибка при загрузке изображения:", e);
+                      } catch (error) {
+                        console.error("Ошибка при обработке медиа:", error);
                       }
                     }
-                  } catch (error) {
-                    console.error("Ошибка при обработке медиа:", error);
+                    await handleImageUpload(mediaLink);
+                  } finally {
+                    mediaFixInProgress = false;
                   }
                 }
-                await handleImageUpload(mediaLink);
-                } finally {
-                  mediaFixInProgress = false;
+                else {
+                  innerDiv.textContent = "[OFH] No saved media link available";
+                  scheduleNext(5000);
+                  return
                 }
+                innerDiv.textContent = "[OFH] Fixing media";
+                await waitForMediaElement(20000);
+                await delay(5000);
               }
-              else {
-                innerDiv.textContent = "[OFH] No saved media link available";
-                scheduleNext(5000);
+              else if (!innerDiv.textContent.includes("[OFH]")) {
+
+                if (singleTabMode && !singleTabDone) {
+                  scheduleNext(2000);
+                } else {
+                  scheduleNext(30000);
+                }
                 return
               }
-              innerDiv.textContent = "[OFH] Fixing media";
-              await waitForMediaElement(20000);
-              await delay(5000);
-            }
-            else if (!innerDiv.textContent.includes("[OFH]")) {
-
-              if (singleTabMode && !singleTabDone) {
-                scheduleNext(2000);
-              } else {
-                scheduleNext(30000);
+              else {
+                await delay(10000);
               }
-              return
-            }
-            else {
-              await delay(10000);
             }
           }
-        }
-        else {
-          fixMediaAttempts = 0;
-          mediaFixGaveUp = false;
-        }
-
-        try {
-          const currentMediaLink = await getMediaLinkBeforeSubmit();
-          if (currentMediaLink) {
-            savedMediaLink = currentMediaLink;
+          else {
+            fixMediaAttempts = 0;
+            mediaFixGaveUp = false;
           }
-        } catch (e) {
-          console.error("Error saving media link:", e);
-        }
 
-        chrome.runtime.sendMessage(
-          { action: "checkTab", tabId: tab.id },
-          async function (response) {
-            if (singleTabMode && singleTabDone) return;
-            if (response && response.shouldClick) {
-              await pressBind();
+          try {
+            const currentMediaLink = await getMediaLinkBeforeSubmit();
+            if (currentMediaLink) {
+              savedMediaLink = currentMediaLink;
             }
-          },
-        );
+          } catch (e) {
+            console.error("Error saving media link:", e);
+          }
 
-        setTimeout(function () {
-          let anchorElement = document.querySelector(
-            'a[data-name="PostsCreate"][href="/posts/create"]',
+          chrome.runtime.sendMessage(
+            { action: "checkTab", tabId: tab.id },
+            async function (response) {
+              if (singleTabMode && singleTabDone) return;
+              if (response && response.shouldClick) {
+                await pressBind();
+              }
+            },
           );
 
-          if (singleTabMode) {
-            if (singleTabDone) return;
-            scheduleNext(Math.max(0, retryDelayMs - 1000));
-            return;
-          }
+          setTimeout(function () {
+            let anchorElement = document.querySelector(
+              'a[data-name="PostsCreate"][href="/posts/create"]',
+            );
 
-          tabId = tabId.toString();
-
-          chrome.storage.local.get(tabId, function (data) {
-            if (
-              (anchorElement &&
-                !anchorElement.classList.contains("m-disabled")) ||
-              data[tabId] ||
-              window.location.href.includes("/my/queue")
-            ) {
-              chrome.runtime.sendMessage({ action: "closeCurrentTab" });
-              chrome.storage.local.set({ [tabId]: false });
-            } else {
+            if (singleTabMode) {
+              if (singleTabDone) return;
               scheduleNext(Math.max(0, retryDelayMs - 1000));
+              return;
             }
-          });
-        }, 1000);
-      }
-    });
+
+            tabId = tabId.toString();
+
+            chrome.storage.local.get(tabId, function (data) {
+              if (
+                (anchorElement &&
+                  !anchorElement.classList.contains("m-disabled")) ||
+                data[tabId] ||
+                window.location.href.includes("/my/queue")
+              ) {
+                chrome.runtime.sendMessage({ action: "closeCurrentTab" });
+                chrome.storage.local.set({ [tabId]: false });
+              } else {
+                scheduleNext(Math.max(0, retryDelayMs - 1000));
+              }
+            });
+          }, 1000);
+        }
+      });
   }
 
   if (singleTabMode && firstTryDelayMs > 0) {
