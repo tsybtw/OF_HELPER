@@ -1462,6 +1462,39 @@ async function closeTabWhenStoryPosted(tabId, timeoutMs = 180000) {
   }
 }
 
+async function insertMediaByTagIfMissing(tabId) {
+  try {
+    const check = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => !!document.querySelector(
+        '.media-file.m-default-bg.m-media-el, .media-file.m-default-bg.m-video-el, .media-file.m-lightbox-el'
+      )
+    });
+    if (check && check[0] && check[0].result) return false;
+
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: fetchAndPasteBind
+    });
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function reportStoryRound(hasMore) {
+  try {
+    fetch('http://localhost:3000/storyRoundDone', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        browserType: `browser${currentBrowserNumber}`,
+        hasMore: !!hasMore
+      })
+    }).catch(() => { });
+  } catch (_) { }
+}
+
 async function reloadPage() {
   window.location.reload();
 }
@@ -3902,7 +3935,8 @@ async function processCommand(lastEntry) {
         }
 
         setTimeout(() => {
-          if (currentTabIndex < tabs.length - 1) {
+          const hasMoreTabs = currentTabIndex < tabs.length - 1;
+          if (hasMoreTabs) {
             const nextTabIndex = currentTabIndex + 1;
             chrome.tabs.update(tabs[nextTabIndex].id, { active: true });
           } else {
@@ -3912,6 +3946,8 @@ async function processCommand(lastEntry) {
           if (isSkippedTab) {
             closeStoryTabSafely(currentTab.id).catch(() => { });
           }
+
+          reportStoryRound(hasMoreTabs);
         }, delay);
       });
       return
@@ -3959,6 +3995,33 @@ async function processCommand(lastEntry) {
         });
         return
       })
+    }
+
+    if (lastEntry && (lastEntry.id === "36" || lastEntry.id === "37") && browserType !== "") {
+      if (shouldSkipDuplicate(lastEntry, browserType)) return;
+      const isHold = lastEntry.id === "37";
+      chrome.windows.getCurrent({ populate: true }, async (currentWindow) => {
+        if (!currentWindow || !currentWindow.tabs) return;
+        const activeTab = currentWindow.tabs.find((tab) => tab.active);
+        if (!activeTab) return;
+        await executeScriptIfValid(activeTab, {
+          target: { tabId: activeTab.id },
+          func: async (hold) => {
+            const switchButton = document.getElementById("switch-button");
+            if (!switchButton) return;
+            const fire = (type) => switchButton.dispatchEvent(
+              new MouseEvent(type, { bubbles: true, button: 0 })
+            );
+            fire("mousedown");
+            if (hold) await new Promise((resolve) => setTimeout(resolve, 1200));
+            fire("mouseup");
+          },
+          args: [isHold],
+        });
+        sendWsConfirm(lastEntry.cmdId, currentBrowserNumber);
+        return
+      })
+      return
     }
 
     if (lastEntry && lastEntry.id === "35" && browserType !== "") {
@@ -4881,10 +4944,11 @@ async function processCommand(lastEntry) {
           if (matchingTabs.length > 1) {
             const firstMatchingTab = matchingTabs[0];
             if (currentTabId !== firstMatchingTab.id) {
-              chrome.tabs.update(firstMatchingTab.id, { active: true }, () => {
+              chrome.tabs.update(firstMatchingTab.id, { active: true }, async () => {
                 setTimeout(() => {
                   chrome.tabs.update(currentTabId, { active: true });
                 }, 1000);
+                await insertMediaByTagIfMissing(firstMatchingTab.id);
                 chrome.scripting.executeScript({
                   target: { tabId: firstMatchingTab.id },
                   func: checkAndCloseTab,
@@ -4985,13 +5049,14 @@ async function processCommand(lastEntry) {
             if (otherTabs.length > 0) {
               for (const tab of otherTabs) {
                 await new Promise(resolve => {
-                  chrome.tabs.update(tab.id, { active: true }, () => {
+                  chrome.tabs.update(tab.id, { active: true }, async () => {
+                    setTimeout(resolve, 500);
+                    await insertMediaByTagIfMissing(tab.id);
                     chrome.scripting.executeScript({
                       target: { tabId: tab.id },
                       func: checkAndCloseTab,
                       args: [tab.id],
                     }).catch(() => { });
-                    setTimeout(resolve, 500);
                   });
                 });
               }
@@ -6026,6 +6091,14 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           }
         }
 
+        async function quickStoriesAuto() {
+          await fetch("http://localhost:3000/quickStoriesAuto", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({})
+          }).catch(() => { });
+        }
+
         function setStoriesDoneIcon(mode) {
           try {
             const btn = document.getElementById('stories-done-button');
@@ -6042,9 +6115,11 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <rect x="6" y="6" width="12" height="12" fill="white" rx="1.5"/>
               </svg>`;
+            const fillOverlay = btn.querySelector('div');
             if (mode === 'start') btn.innerHTML = startSvg;
             else if (mode === 'stop') btn.innerHTML = stopSvg;
             else btn.innerHTML = checkSvg;
+            if (fillOverlay) btn.appendChild(fillOverlay);
           } catch (_) { }
         }
 
@@ -7305,7 +7380,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
               height: "0%",
               backgroundColor: "#4CAF50",
               transition: "none",
-              borderRadius: "10px",
+              borderRadius: "inherit",
               zIndex: "-1"
             });
 
@@ -7490,13 +7565,14 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             quickStories
           );
 
-          const storiesDoneButton = createActionButton(
+          const storiesDoneButton = createHoldActionButton(
             "stories-done-button",
             { position: "relative", bottom: "auto", right: "auto" },
             `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M5 14L8.23309 16.4248C8.66178 16.7463 9.26772 16.6728 9.60705 16.2581L18 6" stroke="white" stroke-width="2" stroke-linecap="round"/>
             </svg>`,
-            handleStoriesAction
+            handleStoriesAction,
+            quickStoriesAuto
           );
 
           storiesDoneButton.addEventListener('contextmenu', (e) => {
