@@ -12,13 +12,52 @@ const CONFIG = {
   PROXY_TARGET: 'http://localhost:8765',
   RELOAD_DEBOUNCE: 100,
   WATCH_INTERVAL: 100,
-  FINAL_CHECK_DELAY: 1000 
+  VERSION_PATH: '/__output-version',
+  VERSION_CHECK_INTERVAL: 1500,
+  VERSION_SETTLE_MS: 700
 }
 
 let htmlCache = {
   content: null,
   lastModified: 0,
+  version: null,
   pendingUpdates: false
+}
+
+const getOutputVersion = (stats) => `${stats.mtimeMs}-${stats.size}`
+
+const VERSION_SCRIPT_PATTERN = /<script\b[^>]*>\s*\(function \(\) \{\s*var loadedVersion = [\s\S]*?<\/script>/g
+
+const withVersionCheck = (source, version) => {
+  const html = source.replace(VERSION_SCRIPT_PATTERN, '')
+  const script = `<script>
+(function () {
+  var loadedVersion = ${JSON.stringify(version)};
+  var currentScript = document.currentScript;
+  if (currentScript && currentScript.parentNode) currentScript.parentNode.removeChild(currentScript);
+  var checking = false;
+  function check() {
+    if (checking) return;
+    checking = true;
+    fetch(${JSON.stringify(CONFIG.VERSION_PATH)}, { cache: 'no-store' })
+      .then(function (response) { return response.json(); })
+      .then(function (data) {
+        if (data && data.version && data.version !== loadedVersion && data.age >= ${CONFIG.VERSION_SETTLE_MS}) {
+          location.reload();
+        }
+      })
+      .catch(function () {})
+      .finally(function () { checking = false; });
+  }
+  setInterval(check, ${CONFIG.VERSION_CHECK_INTERVAL});
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') check();
+  });
+  window.addEventListener('focus', check);
+})();
+</script>`
+  const bodyEnd = html.lastIndexOf('</body>')
+  return bodyEnd === -1 ? html + script : html.slice(0, bodyEnd) + script + html.slice(bodyEnd)
 }
 
 const htmlWatcher = () => ({
@@ -29,6 +68,21 @@ const htmlWatcher = () => ({
         return next()
       }
 
+      if (req.url.split('?')[0] === CONFIG.VERSION_PATH) {
+        res.setHeader('Content-Type', 'application/json')
+        res.setHeader('Cache-Control', 'no-store')
+        try {
+          const stats = fs.statSync(CONFIG.TEMPLATE_PATH)
+          return res.end(JSON.stringify({
+            version: getOutputVersion(stats),
+            age: Date.now() - stats.mtimeMs
+          }))
+        } catch (error) {
+          res.statusCode = 503
+          return res.end('{}')
+        }
+      }
+
       if (req.url === '/' || req.url.endsWith('.html')) {
         try {
           const stats = fs.statSync(CONFIG.TEMPLATE_PATH)
@@ -36,21 +90,22 @@ const htmlWatcher = () => ({
           if (!htmlCache.pendingUpdates && htmlCache.content && htmlCache.lastModified === stats.mtimeMs) {
             res.setHeader('Content-Type', 'text/html; charset=utf-8')
             res.setHeader('Cache-Control', 'no-cache')
-            return res.end(htmlCache.content)
+            return res.end(withVersionCheck(htmlCache.content, htmlCache.version))
           }
-      
+
           let html = fs.readFileSync(CONFIG.TEMPLATE_PATH, { encoding: 'utf8' })
           html = await server.transformIndexHtml(req.url, html)
-          
+
           htmlCache = {
             content: html,
             lastModified: stats.mtimeMs,
+            version: getOutputVersion(stats),
             pendingUpdates: false
           }
-      
+
           res.setHeader('Content-Type', 'text/html; charset=utf-8')
           res.setHeader('Cache-Control', 'no-cache')
-          return res.end(html)
+          return res.end(withVersionCheck(html, htmlCache.version))
         } catch (error) {
           console.error('Error processing HTML:', error)
           return next(error)
@@ -60,37 +115,16 @@ const htmlWatcher = () => ({
       return next()
     })
 
-    const ensureLatestVersion = async () => {
-      try {
-        const currentContent = fs.readFileSync(CONFIG.TEMPLATE_PATH, { encoding: 'utf8' })
-        if (htmlCache.content !== currentContent) {
-          htmlCache.content = null
-          htmlCache.pendingUpdates = true
-          server.ws.send({ type: 'full-reload' })
-          setTimeout(() => {
-            htmlCache.pendingUpdates = false
-          }, CONFIG.FINAL_CHECK_DELAY)
-        }
-      } catch (err) {
-        console.error('Error checking latest version:', err)
-      }
-    }
-
     const debounceReload = (() => {
       let timeout
-      let finalCheckTimeout
       return () => {
         if (timeout) clearTimeout(timeout)
-        if (finalCheckTimeout) clearTimeout(finalCheckTimeout)
-        
+
         htmlCache.pendingUpdates = true
-        
-        timeout = setTimeout(async () => {
+
+        timeout = setTimeout(() => {
           try {
             server.ws.send({ type: 'full-reload' })
-            finalCheckTimeout = setTimeout(async () => {
-              await ensureLatestVersion()
-            }, CONFIG.FINAL_CHECK_DELAY)
           } catch (err) {
             console.error('Reload failed:', err)
           }
@@ -137,7 +171,18 @@ export default defineConfig({
     
     watch: {
       usePolling: true,
-      interval: CONFIG.WATCH_INTERVAL
+      interval: CONFIG.WATCH_INTERVAL,
+      ignored: [
+        '**/images/**',
+        '**/queue_states/**',
+        '**/files/**',
+        '**/templates/**',
+        '**/id/**',
+        '**/ffmpeg/**',
+        '**/__pycache__/**',
+        '**/*.session',
+        '**/*.session-journal'
+      ]
     },
     
     fs: {
