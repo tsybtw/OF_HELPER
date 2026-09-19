@@ -130,6 +130,33 @@ async function injectCSS(tabId) {
   } catch (_) { }
 }
 
+function holdKeepaliveLock(tabId) {
+  if (window.__ofhKeepaliveLock === tabId) return;
+  window.__ofhKeepaliveLock = tabId;
+  try {
+    navigator.locks.request(`ofh-keepalive-${tabId}`, () => new Promise(() => { }));
+  } catch (_) {
+    window.__ofhKeepaliveLock = null;
+  }
+}
+
+async function keepTabAlive(tabId) {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (tab.autoDiscardable !== false) {
+      await chrome.tabs.update(tabId, { autoDiscardable: false });
+    }
+  } catch (_) { }
+
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: holdKeepaliveLock,
+      args: [tabId],
+    });
+  } catch (_) { }
+}
+
 async function getMyBrowserNumber() {
   const items = await chrome.storage.local.get(null);
   const activeBrowser = Object.keys(items)
@@ -253,103 +280,6 @@ async function switchToTargetTab(which) {
       });
     });
   });
-}
-
-function checkAndCloseTab(tabId) {
-  const hasInterval = !!(window.__ofhIntervals && window.__ofhIntervals[tabId]);
-
-  const cleanupInterval = (tabId) => {
-    try {
-      if (window.__ofhIntervals && window.__ofhIntervals[tabId]) {
-        clearInterval(window.__ofhIntervals[tabId]);
-        delete window.__ofhIntervals[tabId];
-      }
-    } catch (_) { }
-  };
-
-  if (hasInterval) {
-    cleanupInterval(tabId);
-  }
-
-  const editor = document.querySelector(".tiptap.ProseMirror");
-  if (editor?.getAttribute("data-is-empty") === "true" || !editor) {
-    chrome.runtime.sendMessage({ action: "closeTab", tabId });
-    return;
-  }
-
-  const pressBind = () => {
-    try {
-      if (window.__ofhIntervals && window.__ofhIntervals[tabId]) {
-        clearInterval(window.__ofhIntervals[tabId]);
-        delete window.__ofhIntervals[tabId];
-      }
-    } catch (_) { }
-
-    const intervalId = setInterval(async () => {
-      const selector = document.querySelector(
-        '[at-attr="submit_post"]'
-      );
-
-      if (!selector) {
-        cleanupInterval(tabId);
-        return;
-      }
-
-      if (selector?.disabled === false) {
-        const store = await new Promise(resolve => {
-          chrome.storage.local.get(
-            ['syncStop', 'singleStop', 'lastPostAt', 'singleTabFirstTryDelay'], resolve);
-        });
-        const { syncStop = false, singleStop = false } = store;
-        const cooldown = store.singleTabFirstTryDelay !== undefined ? store.singleTabFirstTryDelay : 9500;
-        if (store.lastPostAt && Date.now() - store.lastPostAt < cooldown) return;
-        if (!syncStop && !singleStop) {
-          selector.click();
-          chrome.storage.local.get(['tabsToClose'], (result) => {
-            const tabsToClose = result.tabsToClose || [];
-            if (!tabsToClose.includes(tabId)) {
-              tabsToClose.push(tabId);
-              chrome.storage.local.set({ tabsToClose: tabsToClose });
-            }
-          });
-        }
-
-        setTimeout(() => {
-          const confirmButton = Array.from(
-            document.querySelectorAll("button.g-btn")
-          ).find((b) => b.textContent.trim() === "Yes");
-          confirmButton?.click();
-          cleanupInterval(tabId);
-          return
-        }, 500);
-      }
-    }, 5000);
-
-    try {
-      window.__ofhIntervals = window.__ofhIntervals || {};
-      window.__ofhIntervals[tabId] = intervalId;
-    } catch (_) { }
-  };
-
-  const mediaWrapperExists = document.querySelector('.b-make-post__media-wrapper');
-  const runPressBind = () => {
-    const secondTargetNode = document.querySelector(".b-reminder-form.m-error");
-    const innerDiv = secondTargetNode ? secondTargetNode.querySelector("div") : null;
-    if (!document.querySelector(".b-reminder-form.m-error") || (innerDiv && innerDiv.textContent.includes("10"))) {
-      pressBind();
-    }
-  };
-
-  if (!mediaWrapperExists) {
-    chrome.storage.local.get('pht', (data) => {
-      const phtIds = Array.isArray(data.pht) ? data.pht : [];
-      const isWithoutPhoto = phtIds.some((id) => Number(id) === Number(tabId));
-      if (isWithoutPhoto) runPressBind();
-    });
-    return;
-  }
-
-  runPressBind();
 }
 
 let _tabPollCounter = 0;
@@ -1480,6 +1410,55 @@ async function insertMediaByTagIfMissing(tabId) {
   } catch (_) {
     return false;
   }
+}
+
+async function prepareTabForPostingRestart(tabId) {
+  try {
+    if (window.__ofhIntervals && window.__ofhIntervals[tabId]) {
+      clearInterval(window.__ofhIntervals[tabId]);
+      delete window.__ofhIntervals[tabId];
+    }
+  } catch (_) { }
+
+  const editor = await new Promise((resolve) => {
+    const start = Date.now();
+    const check = () => {
+      const node = document.querySelector(".tiptap.ProseMirror");
+      if (node || Date.now() - start > 5000) resolve(node);
+      else setTimeout(check, 250);
+    };
+    check();
+  });
+
+  if (!editor || editor.getAttribute("data-is-empty") === "true") {
+    chrome.runtime.sendMessage({ action: "closeTab", tabId });
+    return false;
+  }
+
+  window.__OFH_CURRENT_TAB_ID__ = tabId;
+  return true;
+}
+
+async function restartPostingOnTab(tab, browserType) {
+  try {
+    const prepared = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: prepareTabForPostingRestart,
+      args: [tab.id],
+    });
+
+    if (!prepared || !prepared[0] || !prepared[0].result) return;
+
+    const cfg = await chrome.storage.local.get(['multiTabRetryDelay']);
+    const retryDelayMs = cfg.multiTabRetryDelay !== undefined
+      ? cfg.multiTabRetryDelay : MULTI_TAB_RETRY_DELAY_DEFAULT;
+
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: pressBindFix,
+      args: [tab, browserType, false, 0, retryDelayMs, true],
+    });
+  } catch (_) { }
 }
 
 function reportStoryRound(hasMore) {
@@ -4949,11 +4928,7 @@ async function processCommand(lastEntry) {
                   chrome.tabs.update(currentTabId, { active: true });
                 }, 1000);
                 await insertMediaByTagIfMissing(firstMatchingTab.id);
-                chrome.scripting.executeScript({
-                  target: { tabId: firstMatchingTab.id },
-                  func: checkAndCloseTab,
-                  args: [firstMatchingTab.id],
-                });
+                await restartPostingOnTab(firstMatchingTab, browserType);
               });
             }
           }
@@ -5052,11 +5027,7 @@ async function processCommand(lastEntry) {
                   chrome.tabs.update(tab.id, { active: true }, async () => {
                     setTimeout(resolve, 500);
                     await insertMediaByTagIfMissing(tab.id);
-                    chrome.scripting.executeScript({
-                      target: { tabId: tab.id },
-                      func: checkAndCloseTab,
-                      args: [tab.id],
-                    }).catch(() => { });
+                    await restartPostingOnTab(tab, browserType);
                   });
                 });
               }
@@ -8032,7 +8003,7 @@ async function pressBind(tabIdFromArg) {
   }
 }
 
-async function pressBindFix(tab, browserType, singleTabMode = false, firstTryDelayMs = 0, retryDelayMs = 3000) {
+async function pressBindFix(tab, browserType, singleTabMode = false, firstTryDelayMs = 0, retryDelayMs = 3000, skipNewTab = false) {
 
   let savedMediaLink = null;
   let fixMediaAttempts = 0;
@@ -8080,6 +8051,8 @@ async function pressBindFix(tab, browserType, singleTabMode = false, firstTryDel
         "#content > div.l-wrapper > div > div > div > div > div.g-page__header.m-real-sticky.js-sticky-header.m-nowrap > div > button",
       );
     if (selector) {
+      if (selector.disabled === true) return;
+
       const { syncStop = false, singleStop = false } = storageData;
       if (!syncStop && !singleStop) {
         selector.click();
@@ -8176,7 +8149,7 @@ async function pressBindFix(tab, browserType, singleTabMode = false, firstTryDel
     };
   }
 
-  if (!singleTabMode) {
+  if (!singleTabMode && !skipNewTab) {
     chrome.runtime.sendMessage({ action: "openNewTab", source: "pressBindFix" });
 
     if (browserType) {
@@ -8749,6 +8722,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     try {
       if (tab.url.startsWith('https://onlyfans.com')) {
         injectCSS(tabId);
+        keepTabAlive(tabId);
       }
     } catch (_) { }
 
@@ -8827,6 +8801,7 @@ chrome.tabs.onCreated.addListener(async (tab) => {
     try {
       if (tab.url && tab.url.startsWith('https://onlyfans.com')) {
         injectCSS(tab.id);
+        keepTabAlive(tab.id);
       }
     } catch (_) { }
     chrome.storage.local.get("tabIds", function (data) {
@@ -8854,6 +8829,7 @@ chrome.webNavigation.onCompleted.addListener(
     if (details.url.startsWith("https://onlyfans.com/")) {
       try {
         injectCSS(details.tabId);
+        keepTabAlive(details.tabId);
       } catch (_) { }
       updateTabCounterOnActiveTab(false);
     }
@@ -8865,6 +8841,7 @@ chrome.tabs.onCreated.addListener(function (tab) {
   if (tab.url && tab.url.startsWith("https://onlyfans.com/")) {
     try {
       injectCSS(tab.id);
+      keepTabAlive(tab.id);
     } catch (_) { }
     updateTabCounterOnActiveTab(false);
   }

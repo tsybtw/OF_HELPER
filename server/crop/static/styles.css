@@ -36,6 +36,7 @@ body {
   color: white;
   font-size: 14px;
   font-family: 'Varela Round', sans-serif;
+  overflow-x: hidden;
 }
 
 .container {
@@ -577,7 +578,7 @@ video {
 }
 
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -588,7 +589,7 @@ video {
 ::-webkit-scrollbar-thumb {
   background-color: #fb8556;
   border-radius: 10px;
-  border: 2px solid #000000;
+  border: none;
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -599,6 +600,7 @@ html {
   scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: #fb8556 #000000;
+  overflow-x: hidden;
 }
 
 #hints-container {
