@@ -737,6 +737,7 @@ input[type="checkbox"] {
 #reload-content-btn,
 #restore-active-user-btn,
 #hint-swap-settings-btn,
+#assistants-log-btn,
 #sticker-bind-btn {
   position: fixed;
   background: none;
@@ -754,7 +755,8 @@ input[type="checkbox"] {
 
 #add-hint-btn,
 #add-general-hint-btn,
-#hint-swap-settings-btn {
+#hint-swap-settings-btn,
+#assistants-log-btn {
   width: 36px;
   height: 36px;
   padding: 0;
@@ -830,6 +832,87 @@ input[type="checkbox"] {
 #hint-swap-settings-btn:hover {
   background-color: #c3f57c;
   color: black;
+}
+
+#assistants-log-btn {
+  left: 620px;
+  top: 10px;
+  border: 2px dashed #b39afb;
+  color: #b39afb;
+}
+
+#assistants-log-btn:hover {
+  background-color: #b39afb;
+  color: black;
+}
+
+#assistants-log-dropdown {
+  position: fixed;
+  left: 620px;
+  top: 45px;
+  background: #000000;
+  border: 3px solid #b39afb;
+  padding: 15px;
+  min-width: 220px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
+  color: white;
+  display: none;
+  z-index: 1001;
+}
+
+#assistants-log-dropdown.show {
+  display: block;
+}
+
+#assistants-log-dropdown .hint-swap-dropdown-header {
+  color: #b39afb;
+}
+
+.assistants-log-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.assistants-log-action {
+  background: none;
+  border: 2px solid #b39afb;
+  border-radius: 5px;
+  color: #b39afb;
+  cursor: pointer;
+  font-family: 'Varela Round', sans-serif;
+  font-size: 13px;
+  font-weight: bold;
+  padding: 6px 10px;
+  transition: all 0.2s ease;
+}
+
+.assistants-log-action:hover:not(:disabled) {
+  background-color: #b39afb;
+  color: black;
+}
+
+.assistants-log-action:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.assistants-log-accounts-title {
+  margin: 14px 0 8px;
+  font-size: 12px;
+  color: #b39afb;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+#assistants-log-accounts .setting-row-inline,
+.assistants-log-option {
+  margin-bottom: 6px;
+}
+
+.assistants-log-empty {
+  font-size: 12px;
+  color: #888888;
 }
 
 #hint-swap-settings-dropdown {

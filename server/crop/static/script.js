@@ -264,6 +264,161 @@ async function openFolder() {
     });
 }
 
+function showAssistantsLogStatus(message) {
+  var element = document.getElementById('delete-status');
+  if (!element || !message) return;
+  element.textContent = message;
+  element.classList.add('show');
+  element.style.animation = 'slide-up 0.5s forwards';
+  setTimeout(function () {
+    element.classList.remove('show');
+    element.style.animation = 'none';
+  }, 5000);
+}
+
+function toggleAssistantsLogMenu() {
+  var dd = document.getElementById('assistants-log-dropdown');
+  if (!dd) return;
+  var willShow = !dd.classList.contains('show');
+  dd.classList.toggle('show', willShow);
+  if (willShow) loadAssistantsLogAccounts();
+}
+
+function loadAssistantsLogAccounts() {
+  var list = document.getElementById('assistants-log-accounts');
+  if (!list) return;
+  Promise.all([
+    fetch('/get-active-clients').then(response => response.json()),
+    fetch('/assistants-log-settings').then(response => response.json())
+  ]).then(function (results) {
+    var accounts = (results[0] && results[0].clients) || [];
+    var settings = results[1] || {};
+    var selected = settings.selected || [];
+    var timeBox = document.getElementById('assistants-log-include-time');
+    var hintBox = document.getElementById('assistants-log-include-hint');
+    if (timeBox) timeBox.checked = settings.include_time !== false;
+    if (hintBox) hintBox.checked = settings.include_hint !== false;
+    list.innerHTML = '';
+    if (!accounts.length) {
+      var empty = document.createElement('div');
+      empty.className = 'assistants-log-empty';
+      empty.textContent = 'No accounts connected';
+      list.appendChild(empty);
+      return;
+    }
+    accounts.forEach(function (account) {
+      var row = document.createElement('div');
+      row.className = 'setting-row-inline';
+      var box = document.createElement('input');
+      box.type = 'checkbox';
+      box.className = 'hint-checkbox';
+      box.id = 'assistants-log-account-' + account.id;
+      box.value = String(account.id);
+      box.checked = selected.indexOf(String(account.id)) !== -1;
+      box.addEventListener('change', saveAssistantsLogAccounts);
+      var label = document.createElement('label');
+      label.className = 'setting-label';
+      label.htmlFor = box.id;
+      label.textContent = account.phone;
+      row.appendChild(box);
+      row.appendChild(label);
+      list.appendChild(row);
+    });
+  }).catch(() => { });
+}
+
+function saveAssistantsLogAccounts() {
+  var selected = Array.from(document.querySelectorAll('#assistants-log-accounts input[type="checkbox"]'))
+    .filter(function (box) { return box.checked; })
+    .map(function (box) { return box.value; });
+  fetch('/assistants-log-settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ selected: selected })
+  }).catch(() => { });
+}
+
+function saveAssistantsLogOptions() {
+  var timeBox = document.getElementById('assistants-log-include-time');
+  var hintBox = document.getElementById('assistants-log-include-hint');
+  fetch('/assistants-log-settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      include_time: !!(timeBox && timeBox.checked),
+      include_hint: !!(hintBox && hintBox.checked)
+    })
+  }).catch(() => { });
+}
+
+function loadAutoQueueScanHours() {
+  var input = document.getElementById('aq-scan-hours');
+  if (!input) return;
+  fetch('/auto-queue-settings')
+    .then(response => response.json())
+    .then(data => {
+      if (data && data.scan_hours && document.activeElement !== input) {
+        input.value = data.scan_hours;
+      }
+    })
+    .catch(() => { });
+}
+
+function saveAutoQueueScanHours() {
+  var input = document.getElementById('aq-scan-hours');
+  if (!input) return;
+  fetch('/auto-queue-settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scan_hours: input.value })
+  })
+    .then(response => response.json())
+    .then(data => {
+      if (data && data.scan_hours) input.value = data.scan_hours;
+    })
+    .catch(() => { });
+}
+
+document.addEventListener('DOMContentLoaded', loadAutoQueueScanHours);
+
+function openAssistantsLog() {
+  fetch('/open-assistants-log', { method: 'POST' })
+    .then(response => response.json())
+    .then(data => showAssistantsLogStatus(data.message))
+    .catch(() => { });
+}
+
+function confirmClearAssistantsLog() {
+  showConfirmDialog(
+    'Clear file?',
+    'All entries will be deleted from the assistants file. This cannot be undone.',
+    function () {
+      fetch('/clear-assistants-log', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => showAssistantsLogStatus(data.message))
+        .catch(() => { });
+    }
+  );
+}
+
+function exportAssistantsLog(button) {
+  if (button) button.disabled = true;
+  fetch('/assistants-log-export', { method: 'POST' })
+    .then(response => response.json())
+    .then(data => showAssistantsLogStatus(data.message))
+    .catch(() => showAssistantsLogStatus('Failed to send'))
+    .finally(() => { if (button) button.disabled = false; });
+}
+
+document.addEventListener('click', function (event) {
+  var dd = document.getElementById('assistants-log-dropdown');
+  if (!dd || !dd.classList.contains('show')) return;
+  var btn = document.getElementById('assistants-log-btn');
+  if (dd.contains(event.target) || (btn && btn.contains(event.target))) return;
+  if (event.target.closest && event.target.closest('#ofh-confirm-modal')) return;
+  dd.classList.remove('show');
+});
+
 async function copyFiles() {
   var copyButton = document.getElementById('copy-files-button');
   copyButton.classList.add('animate');
@@ -1878,10 +2033,6 @@ function updateQueueStatus(queueData = null, browserData = null) {
         restoreQueueDropdownScroll();
       }
     } catch (_) { }
-
-    userButtonsDiv.querySelectorAll('.queue-user-item').forEach(el => {
-      el.removeAttribute('data-drag-listeners-attached');
-    });
 
     try {
       if (data.skip_chat_id && data.skip_chat_id !== lastHintsChatIdRefreshed) {
@@ -4366,6 +4517,8 @@ function initializeDragAndDrop() {
   updateDragAndDropListeners();
 }
 
+const dragReadyUsers = new WeakSet();
+
 function updateDragAndDropListeners() {
   const userButtonsDiv = document.getElementById('user-buttons');
   if (!userButtonsDiv) return;
@@ -4376,14 +4529,11 @@ function updateDragAndDropListeners() {
     return;
   }
 
-  const firstUser = queueUsers[0];
-  if (firstUser && firstUser.hasAttribute('data-drag-listeners-attached')) {
-    return;
-  }
-
   queueUsers.forEach((userElement, index) => {
     userElement.setAttribute('data-user-index', index);
-    userElement.setAttribute('data-drag-listeners-attached', 'true');
+    if (dragReadyUsers.has(userElement)) return;
+    dragReadyUsers.add(userElement);
+    userElement.removeAttribute('data-drag-listeners-attached');
     userElement.removeAttribute('draggable');
     userElement.addEventListener('mousedown', startCustomDrag);
     userElement.style.cursor = 'grab';
@@ -4927,6 +5077,9 @@ function _doStartScan(clientIds, folderFilter) {
   var bodyObj = {};
   if (clientIds) bodyObj.client_ids = clientIds;
   if (folderFilter) bodyObj.folder_filter = folderFilter;
+  var hoursInput = document.getElementById('aq-scan-hours');
+  var hours = hoursInput ? parseInt(hoursInput.value, 10) : NaN;
+  if (hours > 0) bodyObj.hours = hours;
   var body = JSON.stringify(bodyObj);
   fetch('/auto-queue-scan', {
     method: 'POST',
