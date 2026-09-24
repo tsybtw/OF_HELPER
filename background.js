@@ -1,5 +1,6 @@
 const ALL_ACTIONS_DELAY = 0;
 const MAX_POST_TABS = 2;
+const POST_PAUSE_MS = 6000;
 const DELAY_GREEN_BUTTON = 500;
 const MULTI_TAB_RETRY_DELAY_DEFAULT = 3000;
 
@@ -282,6 +283,81 @@ async function switchToTargetTab(which) {
   });
 }
 
+function startPostingKeepalive() {
+  if (window.__ofhKeepaliveRtc) return;
+  window.__ofhKeepaliveRtc = { pending: true };
+  (async () => {
+    try {
+      const first = new RTCPeerConnection({ iceServers: [] });
+      const second = new RTCPeerConnection({ iceServers: [] });
+      const channel = first.createDataChannel('ofh-keepalive');
+      first.onicecandidate = (e) => { if (e.candidate) second.addIceCandidate(e.candidate).catch(() => { }); };
+      second.onicecandidate = (e) => { if (e.candidate) first.addIceCandidate(e.candidate).catch(() => { }); };
+      const offer = await first.createOffer();
+      await first.setLocalDescription(offer);
+      await second.setRemoteDescription(offer);
+      const answer = await second.createAnswer();
+      await second.setLocalDescription(answer);
+      await first.setRemoteDescription(answer);
+      if (!window.__ofhKeepaliveRtc) {
+        first.close();
+        second.close();
+        return;
+      }
+      window.__ofhKeepaliveRtc = { first, second, channel };
+    } catch (_) {
+      window.__ofhKeepaliveRtc = null;
+    }
+  })();
+}
+
+function stopPostingKeepalive() {
+  const keepalive = window.__ofhKeepaliveRtc;
+  window.__ofhKeepaliveRtc = null;
+  if (!keepalive) return;
+  try { if (keepalive.channel) keepalive.channel.close(); } catch (_) { }
+  try { if (keepalive.first) keepalive.first.close(); } catch (_) { }
+  try { if (keepalive.second) keepalive.second.close(); } catch (_) { }
+}
+
+const keepaliveTabs = new Set();
+
+async function updatePostingKeepalive(tabs) {
+  try {
+    const storageData = await chrome.storage.local.get(null);
+    const storedMax = Number(storageData.maxPostTabs);
+    const maxPostTabs = Number.isFinite(storedMax) && storedMax > 0 ? storedMax : MAX_POST_TABS;
+
+    const blacklisted = new Set();
+    for (const key in storageData) {
+      if (key.startsWith('blacklisted_') && storageData[key]) {
+        const id = parseInt(key.split('_')[1]);
+        if (!isNaN(id)) blacklisted.add(id);
+      }
+    }
+
+    const front = tabs
+      .filter(tab => !blacklisted.has(tab.id))
+      .slice(0, maxPostTabs)
+      .filter(tab => tab.url && tab.url.startsWith('https://onlyfans.com'))
+      .map(tab => tab.id);
+    const frontSet = new Set(front);
+
+    for (const tabId of [...keepaliveTabs]) {
+      if (frontSet.has(tabId)) continue;
+      keepaliveTabs.delete(tabId);
+      chrome.scripting.executeScript({ target: { tabId }, func: stopPostingKeepalive }).catch(() => { });
+    }
+
+    for (const tabId of front) {
+      if (keepaliveTabs.has(tabId)) continue;
+      keepaliveTabs.add(tabId);
+      chrome.scripting.executeScript({ target: { tabId }, func: startPostingKeepalive })
+        .catch(() => { keepaliveTabs.delete(tabId); });
+    }
+  } catch (_) { }
+}
+
 let _tabPollCounter = 0;
 setInterval(() => {
   _tabPollCounter++;
@@ -289,6 +365,8 @@ setInterval(() => {
     const onlyFansTabsCount = tabs.filter(tab =>
       tab.url && tab.url.startsWith('https://onlyfans.com')
     ).length;
+
+    updatePostingKeepalive(tabs);
 
     if (onlyFansTabsCount !== lastTabCount || _tabPollCounter % 15 === 0) {
       getMyBrowserNumber().then(browserNum => {
@@ -299,6 +377,10 @@ setInterval(() => {
     }
   });
 }, 2000);
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  keepaliveTabs.delete(tabId);
+});
 
 function updateTabCounterOnActiveTab(isReset) {
   chrome.tabs.query({ url: "https://onlyfans.com/*" }, function (ofTabs) {
@@ -5123,6 +5205,75 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
       target: { tabId: tab.id },
       func: function (DELAY_GREEN_BUTTON) {
 
+        const PANEL_ELEMENT_IDS = [
+          "tabCounter", "cont1", "cont2", "cont3", "switch-button", "fakeMakeButton",
+          "version", "clear-button", "reload-button", "stories-container",
+          "bottom-overlay", "joy", "text-size-slider", "tag-rotation-dial", "tag-reset-button"
+        ];
+
+        function isContextAlive() {
+          try {
+            return !!(chrome.runtime && chrome.runtime.id);
+          } catch (_) {
+            return false;
+          }
+        }
+
+        function removePanelElements() {
+          PANEL_ELEMENT_IDS.forEach((id) => {
+            const element = document.getElementById(id);
+            if (element) element.remove();
+          });
+        }
+
+        function showContextBanner() {
+          if (document.getElementById("ofh-context-banner")) return;
+          const banner = document.createElement("div");
+          banner.id = "ofh-context-banner";
+          Object.assign(banner.style, {
+            position: "fixed",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            backgroundColor: "rgba(0, 0, 0, 0.92)",
+            border: "3px solid #fb8556",
+            borderRadius: "12px",
+            padding: "22px 28px",
+            color: "#ffffff",
+            fontFamily: "'Josefin Sans', sans-serif",
+            fontSize: "20px",
+            lineHeight: "1.4",
+            textAlign: "center",
+            zIndex: "2147483647",
+            maxWidth: "min(96vw, 760px)",
+            boxShadow: "0 8px 32px rgba(0, 0, 0, 0.8)"
+          });
+          const title = document.createElement("div");
+          Object.assign(title.style, { color: "#fb8556", fontWeight: "bold", marginBottom: "8px" });
+          title.textContent = "Extension context duplicated";
+          const text = document.createElement("div");
+          text.style.fontSize = "17px";
+          text.textContent = "Remove the extension and add it again to fix this browser";
+          banner.appendChild(title);
+          banner.appendChild(text);
+          document.body.appendChild(banner);
+        }
+
+        if (typeof window.__ofhPanelAlive === "function") {
+          if (window.__ofhPanelAlive()) return;
+          removePanelElements();
+          showContextBanner();
+          return;
+        }
+
+        window.__ofhPanelAlive = isContextAlive;
+        const contextWatcher = setInterval(() => {
+          if (isContextAlive()) return;
+          clearInterval(contextWatcher);
+          removePanelElements();
+          showContextBanner();
+        }, 5000);
+
         function animateButton(button, buttonText, callback) {
           button.style.transform = "scaleX(0.9)";
           buttonText.style.transform = "scaleX(1.1)";
@@ -7869,10 +8020,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             chrome.tabs.move(sender.tab.id, { index: -1 });
           }
         });
-        chrome.storage.local.set({ isPaused: true });
-        setTimeout(() => {
-          chrome.storage.local.set({ isPaused: false });
-        }, 6000);
+        chrome.storage.local.set({ pauseUntil: Date.now() + POST_PAUSE_MS });
       }
     });
   }
@@ -8183,16 +8331,15 @@ async function pressBindFix(tab, browserType, singleTabMode = false, firstTryDel
       if (singleTabDone) return;
     }
 
-    chrome.storage.local.get(
-      ["isPaused", "lastPostAt", "singleTabFirstTryDelay", `blacklisted_${tab.id}`],
-      async function (data) {
+    const runCycle = async function (data) {
         const cooldown = data.singleTabFirstTryDelay !== undefined
           ? data.singleTabFirstTryDelay : 9500;
         const sincePost = data.lastPostAt ? Date.now() - data.lastPostAt : Infinity;
         const remaining = cooldown - sincePost;
+        const pausedFor = (data.pauseUntil || 0) - Date.now();
 
-        if (data.isPaused || remaining > 0) {
-          scheduleNext(data.isPaused ? 1000 : Math.max(200, Math.min(remaining, 2000)));
+        if (pausedFor > 0 || remaining > 0) {
+          scheduleNext(pausedFor > 0 ? Math.min(pausedFor, 1000) : Math.max(200, Math.min(remaining, 2000)));
           return;
         } else if (data[`blacklisted_${tab.id}`]) {
           return;
@@ -8519,7 +8666,17 @@ async function pressBindFix(tab, browserType, singleTabMode = false, firstTryDel
             });
           }, 1000);
         }
-      });
+    };
+
+    try {
+      chrome.storage.local.get(
+        ["pauseUntil", "lastPostAt", "singleTabFirstTryDelay", `blacklisted_${tab.id}`],
+        function (data) {
+          runCycle(data || {}).catch(function () { scheduleNext(retryDelayMs); });
+        });
+    } catch (_) {
+      scheduleNext(Math.max(retryDelayMs, 5000));
+    }
   }
 
   if (singleTabMode && firstTryDelayMs > 0) {
