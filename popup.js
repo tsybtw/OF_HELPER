@@ -1,12 +1,27 @@
 document.getElementById("ext-version").textContent = chrome.runtime.getManifest().version;
 
+self.__OFH_PORTS = { http: 3000, cropFlask: 8765, cropVite: 8444 };
+
+async function loadInstancePorts() {
+  try {
+    const res = await fetch(chrome.runtime.getURL('instance.json') + '?t=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) return;
+    const data = await res.json();
+    const parsed = Number(data.http);
+    if (Number.isInteger(parsed) && parsed > 0 && parsed <= 65535) {
+      self.__OFH_PORTS = { ...self.__OFH_PORTS, http: parsed };
+    }
+  } catch (_) { }
+}
+
 document.addEventListener('DOMContentLoaded', async function () {
+  await loadInstancePorts();
   const browserSwitches = [];
   let previousActiveSwitchIndex = null;
 
   async function fetchActiveBrowsers() {
     try {
-      const res = await fetch('http://localhost:3000/active-browsers');
+      const res = await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/active-browsers`);
       const data = await res.json();
       return new Set(data.numbers || []);
     } catch (_) {
@@ -47,7 +62,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     }
 
     if (countChange !== 0) {
-      const response = await fetch('http://localhost:3000/update-count', {
+      const response = await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/update-count`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ count: countChange })
@@ -105,7 +120,7 @@ document.addEventListener('DOMContentLoaded', async function () {
       await updateActiveBrowserCount();
 
       if (this.checked) {
-        const response = await fetch('http://localhost:3000/clear', {
+        const response = await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/clear`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({})

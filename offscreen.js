@@ -2,11 +2,26 @@ let ws = null;
 let currentBrowserNumber = 1;
 const HEARTBEAT_INTERVAL = 20000;
 let heartbeatTimer = null;
-const SERVER_HTTP = 'http://localhost:3000';
+self.__OFH_PORTS = { http: 3000, cropFlask: 8765, cropVite: 8444 };
+
+async function loadInstancePorts() {
+  try {
+    const res = await fetch(chrome.runtime.getURL('instance.json') + '?t=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) return;
+    const data = await res.json();
+    const parsed = Number(data.http);
+    if (Number.isInteger(parsed) && parsed > 0 && parsed <= 65535) {
+      self.__OFH_PORTS = { ...self.__OFH_PORTS, http: parsed };
+    }
+  } catch (_) { }
+}
+
+const serverBase = () => `http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}`;
 
 async function getWsPort() {
   try {
-    const res = await fetch(`${SERVER_HTTP}/ws-port`);
+    await loadInstancePorts();
+    const res = await fetch(`${serverBase()}/ws-port`);
     const data = await res.json();
     return data.port || null;
   } catch (_) {
@@ -108,6 +123,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         browserNumber: message.browserNumber
       }));
     }
+    sendResponse({ ok: true });
+    return false;
+  }
+
+  if (message.type === 'ws-reconnect') {
+    try { if (ws) ws.close(); } catch (_) { }
     sendResponse({ ok: true });
     return false;
   }

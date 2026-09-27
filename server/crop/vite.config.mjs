@@ -6,10 +6,15 @@ import { fileURLToPath } from 'url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+const port = (name, fallback) => {
+  const value = parseInt(process.env[name], 10)
+  return Number.isInteger(value) && value > 0 && value <= 65535 ? value : fallback
+}
+
 const CONFIG = {
-  PORT: 8444,
+  PORT: port('OFH_VITE_PORT', 8444),
   TEMPLATE_PATH: path.resolve(__dirname, 'templates', 'output.html'),
-  PROXY_TARGET: 'http://localhost:8765',
+  PROXY_TARGET: `http://localhost:${port('OFH_FLASK_PORT', 8765)}`,
   RELOAD_DEBOUNCE: 100,
   WATCH_INTERVAL: 100,
   VERSION_PATH: '/__output-version',

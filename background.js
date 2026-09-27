@@ -1,6 +1,44 @@
 const ALL_ACTIONS_DELAY = 0;
 const MAX_POST_TABS = 2;
 const POST_PAUSE_MS = 6000;
+
+self.__OFH_PORTS = { http: 3000, cropFlask: 8765, cropVite: 8444 };
+
+async function loadInstancePorts() {
+  try {
+    const res = await fetch(chrome.runtime.getURL('instance.json') + '?t=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) return;
+    const data = await res.json();
+    const port = (value, fallback) => {
+      const parsed = Number(value);
+      return Number.isInteger(parsed) && parsed > 0 && parsed <= 65535 ? parsed : fallback;
+    };
+    const previousHttp = self.__OFH_PORTS && self.__OFH_PORTS.http;
+    self.__OFH_PORTS = {
+      http: port(data.http, 3000),
+      cropFlask: port(data.cropFlask, 8765),
+      cropVite: port(data.cropVite, 8444)
+    };
+    if (previousHttp && previousHttp !== self.__OFH_PORTS.http) {
+      try { chrome.runtime.sendMessage({ type: 'ws-reconnect' }); } catch (_) { }
+    }
+  } catch (_) { }
+}
+
+function applyPagePorts(ports) {
+  window.__OFH_PORTS = ports;
+}
+
+function sendPortsToTab(tabId) {
+  return chrome.scripting.executeScript({
+    target: { tabId },
+    func: applyPagePorts,
+    args: [self.__OFH_PORTS]
+  }).catch(() => { });
+}
+
+loadInstancePorts();
+setInterval(loadInstancePorts, 5000);
 const DELAY_GREEN_BUTTON = 500;
 const MULTI_TAB_RETRY_DELAY_DEFAULT = 3000;
 
@@ -142,6 +180,8 @@ function holdKeepaliveLock(tabId) {
 }
 
 async function keepTabAlive(tabId) {
+  await sendPortsToTab(tabId);
+
   try {
     const tab = await chrome.tabs.get(tabId);
     if (tab.autoDiscardable !== false) {
@@ -172,7 +212,7 @@ async function autoAssignBrowserNumber() {
     try {
       const syncData = await chrome.storage.sync.get(['preferredBrowserNumber']);
       const preferred = syncData.preferredBrowserNumber || null;
-      const res = await fetch('http://localhost:3000/active-browsers');
+      const res = await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/active-browsers`);
       const { numbers } = await res.json();
       const taken = new Set(numbers || []);
       let chosen = (preferred && !taken.has(preferred)) ? preferred : null;
@@ -221,7 +261,7 @@ setInterval(async () => {
   if (switchStateFetchInProgress) return;
   switchStateFetchInProgress = true;
   try {
-    const resp = await fetch('http://localhost:8765/switch-tabs-state');
+    const resp = await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.cropFlask)||8765}/switch-tabs-state`);
     const state = await resp.json();
     if (!state || state.success === false) return;
     switchTabsEnabled = !!state.enabled;
@@ -262,7 +302,7 @@ async function performPhaseSwitch(phase) {
 
 async function reportSwitchResult(success, phase) {
   try {
-    await fetch('http://localhost:8765/switch-tabs-result', {
+    await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.cropFlask)||8765}/switch-tabs-result`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ browser: String(currentBrowserNumber), phase, success })
@@ -526,7 +566,7 @@ function updateTabCounterOnActiveTab(isReset) {
 
 async function sendReadyRequest(browserNumber, tabCount) {
   try {
-    const response = await fetch('http://localhost:8765/ready-browser-status', {
+    const response = await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.cropFlask)||8765}/ready-browser-status`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -790,7 +830,7 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent, sav
     let animationFrameId = null;
 
     function sendJoystickData(newTagX, newTagY) {
-      fetch("http://localhost:3000/joystick-data", {
+      fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/joystick-data`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ x: newTagX, y: newTagY })
@@ -848,7 +888,7 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent, sav
         const newTagY = percentY * canvasRect.height;
         sendJoystickData(newTagX, newTagY);
 
-        fetch('http://localhost:3000/tag-settings', {
+        fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/tag-settings`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ tag: settingsTagKey, settings: { joyX: currentX, joyY: currentY, canvasX: newTagX, canvasY: newTagY } })
@@ -1152,13 +1192,13 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent, sav
 
         input.addEventListener('change', function () {
           const scale = Number(this.value);
-          fetch('http://localhost:3000/text-scale', {
+          fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/text-scale`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ scalePercent: scale })
           }).catch(() => { });
 
-          fetch('http://localhost:3000/tag-settings', {
+          fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/tag-settings`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ tag: settingsTagKey, settings: { scale: scale } })
@@ -1298,13 +1338,13 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent, sav
           currentAngle = getAngleFromEvent(e);
           updateHand(currentAngle);
           const angle = Math.round(currentAngle);
-          fetch('http://localhost:3000/text-rotate', {
+          fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/text-rotate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ angleDeg: angle })
           }).catch(() => { });
 
-          fetch('http://localhost:3000/tag-settings', {
+          fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/tag-settings`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ tag: settingsTagKey, settings: { angle: angle } })
@@ -1343,7 +1383,7 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent, sav
         resetBtn.onmouseout = () => resetBtn.style.background = 'rgba(221, 109, 85, 0.92)';
 
         resetBtn.addEventListener('click', () => {
-          fetch('http://localhost:3000/tag-settings-reset', {
+          fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/tag-settings-reset`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ tag: settingsTagKey })
@@ -1545,7 +1585,7 @@ async function restartPostingOnTab(tab, browserType) {
 
 function reportStoryRound(hasMore) {
   try {
-    fetch('http://localhost:3000/storyRoundDone', {
+    fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/storyRoundDone`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1657,7 +1697,7 @@ async function fetchAndPasteBind() {
   if (!tag) return;
 
   try {
-    const response = await fetch(`http://localhost:8444/get-image-by-tag?tag=${encodeURIComponent(tag)}`);
+    const response = await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.cropVite)||8444}/get-image-by-tag?tag=${encodeURIComponent(tag)}`);
     if (!response.ok) return;
 
     const blob = await response.blob();
@@ -1875,7 +1915,7 @@ async function createBrowser(browserType, index, totalIndex, repeat) {
   };
 
   try {
-    await fetchWithRetry("http://localhost:3000/create-browser", requestConfig, 5000);
+    await fetchWithRetry(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/create-browser`, requestConfig, 5000);
   } catch (error) {
     console.error("Failed to create browser:", error);
   }
@@ -2737,7 +2777,7 @@ let singleTabLastPostAt = null;
 
 async function syncPostingSettings() {
   try {
-    const res = await fetch('http://localhost:3000/posting-settings');
+    const res = await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/posting-settings`);
     if (!res.ok) return;
     const data = await res.json();
     if (data && typeof data === 'object') chrome.storage.local.set(data);
@@ -2877,7 +2917,7 @@ chrome.tabs.onCreated.addListener(function (tab) {
 
 
 function sendActivityInfo(browser) {
-  fetch("http://localhost:3000/activity", {
+  fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/activity`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -2932,7 +2972,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         else if (res.autoRestartEnabled) mode = 'auto';
         sendResponse({ browserNumber: browserNum, arrowMode: mode });
 
-        fetch('http://localhost:3000/updateSingleTabSettings', {
+        fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/updateSingleTabSettings`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ screenshotDelay: res.singleTabScreenshotDelay !== undefined ? res.singleTabScreenshotDelay : 5000 })
@@ -2954,7 +2994,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'ws-displaced') {
     (async () => {
       try {
-        const res = await fetch('http://localhost:3000/active-browsers');
+        const res = await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/active-browsers`);
         const data = await res.json();
         const taken = new Set(data.numbers || []);
         let freeNum = null;
@@ -3522,7 +3562,7 @@ async function processCommand(lastEntry) {
               if (usernameEl && usernameEl.innerText) {
                 const username = usernameEl.innerText;
 
-                fetch("http://localhost:3000/add-to-blacklist", {
+                fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/add-to-blacklist`, {
                   method: "POST",
                   headers: {
                     "Content-Type": "application/json",
@@ -3562,7 +3602,7 @@ async function processCommand(lastEntry) {
 
       let blacklistContent = "";
       try {
-        const blResponse = await fetch('http://localhost:3000/get-blacklist');
+        const blResponse = await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/get-blacklist`);
         if (blResponse.ok) {
           blacklistContent = await blResponse.text();
         }
@@ -3729,7 +3769,7 @@ async function processCommand(lastEntry) {
           const PHASH_THRESHOLD = 8;
 
           await new Promise(resolve => {
-            fetch('http://localhost:3000/tag-settings')
+            fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/tag-settings`)
               .then(res => res.json())
               .catch(() => ({}))
               .then(ts => {
@@ -3826,25 +3866,25 @@ async function processCommand(lastEntry) {
                         const { angle, scale, joyX, joyY } = extractData(target);
 
                         if (window.__OFH_SYNC_ENABLED !== false) {
-                          fetch('http://localhost:3000/text-scale', {
+                          fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/text-scale`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ scalePercent: scale })
                           }).catch(() => { });
 
-                          fetch('http://localhost:3000/text-rotate', {
+                          fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/text-rotate`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ angleDeg: angle })
                           }).catch(() => { });
 
-                          fetch('http://localhost:3000/joystick-data', {
+                          fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/joystick-data`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ x: target.left, y: target.top })
                           }).catch(() => { });
 
-                          fetch('http://localhost:3000/tag-settings', {
+                          fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/tag-settings`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ tag: photoHash ? tagStr + '_' + photoHash : tagStr, settings: { scale: scale, angle: angle, joyX: joyX, joyY: joyY, canvasX: target.left, canvasY: target.top } })
@@ -5203,7 +5243,9 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
   if (tab.url.startsWith("https://onlyfans.com")) {
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      func: function (DELAY_GREEN_BUTTON) {
+      func: function (DELAY_GREEN_BUTTON, ports) {
+
+        if (ports) window.__OFH_PORTS = ports;
 
         const PANEL_ELEMENT_IDS = [
           "tabCounter", "cont1", "cont2", "cont3", "switch-button", "fakeMakeButton",
@@ -5313,15 +5355,15 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
         }
 
         async function syncStopRequestOn() {
-          await makeRequest("http://localhost:3000/syncStop-on");
+          await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/syncStop-on`);
         }
 
         async function syncStopRequestOff() {
-          await makeRequest("http://localhost:3000/syncStop-off");
+          await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/syncStop-off`);
         }
 
         async function clearRequest() {
-          await makeRequest("http://localhost:3000/clearPhotoAll", 0);
+          await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/clearPhotoAll`, 0);
         }
 
         async function bindRequest() {
@@ -5330,27 +5372,27 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             const res = await chrome.storage.local.get('postDelay');
             if (res.postDelay !== undefined) delay = res.postDelay;
           } catch (_) { }
-          await makeRequest("http://localhost:3000/bind", delay);
+          await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/bind`, delay);
         }
 
         async function stopRequest() {
-          await makeRequest("http://localhost:3000/stopPosting", 0);
+          await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/stopPosting`, 0);
         }
 
         async function quickSwitch() {
-          await makeRequest("http://localhost:3000/quickSwitch", 0);
+          await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/quickSwitch`, 0);
         }
 
         async function holdSwitch() {
-          await makeRequest("http://localhost:3000/holdSwitch", 0);
+          await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/holdSwitch`, 0);
         }
 
         async function quickClear() {
-          await makeRequest("http://localhost:3000/quickClear", 0);
+          await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/quickClear`, 0);
         }
 
         async function quickReload() {
-          await makeRequest("http://localhost:3000/quickReload", 0);
+          await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/quickReload`, 0);
         }
 
         async function quickStories() {
@@ -5513,7 +5555,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           const selections = colors.map((color, idx) => ({ color, count: perColorCounts[idx] || 0 }))
             .filter(s => s.count > 0);
           const sequence = (state.globalOrder || []).map(entry => colors[entry.colorIndex]).filter(Boolean);
-          await fetch("http://localhost:3000/quickStories", {
+          await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/quickStories`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ selections, sequence })
@@ -5530,13 +5572,13 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           let screenshotDelay = 1000;
           let screenshotEnabled = true;
           try {
-            const data = await fetch('http://localhost:3000/stories-settings').then(r => r.json());
+            const data = await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/stories-settings`).then(r => r.json());
             switchDelay = data.switchDelay !== undefined ? parseInt(data.switchDelay) : 3000;
             screenshotDelay = data.screenshotDelay !== undefined ? parseInt(data.screenshotDelay) : 1000;
             screenshotEnabled = data.screenshotEnabled !== undefined ? data.screenshotEnabled : true;
           } catch (_) { }
 
-          await fetch("http://localhost:3000/quickStoriesDone", {
+          await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/quickStoriesDone`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -5613,7 +5655,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
               // Value will be set by the caller after fetching from server
               input.checked = defaultValue;
               input.addEventListener('change', () => {
-                fetch('http://localhost:3000/stories-settings', {
+                fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/stories-settings`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ [storageKey]: input.checked })
@@ -5660,7 +5702,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             if (useServer) {
               input.value = defaultValue;
               input.addEventListener('change', () => {
-                fetch('http://localhost:3000/stories-settings', {
+                fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/stories-settings`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ [storageKey]: parseInt(input.value) || 0 })
@@ -5686,7 +5728,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           menu.appendChild(createInput('Screenshot Delay (ms)', 'screenshotDelay', 1000, { useServer: true }));
           menu.appendChild(createInput('Switch Delay (ms)', 'switchDelay', 3000, { useServer: true }));
 
-          fetch('http://localhost:3000/stories-settings')
+          fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/stories-settings`)
             .then(r => r.json())
             .then(data => {
               const ssEnabledEl = menu.querySelector('[data-server-key="screenshotEnabled"]');
@@ -5733,7 +5775,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
         }
 
         async function quickStoriesStop() {
-          await makeRequest("http://localhost:3000/quickStoriesStop", 0);
+          await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/quickStoriesStop`, 0);
           chrome.storage.local.set({ storiesStop: true }, () => {
           });
         }
@@ -5799,7 +5841,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             input.addEventListener('change', () => {
               const val = parseInt(input.value) || 0;
               chrome.storage.local.set({ [storageKey]: val }, () => {
-                fetch('http://localhost:3000/posting-settings', {
+                fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/posting-settings`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ [storageKey]: val })
@@ -5912,7 +5954,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             input.addEventListener('change', () => {
               const val = parseInt(input.value) || 0;
               chrome.storage.local.set({ [storageKey]: val }, () => {
-                fetch('http://localhost:3000/posting-settings', {
+                fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/posting-settings`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ [storageKey]: val })
@@ -6014,7 +6056,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           input.addEventListener('change', () => {
             const val = parseInt(input.value) || 0;
             chrome.storage.local.set({ postDelay: val }, () => {
-              fetch('http://localhost:3000/posting-settings', {
+              fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/posting-settings`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ postDelay: val })
@@ -6093,7 +6135,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
 
           let config = {};
           try {
-            const response = await fetch('http://localhost:3000/ss-config');
+            const response = await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/ss-config`);
             config = await response.json();
           } catch (e) { }
 
@@ -6141,7 +6183,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             input.addEventListener('change', () => {
               const val = parseInt(input.value) || 0;
               config[key] = val;
-              fetch('http://localhost:3000/ss-config', {
+              fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/ss-config`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(config)
@@ -6214,7 +6256,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
         }
 
         async function quickStoriesAuto() {
-          await fetch("http://localhost:3000/quickStoriesAuto", {
+          await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/quickStoriesAuto`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({})
@@ -6256,15 +6298,15 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
         }
 
         async function bindFixRequest() {
-          await makeRequest("http://localhost:3000/bindFix", 0);
+          await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/bindFix`, 0);
         }
 
         async function pasteRequest() {
-          await makeRequest("http://localhost:3000/paste", 0);
+          await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/paste`, 0);
         }
 
         async function fakeRequest() {
-          await makeRequest("http://localhost:3000/fake", 0);
+          await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/fake`, 0);
         }
 
         async function updatePostIndicator(postIndicatorButton) {
@@ -6296,9 +6338,9 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           const currentPostChecked = postStorageResult.postChecked;
 
           if (currentPostChecked === true) {
-            await makeRequest("http://localhost:3000/post-off", 0);
+            await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/post-off`, 0);
           } else {
-            await makeRequest("http://localhost:3000/post-on", 0);
+            await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/post-on`, 0);
           }
         }
 
@@ -6309,9 +6351,9 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           const currentFakeChecked = fakeStorageResult.fakeChecked;
 
           if (currentFakeChecked === true) {
-            await makeRequest("http://localhost:3000/fake-off", 0);
+            await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/fake-off`, 0);
           } else {
-            await makeRequest("http://localhost:3000/fake-on", 0);
+            await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/fake-on`, 0);
           }
         }
 
@@ -7126,7 +7168,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
                   subtractOwnTracking: ownTrackCb.cb.checked,
                   subtractRenews: renewsCb.cb.checked
                 };
-                fetch('http://localhost:3000/stats-settings', {
+                fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/stats-settings`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ syncAll: true, settings: newSettings })
@@ -7153,7 +7195,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             postIndicatorButton.dataset.loading = "true";
             postIndicatorButton.style.opacity = "0.5";
             try {
-              await fetch("http://localhost:3000/fake", {
+              await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/fake`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ action: "RUN_GLOBAL_STATS" })
@@ -7600,7 +7642,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           }
 
           // Load initial state from server (shared across all browsers)
-          fetch('http://localhost:3000/switch-right-activated')
+          fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/switch-right-activated`)
             .then(r => r.json())
             .then(data => {
               window.__switchRightActivated = !!data.activated;
@@ -7626,7 +7668,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             window.__switchRightActivated = !window.__switchRightActivated;
             updateRightActivationStyle();
 
-            fetch('http://localhost:3000/switch-right-activated', {
+            fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/switch-right-activated`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ activated: window.__switchRightActivated })
@@ -7776,7 +7818,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           try { updateStoriesDoneIconFromState(); } catch (_) { }
         }
       },
-      args: [DELAY_GREEN_BUTTON],
+      args: [DELAY_GREEN_BUTTON, self.__OFH_PORTS],
     });
   }
 }
@@ -7786,7 +7828,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request && request.type === 'OFH_SEND_BROWSER_DATA_BG' && request.payload) {
     (async () => {
       try {
-        await fetch('http://localhost:8765/browser-data', {
+        await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.cropFlask)||8765}/browser-data`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(request.payload)
@@ -7832,7 +7874,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       try {
         const browserId = request.target ? request.target : ("browser" + currentBrowserNumber);
 
-        await fetch('http://localhost:8444/add-media-by-tag', {
+        await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.cropVite)||8444}/add-media-by-tag`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ browser: browserId })
@@ -8028,7 +8070,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "openNewTab") {
     handleTabOpen(request.source !== "pressBindFix").then(tabId => {
       if (request.source === "pressBindFix") {
-        fetch('http://localhost:3000/tabOpened', {
+        fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/tabOpened`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -8301,7 +8343,7 @@ async function pressBindFix(tab, browserType, singleTabMode = false, firstTryDel
     chrome.runtime.sendMessage({ action: "openNewTab", source: "pressBindFix" });
 
     if (browserType) {
-      fetch('http://localhost:3000/tabOpened', {
+      fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/tabOpened`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -8518,7 +8560,7 @@ async function pressBindFix(tab, browserType, singleTabMode = false, firstTryDel
                               formData.append("url", imageUrl);
                               const cropController = new AbortController();
                               const cropTimeout = setTimeout(() => cropController.abort(), 60000);
-                              const cropRes = await fetch("http://localhost:8765/crop-video-fix", {
+                              const cropRes = await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.cropFlask)||8765}/crop-video-fix`, {
                                 method: "POST",
                                 body: formData,
                                 signal: cropController.signal,
@@ -8557,7 +8599,7 @@ async function pressBindFix(tab, browserType, singleTabMode = false, firstTryDel
                               formData.append("url", imageUrl);
                               const imgCropController = new AbortController();
                               const imgCropTimeout = setTimeout(() => imgCropController.abort(), 30000);
-                              const cropRes = await fetch("http://localhost:8765/crop-image-fix", {
+                              const cropRes = await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.cropFlask)||8765}/crop-image-fix`, {
                                 method: "POST",
                                 body: formData,
                                 signal: imgCropController.signal,
@@ -8926,7 +8968,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
                   const username = usernameDiv.innerText;
                   if (username) {
                     observer.disconnect();
-                    fetch("http://localhost:3000/checkInfo", {
+                    fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/checkInfo`, {
                       method: "POST",
                       headers: {
                         "Content-Type": "application/json",
@@ -9209,7 +9251,7 @@ async function clickAndMove(currentTabId, remainingClicks) {
 
       try {
 
-        const tabsResponse = await fetch('http://localhost:3000/waitForTabsOpened', {
+        const tabsResponse = await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/waitForTabsOpened`, {
           method: 'POST'
         });
 
@@ -9301,7 +9343,7 @@ async function resetAllButtonStyles() {
           });
         })
       )).then(() => {
-        fetch('http://localhost:8444/send_screenshots', {
+        fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.cropVite)||8444}/send_screenshots`, {
           method: 'POST'
         })
           .then(response => {
