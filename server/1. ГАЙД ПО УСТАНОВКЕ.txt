@@ -1,6 +1,6 @@
 1. Установите:
 на macOS: Python, Node.js
-на Windows: Python, Node.js, Java, Windows Terminal и программу для скриншотов:
+на Windows: Python, Node.js, Windows Terminal и программу для скриншотов:
 scr8 (https://github.com/tsybtw/scr8) — нужна, если запускаете несколько копий программы под разными ключами,
 либо Lightshot/ShareX — для одной копии
 

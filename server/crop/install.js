@@ -207,11 +207,6 @@ function installDependencies() {
             }
             console.log('node-clipboardy installed successfully!');
 
-            if (isWindows) {
-                console.log('Installing node-key-sender...');
-                execSync('npm i node-key-sender', { stdio: 'inherit' });
-                console.log('node-key-sender installed successfully!');
-            }
 
             process.chdir(currentPath);
         } catch (error) {

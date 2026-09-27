@@ -4,19 +4,56 @@
 
 If $CmdLine[0] < 1 Then Exit
 
+Func _OwnProcessTree($sPids)
+    Local $aPids = StringSplit($sPids, ",")
+    Local $sAllowed = ","
+
+    For $i = 1 To $aPids[0]
+        Local $iPid = Number(StringStripWS($aPids[$i], 8))
+        If $iPid <= 0 Then ContinueLoop
+
+        Local $sName = _WinAPI_GetProcessFileName($iPid)
+        Local $iCurrent = $iPid
+        Local $iGuard = 0
+
+        While $iCurrent > 0 And $iGuard < 8
+            If Not StringInStr($sAllowed, "," & $iCurrent & ",") Then $sAllowed &= $iCurrent & ","
+
+            Local $iParent = _WinAPI_GetParentProcess($iCurrent)
+            If $iParent <= 0 Then ExitLoop
+            If _WinAPI_GetProcessFileName($iParent) <> $sName Then ExitLoop
+
+            $iCurrent = $iParent
+            $iGuard += 1
+        WEnd
+    Next
+
+    Return $sAllowed
+EndFunc
+
+If $CmdLine[1] = "active" Then
+    Local $hActive = WinGetHandle("[ACTIVE]")
+    If Not @error Then ConsoleWrite($hActive)
+EndIf
+
 If $CmdLine[1] = "list" Then
+    Local $sAllowedPids = ""
+    If $CmdLine[0] > 1 And StringStripWS($CmdLine[2], 8) <> "" Then $sAllowedPids = _OwnProcessTree($CmdLine[2])
+
     Local $aList = WinList()
     Local $sJSON = "["
     Local $first = 1
-    
+
     For $i = 1 To $aList[0][0]
         Local $handle = $aList[$i][1]
         Local $title = $aList[$i][0]
-        
+
         If $title <> "" And BitAND(WinGetState($handle), 2) Then
             Local $iPID = WinGetProcess($handle)
             Local $sPath = _WinAPI_GetProcessFileName($iPID)
-            
+
+            If $sAllowedPids <> "" And Not StringInStr($sAllowedPids, "," & $iPID & ",") Then ContinueLoop
+
             Local $isTarget = False
             If StringInStr($sPath, "SunBrowser") OR StringInStr($sPath, "anty") OR StringInStr($sPath, "dolphin") Then
                 $isTarget = True
