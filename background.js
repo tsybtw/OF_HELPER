@@ -439,7 +439,7 @@ function updateTabCounterOnActiveTab(isReset) {
         func: (isVisible) => {
           const ids = [
             "tabCounter", "cont1", "cont2", "cont3",
-            "switch-button", "fakeMakeButton", "version", "clear-button", "reload-button", "stories-container", "bottom-overlay", "joy", "text-size-slider", "tag-rotation-dial", "tag-reset-button"
+            "switch-button", "fakeMakeButton", "blacklistCloseButton", "version", "clear-button", "reload-button", "stories-container", "bottom-overlay", "joy", "text-size-slider", "tag-rotation-dial", "tag-reset-button"
           ];
           ids.forEach((id) => {
             const el = document.getElementById(id);
@@ -1423,7 +1423,7 @@ function postStories() {
 
     const idsToHide = [
       "tabCounter", "cont1", "cont2", "cont3",
-      "switch-button", "fakeMakeButton", "version", "clear-button",
+      "switch-button", "fakeMakeButton", "blacklistCloseButton", "version", "clear-button",
       "reload-button", "stories-container", "bottom-overlay",
       "joy", "text-size-slider", "tag-rotation-dial", "tag-reset-button"
     ];
@@ -5248,7 +5248,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
         if (ports) window.__OFH_PORTS = ports;
 
         const PANEL_ELEMENT_IDS = [
-          "tabCounter", "cont1", "cont2", "cont3", "switch-button", "fakeMakeButton",
+          "tabCounter", "cont1", "cont2", "cont3", "switch-button", "fakeMakeButton", "blacklistCloseButton",
           "version", "clear-button", "reload-button", "stories-container",
           "bottom-overlay", "joy", "text-size-slider", "tag-rotation-dial", "tag-reset-button"
         ];
@@ -6360,9 +6360,9 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
         function createFakeColorsButton(container) {
           const fakeColorsBtn = document.createElement("button");
           fakeColorsBtn.style.position = "absolute";
-          fakeColorsBtn.style.right = "2.5%";
+          fakeColorsBtn.style.right = "15%";
           fakeColorsBtn.style.background = "grey";
-          fakeColorsBtn.style.width = "25%";
+          fakeColorsBtn.style.width = "16%";
           fakeColorsBtn.style.border = "none";
           fakeColorsBtn.style.display = "flex";
           fakeColorsBtn.style.justifyContent = "center";
@@ -6404,6 +6404,58 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           });
 
           return fakeMakeBtn;
+        }
+
+        function createBlacklistCloseButton(container) {
+          const blacklistCloseBtn = document.createElement("button");
+          blacklistCloseBtn.style.position = "absolute";
+          blacklistCloseBtn.style.right = "0%";
+          blacklistCloseBtn.style.width = "13%";
+          blacklistCloseBtn.style.background = "rgb(108, 117, 125)";
+          blacklistCloseBtn.style.border = "none";
+          blacklistCloseBtn.style.display = "flex";
+          blacklistCloseBtn.style.justifyContent = "center";
+          blacklistCloseBtn.style.alignItems = "center";
+          blacklistCloseBtn.style.cursor = "pointer";
+          blacklistCloseBtn.style.padding = "4px";
+          blacklistCloseBtn.style.borderRadius = "10px";
+          blacklistCloseBtn.style.transition = "background 0.5s ease";
+          blacklistCloseBtn.id = "blacklistCloseButton";
+          blacklistCloseBtn.title = "close tab on blacklist error";
+          container.appendChild(blacklistCloseBtn);
+
+          const paint = (enabled) => {
+            blacklistCloseBtn.dataset.enabled = enabled ? "1" : "0";
+            blacklistCloseBtn.style.background = enabled ? "#2D9B37" : "rgb(108, 117, 125)";
+          };
+
+          paint(false);
+
+          chrome.storage.local.get(["blacklistAutoClose"], (data) => {
+            paint(data && data.blacklistAutoClose === true);
+          });
+
+          blacklistCloseBtn.addEventListener("click", () => {
+            const next = blacklistCloseBtn.dataset.enabled !== "1";
+            paint(next);
+            chrome.storage.local.set({ blacklistAutoClose: next });
+          });
+
+          blacklistCloseBtn.addEventListener("mouseenter", function () {
+            this.style.background = this.dataset.enabled === "1" ? "#37b544" : "#e38571";
+          });
+
+          blacklistCloseBtn.addEventListener("mouseleave", function () {
+            paint(this.dataset.enabled === "1");
+          });
+
+          // Настройка общая для всех вкладок, поэтому слушаем её изменения
+          chrome.storage.onChanged.addListener((changes, area) => {
+            if (area !== "local" || !changes.blacklistAutoClose) return;
+            paint(changes.blacklistAutoClose.newValue === true);
+          });
+
+          return blacklistCloseBtn;
         }
 
         function createIndicatorButton(container, color) {
@@ -6903,6 +6955,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           let postIndicatorButton = createIndicatorButton(container2);
           let fakeColors = createFakeColorsButton(container2);
           let fakeMakeButton = createFakeMakeButton(document.body);
+          createBlacklistCloseButton(container2);
 
           postIndicatorButton.style.background = "#2D9B37";
           postIndicatorButton.innerHTML = "";
@@ -8102,35 +8155,49 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === "blacklist") {
-    chrome.scripting.executeScript({
-      target: { tabId: request.tabId },
-      func: (url) => {
+    (async () => {
+      const settings = await chrome.storage.local.get(["blacklistAutoClose"]);
+
+      // Кнопка в углу панели: вместо плашки сразу закрываем вкладку.
+      // В closedTabIds не пишем — пост не опубликован, в статистику он идти не должен.
+      if (settings.blacklistAutoClose === true) {
         try {
-          let btn = document.getElementById('ofh-open-blacklist-btn');
-          if (btn) return;
-          btn = document.createElement('button');
-          btn.id = 'ofh-open-blacklist-btn';
-          btn.textContent = 'open blacklist';
-          btn.className = 'g-btn m-flat m-btn-gaps m-reset-width';
-          const style = btn.style;
-          style.position = 'fixed';
-          style.top = '10px';
-          style.left = '60%';
-          style.transform = 'translateX(-50%)';
-          style.zIndex = '2147483647';
-          style.padding = '8px 14px';
-          style.borderRadius = '10px';
-          style.fontWeight = 'bold';
-          style.cursor = 'pointer';
-          document.body.appendChild(btn);
-          btn.addEventListener('click', () => { window.open(url, '_blank'); btn.remove(); });
-        } catch (e) { console.error(e); }
-      },
-      args: [request.url]
-    });
-    if (!request.singleTabMode) {
-      chrome.storage.local.set({ [`blacklisted_${request.tabId}`]: true });
-    }
+          await chrome.tabs.remove(request.tabId);
+        } catch (_) { }
+        return;
+      }
+
+      chrome.scripting.executeScript({
+        target: { tabId: request.tabId },
+        func: (url) => {
+          try {
+            let btn = document.getElementById('ofh-open-blacklist-btn');
+            if (btn) return;
+            btn = document.createElement('button');
+            btn.id = 'ofh-open-blacklist-btn';
+            btn.textContent = 'open blacklist';
+            btn.className = 'g-btn m-flat m-btn-gaps m-reset-width';
+            const style = btn.style;
+            style.position = 'fixed';
+            style.top = '10px';
+            style.left = '60%';
+            style.transform = 'translateX(-50%)';
+            style.zIndex = '2147483647';
+            style.padding = '8px 14px';
+            style.borderRadius = '10px';
+            style.fontWeight = 'bold';
+            style.cursor = 'pointer';
+            document.body.appendChild(btn);
+            btn.addEventListener('click', () => { window.open(url, '_blank'); btn.remove(); });
+          } catch (e) { console.error(e); }
+        },
+        args: [request.url]
+      });
+
+      if (!request.singleTabMode) {
+        chrome.storage.local.set({ [`blacklisted_${request.tabId}`]: true });
+      }
+    })();
   }
 
   if (request.action === "closeTab" && sender.tab?.id) {
