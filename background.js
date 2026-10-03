@@ -212,7 +212,7 @@ async function autoAssignBrowserNumber() {
     try {
       const syncData = await chrome.storage.sync.get(['preferredBrowserNumber']);
       const preferred = syncData.preferredBrowserNumber || null;
-      const res = await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/active-browsers`);
+      const res = await fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/active-browsers`);
       const { numbers } = await res.json();
       const taken = new Set(numbers || []);
       let chosen = (preferred && !taken.has(preferred)) ? preferred : null;
@@ -261,7 +261,7 @@ setInterval(async () => {
   if (switchStateFetchInProgress) return;
   switchStateFetchInProgress = true;
   try {
-    const resp = await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.cropFlask)||8765}/switch-tabs-state`);
+    const resp = await fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.cropFlask) || 8765}/switch-tabs-state`);
     const state = await resp.json();
     if (!state || state.success === false) return;
     switchTabsEnabled = !!state.enabled;
@@ -302,7 +302,7 @@ async function performPhaseSwitch(phase) {
 
 async function reportSwitchResult(success, phase) {
   try {
-    await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.cropFlask)||8765}/switch-tabs-result`, {
+    await fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.cropFlask) || 8765}/switch-tabs-result`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ browser: String(currentBrowserNumber), phase, success })
@@ -566,7 +566,7 @@ function updateTabCounterOnActiveTab(isReset) {
 
 async function sendReadyRequest(browserNumber, tabCount) {
   try {
-    const response = await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.cropFlask)||8765}/ready-browser-status`, {
+    const response = await fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.cropFlask) || 8765}/ready-browser-status`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -830,7 +830,7 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent, sav
     let animationFrameId = null;
 
     function sendJoystickData(newTagX, newTagY) {
-      fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/joystick-data`, {
+      fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/joystick-data`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ x: newTagX, y: newTagY })
@@ -888,7 +888,7 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent, sav
         const newTagY = percentY * canvasRect.height;
         sendJoystickData(newTagX, newTagY);
 
-        fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/tag-settings`, {
+        fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/tag-settings`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ tag: settingsTagKey, settings: { joyX: currentX, joyY: currentY, canvasX: newTagX, canvasY: newTagY } })
@@ -1153,6 +1153,7 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent, sav
           boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
           fontFamily: "'Josefin Sans', sans-serif",
           transition: 'opacity 0.3s ease',
+          cursor: 'pointer',
           top: (joyRect ? joyRect.top : 45) + 'px',
           left: (joyRect ? (joyRect.right + 10) : 120) + 'px',
           height: (joyRect ? joyRect.height : 100) + 'px',
@@ -1174,7 +1175,8 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent, sav
           height: Math.max(20, (joyRect ? joyRect.height : 100) - 12) + 'px',
           padding: '0',
           margin: '0',
-          pointerEvents: 'auto'
+          pointerEvents: 'auto',
+          cursor: 'pointer'
         });
 
         sliderContainer.appendChild(input);
@@ -1184,21 +1186,22 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent, sav
           const style = document.createElement('style');
           style.id = 'text-size-slider-style';
           style.textContent = `
-                #size-slider::-webkit-slider-runnable-track { background: #cfd6dd; border-radius: 6px; width: 6px; }
-                #size-slider::-webkit-slider-thumb { appearance: none; background: #ffffff; border-radius: 50%; width: 10px; height: 10px; margin-left: -2px; }
+                #text-size-slider, #size-slider { cursor: pointer; }
+                #size-slider::-webkit-slider-runnable-track { background: #cfd6dd; border-radius: 6px; width: 6px; cursor: pointer; }
+                #size-slider::-webkit-slider-thumb { appearance: none; background: #ffffff; border-radius: 50%; width: 10px; height: 10px; margin-left: -2px; cursor: pointer; }
             `;
           document.head.appendChild(style);
         }
 
         input.addEventListener('change', function () {
           const scale = Number(this.value);
-          fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/text-scale`, {
+          fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/text-scale`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ scalePercent: scale })
           }).catch(() => { });
 
-          fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/tag-settings`, {
+          fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/tag-settings`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ tag: settingsTagKey, settings: { scale: scale } })
@@ -1206,7 +1209,6 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent, sav
         });
       } catch (_) { }
 
-      // Rotation dial
       try {
         const joyEl = document.getElementById('joy');
         const sliderEl = document.getElementById('text-size-slider');
@@ -1242,7 +1244,6 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent, sav
           gap: '2px'
         });
 
-        // Clock SVG canvas
         const clockSize = Math.round(dialSize * 0.76);
         const svgNS = 'http://www.w3.org/2000/svg';
         const svg = document.createElementNS(svgNS, 'svg');
@@ -1261,7 +1262,6 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent, sav
         circle.setAttribute('stroke-width', '1.5');
         svg.appendChild(circle);
 
-        // Tick marks
         for (let t = 0; t < 12; t++) {
           const angle = (t / 12) * Math.PI * 2 - Math.PI / 2;
           const inner = r - 4;
@@ -1338,13 +1338,13 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent, sav
           currentAngle = getAngleFromEvent(e);
           updateHand(currentAngle);
           const angle = Math.round(currentAngle);
-          fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/text-rotate`, {
+          fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/text-rotate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ angleDeg: angle })
           }).catch(() => { });
 
-          fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/tag-settings`, {
+          fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/tag-settings`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ tag: settingsTagKey, settings: { angle: angle } })
@@ -1383,7 +1383,7 @@ async function processImageAndUpload(imageTag, storyColor, blacklistContent, sav
         resetBtn.onmouseout = () => resetBtn.style.background = 'rgba(221, 109, 85, 0.92)';
 
         resetBtn.addEventListener('click', () => {
-          fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/tag-settings-reset`, {
+          fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/tag-settings-reset`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ tag: settingsTagKey })
@@ -1585,7 +1585,7 @@ async function restartPostingOnTab(tab, browserType) {
 
 function reportStoryRound(hasMore) {
   try {
-    fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/storyRoundDone`, {
+    fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/storyRoundDone`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1697,7 +1697,7 @@ async function fetchAndPasteBind() {
   if (!tag) return;
 
   try {
-    const response = await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.cropVite)||8444}/get-image-by-tag?tag=${encodeURIComponent(tag)}`);
+    const response = await fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.cropVite) || 8444}/get-image-by-tag?tag=${encodeURIComponent(tag)}`);
     if (!response.ok) return;
 
     const blob = await response.blob();
@@ -1915,7 +1915,7 @@ async function createBrowser(browserType, index, totalIndex, repeat) {
   };
 
   try {
-    await fetchWithRetry(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/create-browser`, requestConfig, 5000);
+    await fetchWithRetry(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/create-browser`, requestConfig, 5000);
   } catch (error) {
     console.error("Failed to create browser:", error);
   }
@@ -2777,7 +2777,7 @@ let singleTabLastPostAt = null;
 
 async function syncPostingSettings() {
   try {
-    const res = await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/posting-settings`);
+    const res = await fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/posting-settings`);
     if (!res.ok) return;
     const data = await res.json();
     if (data && typeof data === 'object') chrome.storage.local.set(data);
@@ -2802,6 +2802,51 @@ function stopSingleTabCycle(tabId) {
 
 const singleTabFinishCallbacks = new Map();
 const singleTabListeners = new Map();
+
+function waitForTabReady(tabId, timeoutMs = 15000) {
+  return new Promise((resolve) => {
+    let done = false;
+
+    const stop = () => {
+      if (done) return;
+      done = true;
+      try { chrome.tabs.onUpdated.removeListener(listener); } catch (_) { }
+      clearTimeout(timer);
+      resolve();
+    };
+
+    const listener = (updatedTabId, changeInfo, tab) => {
+      if (updatedTabId !== tabId) return;
+      if (changeInfo.status === 'complete' && tab && tab.url && tab.url.includes('/posts/create')) stop();
+    };
+
+    const timer = setTimeout(stop, timeoutMs);
+    chrome.tabs.onUpdated.addListener(listener);
+  });
+}
+
+async function clearTabForNextPost(tabId) {
+  const finish = singleTabFinishCallbacks.get(tabId);
+
+  const entry = singleTabListeners.get(tabId);
+  if (entry) {
+    try { chrome.tabs.onUpdated.removeListener(entry.listener); } catch (_) { }
+    singleTabListeners.delete(tabId);
+  }
+
+  await stopSingleTabCycle(tabId);
+
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, func: clearPosts });
+  } catch (e) {
+    console.error('Не удалось очистить вкладку после блэклиста:', e);
+  }
+
+  await waitForTabReady(tabId);
+
+  singleTabFinishCallbacks.delete(tabId);
+  if (finish) finish(false);
+}
 
 const tabScopedUpdateListeners = new Map();
 
@@ -2917,7 +2962,7 @@ chrome.tabs.onCreated.addListener(function (tab) {
 
 
 function sendActivityInfo(browser) {
-  fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/activity`, {
+  fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/activity`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -2972,7 +3017,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         else if (res.autoRestartEnabled) mode = 'auto';
         sendResponse({ browserNumber: browserNum, arrowMode: mode });
 
-        fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/updateSingleTabSettings`, {
+        fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/updateSingleTabSettings`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ screenshotDelay: res.singleTabScreenshotDelay !== undefined ? res.singleTabScreenshotDelay : 5000 })
@@ -2994,7 +3039,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'ws-displaced') {
     (async () => {
       try {
-        const res = await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/active-browsers`);
+        const res = await fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/active-browsers`);
         const data = await res.json();
         const taken = new Set(data.numbers || []);
         let freeNum = null;
@@ -3110,10 +3155,8 @@ async function runGlobalStats() {
               targetCell.click();
               await wait(500);
 
-              // After clicking the start date, the DOM might re-render, so we query again
               const newTimeSpan = document.querySelector('.b-streaks-swither__time');
               if (newTimeSpan && newTimeSpan.textContent.trim() !== expectedMonthStr) {
-                // Just in case it jumped to another month
                 const arrows = document.querySelectorAll('.b-streaks-swither__btn button');
                 const cDate = new Date(newTimeSpan.textContent.trim());
                 const eDate = new Date(expectedMonthStr);
@@ -3562,7 +3605,7 @@ async function processCommand(lastEntry) {
               if (usernameEl && usernameEl.innerText) {
                 const username = usernameEl.innerText;
 
-                fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/add-to-blacklist`, {
+                fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/add-to-blacklist`, {
                   method: "POST",
                   headers: {
                     "Content-Type": "application/json",
@@ -3602,7 +3645,7 @@ async function processCommand(lastEntry) {
 
       let blacklistContent = "";
       try {
-        const blResponse = await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/get-blacklist`);
+        const blResponse = await fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/get-blacklist`);
         if (blResponse.ok) {
           blacklistContent = await blResponse.text();
         }
@@ -3769,7 +3812,7 @@ async function processCommand(lastEntry) {
           const PHASH_THRESHOLD = 8;
 
           await new Promise(resolve => {
-            fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/tag-settings`)
+            fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/tag-settings`)
               .then(res => res.json())
               .catch(() => ({}))
               .then(ts => {
@@ -3786,7 +3829,7 @@ async function processCommand(lastEntry) {
                     if (dist < minDist) { minDist = dist; savedSettings = val; }
                   }
                   if (minDist > PHASH_THRESHOLD) savedSettings = null;
-                  // Fallback: migrate old-format key (stored without hash suffix)
+
                   if (!savedSettings && ts[cleanTag]) savedSettings = ts[cleanTag];
                 } else {
                   savedSettings = ts[settingsTagKey] || null;
@@ -3866,25 +3909,25 @@ async function processCommand(lastEntry) {
                         const { angle, scale, joyX, joyY } = extractData(target);
 
                         if (window.__OFH_SYNC_ENABLED !== false) {
-                          fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/text-scale`, {
+                          fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/text-scale`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ scalePercent: scale })
                           }).catch(() => { });
 
-                          fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/text-rotate`, {
+                          fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/text-rotate`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ angleDeg: angle })
                           }).catch(() => { });
 
-                          fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/joystick-data`, {
+                          fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/joystick-data`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ x: target.left, y: target.top })
                           }).catch(() => { });
 
-                          fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/tag-settings`, {
+                          fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/tag-settings`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ tag: photoHash ? tagStr + '_' + photoHash : tagStr, settings: { scale: scale, angle: angle, joyX: joyX, joyY: joyY, canvasX: target.left, canvasY: target.top } })
@@ -4742,17 +4785,19 @@ async function processCommand(lastEntry) {
           let hasNavigatedAway = false;
           let confirmed = false;
 
-          const finish = () => {
+          const finish = (counted = true) => {
             if (confirmed) return;
             confirmed = true;
             chrome.tabs.onUpdated.removeListener(listener);
             singleTabListeners.delete(activeTab.id);
             singleTabFinishCallbacks.delete(activeTab.id);
 
-            closedTabsCount++;
-            lastClosedTime = new Date();
+            if (counted) {
+              closedTabsCount++;
+              lastClosedTime = new Date();
+              updateTabCounterOnActiveTab(false);
+            }
             markPostDone();
-            updateTabCounterOnActiveTab(false);
 
             stopSingleTabCycle(activeTab.id);
 
@@ -4770,7 +4815,7 @@ async function processCommand(lastEntry) {
 
             if (hasNavigatedAway && tab && tab.status === 'complete' &&
               tab.url && tab.url.includes('/posts/create')) {
-              // Inject element-hiding script after page fully loaded
+
               chrome.scripting.executeScript({
                 target: { tabId: activeTab.id },
                 func: () => {
@@ -5073,7 +5118,6 @@ async function processCommand(lastEntry) {
             confirmed = true;
             chrome.tabs.onUpdated.removeListener(listener);
 
-            // Inject element-hiding script (same as multi-tab openNewTab flow)
             const targetTabId = tabId || activeTab.id;
             chrome.scripting.executeScript({
               target: { tabId: targetTabId },
@@ -5355,15 +5399,15 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
         }
 
         async function syncStopRequestOn() {
-          await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/syncStop-on`);
+          await makeRequest(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/syncStop-on`);
         }
 
         async function syncStopRequestOff() {
-          await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/syncStop-off`);
+          await makeRequest(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/syncStop-off`);
         }
 
         async function clearRequest() {
-          await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/clearPhotoAll`, 0);
+          await makeRequest(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/clearPhotoAll`, 0);
         }
 
         async function bindRequest() {
@@ -5372,27 +5416,27 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             const res = await chrome.storage.local.get('postDelay');
             if (res.postDelay !== undefined) delay = res.postDelay;
           } catch (_) { }
-          await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/bind`, delay);
+          await makeRequest(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/bind`, delay);
         }
 
         async function stopRequest() {
-          await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/stopPosting`, 0);
+          await makeRequest(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/stopPosting`, 0);
         }
 
         async function quickSwitch() {
-          await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/quickSwitch`, 0);
+          await makeRequest(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/quickSwitch`, 0);
         }
 
         async function holdSwitch() {
-          await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/holdSwitch`, 0);
+          await makeRequest(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/holdSwitch`, 0);
         }
 
         async function quickClear() {
-          await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/quickClear`, 0);
+          await makeRequest(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/quickClear`, 0);
         }
 
         async function quickReload() {
-          await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/quickReload`, 0);
+          await makeRequest(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/quickReload`, 0);
         }
 
         async function quickStories() {
@@ -5555,7 +5599,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           const selections = colors.map((color, idx) => ({ color, count: perColorCounts[idx] || 0 }))
             .filter(s => s.count > 0);
           const sequence = (state.globalOrder || []).map(entry => colors[entry.colorIndex]).filter(Boolean);
-          await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/quickStories`, {
+          await fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/quickStories`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ selections, sequence })
@@ -5572,13 +5616,13 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           let screenshotDelay = 1000;
           let screenshotEnabled = true;
           try {
-            const data = await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/stories-settings`).then(r => r.json());
+            const data = await fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/stories-settings`).then(r => r.json());
             switchDelay = data.switchDelay !== undefined ? parseInt(data.switchDelay) : 3000;
             screenshotDelay = data.screenshotDelay !== undefined ? parseInt(data.screenshotDelay) : 1000;
             screenshotEnabled = data.screenshotEnabled !== undefined ? data.screenshotEnabled : true;
           } catch (_) { }
 
-          await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/quickStoriesDone`, {
+          await fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/quickStoriesDone`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -5655,7 +5699,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
               // Value will be set by the caller after fetching from server
               input.checked = defaultValue;
               input.addEventListener('change', () => {
-                fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/stories-settings`, {
+                fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/stories-settings`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ [storageKey]: input.checked })
@@ -5702,7 +5746,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             if (useServer) {
               input.value = defaultValue;
               input.addEventListener('change', () => {
-                fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/stories-settings`, {
+                fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/stories-settings`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ [storageKey]: parseInt(input.value) || 0 })
@@ -5728,7 +5772,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           menu.appendChild(createInput('Screenshot Delay (ms)', 'screenshotDelay', 1000, { useServer: true }));
           menu.appendChild(createInput('Switch Delay (ms)', 'switchDelay', 3000, { useServer: true }));
 
-          fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/stories-settings`)
+          fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/stories-settings`)
             .then(r => r.json())
             .then(data => {
               const ssEnabledEl = menu.querySelector('[data-server-key="screenshotEnabled"]');
@@ -5775,7 +5819,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
         }
 
         async function quickStoriesStop() {
-          await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/quickStoriesStop`, 0);
+          await makeRequest(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/quickStoriesStop`, 0);
           chrome.storage.local.set({ storiesStop: true }, () => {
           });
         }
@@ -5841,7 +5885,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             input.addEventListener('change', () => {
               const val = parseInt(input.value) || 0;
               chrome.storage.local.set({ [storageKey]: val }, () => {
-                fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/posting-settings`, {
+                fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/posting-settings`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ [storageKey]: val })
@@ -5954,7 +5998,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             input.addEventListener('change', () => {
               const val = parseInt(input.value) || 0;
               chrome.storage.local.set({ [storageKey]: val }, () => {
-                fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/posting-settings`, {
+                fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/posting-settings`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ [storageKey]: val })
@@ -6056,7 +6100,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           input.addEventListener('change', () => {
             const val = parseInt(input.value) || 0;
             chrome.storage.local.set({ postDelay: val }, () => {
-              fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/posting-settings`, {
+              fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/posting-settings`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ postDelay: val })
@@ -6135,7 +6179,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
 
           let config = {};
           try {
-            const response = await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/ss-config`);
+            const response = await fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/ss-config`);
             config = await response.json();
           } catch (e) { }
 
@@ -6183,7 +6227,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             input.addEventListener('change', () => {
               const val = parseInt(input.value) || 0;
               config[key] = val;
-              fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/ss-config`, {
+              fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/ss-config`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(config)
@@ -6256,7 +6300,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
         }
 
         async function quickStoriesAuto() {
-          await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/quickStoriesAuto`, {
+          await fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/quickStoriesAuto`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({})
@@ -6298,15 +6342,15 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
         }
 
         async function bindFixRequest() {
-          await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/bindFix`, 0);
+          await makeRequest(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/bindFix`, 0);
         }
 
         async function pasteRequest() {
-          await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/paste`, 0);
+          await makeRequest(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/paste`, 0);
         }
 
         async function fakeRequest() {
-          await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/fake`, 0);
+          await makeRequest(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/fake`, 0);
         }
 
         async function updatePostIndicator(postIndicatorButton) {
@@ -6338,9 +6382,9 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           const currentPostChecked = postStorageResult.postChecked;
 
           if (currentPostChecked === true) {
-            await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/post-off`, 0);
+            await makeRequest(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/post-off`, 0);
           } else {
-            await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/post-on`, 0);
+            await makeRequest(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/post-on`, 0);
           }
         }
 
@@ -6351,9 +6395,9 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           const currentFakeChecked = fakeStorageResult.fakeChecked;
 
           if (currentFakeChecked === true) {
-            await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/fake-off`, 0);
+            await makeRequest(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/fake-off`, 0);
           } else {
-            await makeRequest(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/fake-on`, 0);
+            await makeRequest(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/fake-on`, 0);
           }
         }
 
@@ -7221,7 +7265,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
                   subtractOwnTracking: ownTrackCb.cb.checked,
                   subtractRenews: renewsCb.cb.checked
                 };
-                fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/stats-settings`, {
+                fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/stats-settings`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ syncAll: true, settings: newSettings })
@@ -7248,7 +7292,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             postIndicatorButton.dataset.loading = "true";
             postIndicatorButton.style.opacity = "0.5";
             try {
-              await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/fake`, {
+              await fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/fake`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ action: "RUN_GLOBAL_STATS" })
@@ -7695,7 +7739,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
           }
 
           // Load initial state from server (shared across all browsers)
-          fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/switch-right-activated`)
+          fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/switch-right-activated`)
             .then(r => r.json())
             .then(data => {
               window.__switchRightActivated = !!data.activated;
@@ -7721,7 +7765,7 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             window.__switchRightActivated = !window.__switchRightActivated;
             updateRightActivationStyle();
 
-            fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/switch-right-activated`, {
+            fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/switch-right-activated`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ activated: window.__switchRightActivated })
@@ -7881,7 +7925,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request && request.type === 'OFH_SEND_BROWSER_DATA_BG' && request.payload) {
     (async () => {
       try {
-        await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.cropFlask)||8765}/browser-data`, {
+        await fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.cropFlask) || 8765}/browser-data`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(request.payload)
@@ -7927,7 +7971,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       try {
         const browserId = request.target ? request.target : ("browser" + currentBrowserNumber);
 
-        await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.cropVite)||8444}/add-media-by-tag`, {
+        await fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.cropVite) || 8444}/add-media-by-tag`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ browser: browserId })
@@ -8123,7 +8167,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "openNewTab") {
     handleTabOpen(request.source !== "pressBindFix").then(tabId => {
       if (request.source === "pressBindFix") {
-        fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/tabOpened`, {
+        fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/tabOpened`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -8158,9 +8202,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     (async () => {
       const settings = await chrome.storage.local.get(["blacklistAutoClose"]);
 
-      // Кнопка в углу панели: вместо плашки сразу закрываем вкладку.
-      // В closedTabIds не пишем — пост не опубликован, в статистику он идти не должен.
       if (settings.blacklistAutoClose === true) {
+        if (request.singleTabMode) {
+          await clearTabForNextPost(request.tabId);
+          return;
+        }
+
         try {
           await chrome.tabs.remove(request.tabId);
         } catch (_) { }
@@ -8410,7 +8457,7 @@ async function pressBindFix(tab, browserType, singleTabMode = false, firstTryDel
     chrome.runtime.sendMessage({ action: "openNewTab", source: "pressBindFix" });
 
     if (browserType) {
-      fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/tabOpened`, {
+      fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/tabOpened`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -8441,340 +8488,340 @@ async function pressBindFix(tab, browserType, singleTabMode = false, firstTryDel
     }
 
     const runCycle = async function (data) {
-        const cooldown = data.singleTabFirstTryDelay !== undefined
-          ? data.singleTabFirstTryDelay : 9500;
-        const sincePost = data.lastPostAt ? Date.now() - data.lastPostAt : Infinity;
-        const remaining = cooldown - sincePost;
-        const pausedFor = (data.pauseUntil || 0) - Date.now();
+      const cooldown = data.singleTabFirstTryDelay !== undefined
+        ? data.singleTabFirstTryDelay : 9500;
+      const sincePost = data.lastPostAt ? Date.now() - data.lastPostAt : Infinity;
+      const remaining = cooldown - sincePost;
+      const pausedFor = (data.pauseUntil || 0) - Date.now();
 
-        if (pausedFor > 0 || remaining > 0) {
-          scheduleNext(pausedFor > 0 ? Math.min(pausedFor, 1000) : Math.max(200, Math.min(remaining, 2000)));
-          return;
-        } else if (data[`blacklisted_${tab.id}`]) {
-          return;
-        } else {
-          const secondTargetNode = document.querySelector(
-            ".b-reminder-form.m-error",
-          );
-          const innerDiv = secondTargetNode
-            ? secondTargetNode.querySelector("div")
-            : null;
-          if (innerDiv) {
-            if (!innerDiv.textContent.includes("10")) {
+      if (pausedFor > 0 || remaining > 0) {
+        scheduleNext(pausedFor > 0 ? Math.min(pausedFor, 1000) : Math.max(200, Math.min(remaining, 2000)));
+        return;
+      } else if (data[`blacklisted_${tab.id}`]) {
+        return;
+      } else {
+        const secondTargetNode = document.querySelector(
+          ".b-reminder-form.m-error",
+        );
+        const innerDiv = secondTargetNode
+          ? secondTargetNode.querySelector("div")
+          : null;
+        if (innerDiv) {
+          if (!innerDiv.textContent.includes("10")) {
+            chrome.runtime.sendMessage({
+              action: "createNotif",
+              tabId: tab.id,
+              message: innerDiv.textContent,
+            });
+            if (innerDiv.textContent.includes("tag")) {
+              const parts = innerDiv.textContent.split("@");
+              const username = parts.length > 1 ? parts[1].trim() : '';
+              if (!username) return;
+              const url = `https://onlyfans.com/my/collections/user-lists/blocked?search=${username}`;
+
+              chrome.runtime.sendMessage({
+                action: "blacklist",
+                url,
+                tabId: tab.id,
+                singleTabMode,
+              });
+
+              if (!singleTabMode) {
+                chrome.storage.local.set({ [`blacklisted_${tab.id}`]: true });
+              }
+              return;
+            }
+            else if (/(Daily|Nothing)/.test(innerDiv.textContent)) {
+              await delay(20000);
+            }
+            else if (/Internal/.test(innerDiv.textContent)) {
               chrome.runtime.sendMessage({
                 action: "createNotif",
                 tabId: tab.id,
                 message: innerDiv.textContent,
               });
-              if (innerDiv.textContent.includes("tag")) {
-                const parts = innerDiv.textContent.split("@");
-                const username = parts.length > 1 ? parts[1].trim() : '';
-                if (!username) return;
-                const url = `https://onlyfans.com/my/collections/user-lists/blocked?search=${username}`;
+              await delay(60000);
+            }
+            else if (/(attached|issue)/i.test(innerDiv.textContent)) {
 
-                chrome.runtime.sendMessage({
-                  action: "blacklist",
-                  url,
-                  tabId: tab.id,
-                  singleTabMode,
-                });
-
-                if (!singleTabMode) {
-                  chrome.storage.local.set({ [`blacklisted_${tab.id}`]: true });
-                }
+              if (mediaFixInProgress) {
+                scheduleNext(2000);
                 return;
               }
-              else if (/(Daily|Nothing)/.test(innerDiv.textContent)) {
-                await delay(20000);
+
+              fixMediaAttempts++;
+              if (fixMediaAttempts > 3) {
+                if (!mediaFixGaveUp) {
+                  mediaFixGaveUp = true;
+                  chrome.runtime.sendMessage({
+                    action: "createNotif",
+                    tabId: tab.id,
+                    message: "[OFH] Media fix failed after 3 attempts",
+                  });
+                }
+                innerDiv.textContent = "[OFH] Media fix failed";
+                scheduleNext(30000);
+                return;
               }
-              else if (/Internal/.test(innerDiv.textContent)) {
-                chrome.runtime.sendMessage({
-                  action: "createNotif",
-                  tabId: tab.id,
-                  message: innerDiv.textContent,
-                });
-                await delay(60000);
+
+              let mediaLink = savedMediaLink;
+
+              if (!mediaLink) {
+                try {
+                  mediaLink = await getMediaLinkBeforeSubmit();
+                } catch (_) { }
+                if (mediaLink) savedMediaLink = mediaLink;
               }
-              else if (/(attached|issue)/i.test(innerDiv.textContent)) {
 
-                if (mediaFixInProgress) {
-                  scheduleNext(2000);
-                  return;
-                }
-
-                fixMediaAttempts++;
-                if (fixMediaAttempts > 3) {
-                  if (!mediaFixGaveUp) {
-                    mediaFixGaveUp = true;
-                    chrome.runtime.sendMessage({
-                      action: "createNotif",
-                      tabId: tab.id,
-                      message: "[OFH] Media fix failed after 3 attempts",
+              if (mediaLink) {
+                mediaFixInProgress = true;
+                try {
+                  const deleteSelector = ".b-dropzone__preview__delete.g-btn.m-rounded.m-reset-width.m-thumb-r-corner-pos.m-btn-remove.m-sm-icon-size.has-tooltip";
+                  let elements = document.querySelectorAll(deleteSelector);
+                  let divs = document.querySelectorAll(
+                    "#make_post_form > div.b-make-post.m-with-free-options > div > div.b-make-post__main-wrapper > div.b-make-post__media-wrapper > div > div > div > div > div > div",
+                  );
+                  divs.forEach(function (div) {
+                    elements.forEach(function (element) {
+                      if (div.contains(element)) {
+                        element.click();
+                      }
                     });
-                  }
-                  innerDiv.textContent = "[OFH] Media fix failed";
-                  scheduleNext(30000);
-                  return;
-                }
+                  });
 
-                let mediaLink = savedMediaLink;
+                  await new Promise((resolve) => {
+                    const start = Date.now();
+                    const check = () => {
+                      if (!document.querySelector(deleteSelector) || Date.now() - start > 4000) {
+                        resolve();
+                      } else {
+                        setTimeout(check, 200);
+                      }
+                    };
+                    check();
+                  });
 
-                if (!mediaLink) {
-                  try {
-                    mediaLink = await getMediaLinkBeforeSubmit();
-                  } catch (_) { }
-                  if (mediaLink) savedMediaLink = mediaLink;
-                }
+                  function simulateDragAndDrop(
+                    sourceElement,
+                    targetElement,
+                    file,
+                  ) {
+                    const dataTransfer = new DataTransfer();
 
-                if (mediaLink) {
-                  mediaFixInProgress = true;
-                  try {
-                    const deleteSelector = ".b-dropzone__preview__delete.g-btn.m-rounded.m-reset-width.m-thumb-r-corner-pos.m-btn-remove.m-sm-icon-size.has-tooltip";
-                    let elements = document.querySelectorAll(deleteSelector);
-                    let divs = document.querySelectorAll(
-                      "#make_post_form > div.b-make-post.m-with-free-options > div > div.b-make-post__main-wrapper > div.b-make-post__media-wrapper > div > div > div > div > div > div",
-                    );
-                    divs.forEach(function (div) {
-                      elements.forEach(function (element) {
-                        if (div.contains(element)) {
-                          element.click();
-                        }
-                      });
+                    dataTransfer.items.add(file);
+
+                    const dragStartEvent = new DragEvent("dragstart", {
+                      bubbles: true,
+                      cancelable: true,
+                      dataTransfer: dataTransfer,
                     });
+                    sourceElement.dispatchEvent(dragStartEvent);
 
-                    await new Promise((resolve) => {
-                      const start = Date.now();
-                      const check = () => {
-                        if (!document.querySelector(deleteSelector) || Date.now() - start > 4000) {
-                          resolve();
-                        } else {
-                          setTimeout(check, 200);
-                        }
-                      };
-                      check();
-                    });
-
-                    function simulateDragAndDrop(
-                      sourceElement,
-                      targetElement,
-                      file,
-                    ) {
-                      const dataTransfer = new DataTransfer();
-
-                      dataTransfer.items.add(file);
-
-                      const dragStartEvent = new DragEvent("dragstart", {
+                    setTimeout(() => {
+                      const dragOverEvent = new DragEvent("dragover", {
                         bubbles: true,
                         cancelable: true,
                         dataTransfer: dataTransfer,
                       });
-                      sourceElement.dispatchEvent(dragStartEvent);
+                      targetElement.dispatchEvent(dragOverEvent);
 
                       setTimeout(() => {
-                        const dragOverEvent = new DragEvent("dragover", {
+                        const dropEvent = new DragEvent("drop", {
                           bubbles: true,
                           cancelable: true,
                           dataTransfer: dataTransfer,
                         });
-                        targetElement.dispatchEvent(dragOverEvent);
+                        targetElement.dispatchEvent(dropEvent);
 
-                        setTimeout(() => {
-                          const dropEvent = new DragEvent("drop", {
-                            bubbles: true,
-                            cancelable: true,
-                            dataTransfer: dataTransfer,
-                          });
-                          targetElement.dispatchEvent(dropEvent);
-
-                          const dragEndEvent = new DragEvent("dragend", {
-                            bubbles: true,
-                            cancelable: true,
-                            dataTransfer: dataTransfer,
-                          });
-                          sourceElement.dispatchEvent(dragEndEvent);
-                        }, 100);
+                        const dragEndEvent = new DragEvent("dragend", {
+                          bubbles: true,
+                          cancelable: true,
+                          dataTransfer: dataTransfer,
+                        });
+                        sourceElement.dispatchEvent(dragEndEvent);
                       }, 100);
-                    }
-
-                    async function handleImageUpload(imageUrl) {
-                      try {
-                        const urlParts = imageUrl.split("/");
-                        const fileName = urlParts[urlParts.length - 1].split("?")[0];
-                        const fileExtension = fileName.split(".").pop().toLowerCase() || "png";
-                        let fileType = "image/png";
-                        if (fileExtension === "gif") fileType = "image/gif";
-                        else if (fileExtension === "mp4") fileType = "video/mp4";
-                        else if (fileExtension === "jpg" || fileExtension === "jpeg") fileType = "image/jpeg";
-                        else if (fileExtension === "webp") fileType = "image/webp";
-
-                        const editor = document.querySelector(
-                          ".tiptap.ProseMirror.b-text-editor.js-text-editor.m-native-custom-scrollbar.m-scrollbar-y.m-scroll-behavior-auto.m-overscroll-behavior-auto"
-                        );
-
-                        if (fileExtension === "mp4") {
-                          const fetchController = new AbortController();
-                          const fetchTimeout = setTimeout(() => fetchController.abort(), 90000);
-                          try {
-                            const fetchRes = await fetch(imageUrl, { signal: fetchController.signal });
-                            clearTimeout(fetchTimeout);
-                            if (!fetchRes.ok) throw new Error(`Fetch failed: ${fetchRes.status}`);
-                            const originalBlob = await fetchRes.blob();
-
-                            let videoBlob = originalBlob;
-                            try {
-                              const formData = new FormData();
-                              formData.append("video", originalBlob, "media.mp4");
-                              formData.append("url", imageUrl);
-                              const cropController = new AbortController();
-                              const cropTimeout = setTimeout(() => cropController.abort(), 60000);
-                              const cropRes = await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.cropFlask)||8765}/crop-video-fix`, {
-                                method: "POST",
-                                body: formData,
-                                signal: cropController.signal,
-                              });
-                              clearTimeout(cropTimeout);
-                              if (cropRes.ok) {
-                                videoBlob = await cropRes.blob();
-                              }
-                            } catch (cropErr) {
-                              console.error("Ошибка crop-video-fix, используется оригинал:", cropErr);
-                            }
-
-                            const file = new File([videoBlob], "media.mp4", { type: "video/mp4" });
-                            if (editor) {
-                              editor.focus();
-                              const dummySource = document.createElement("div");
-                              simulateDragAndDrop(dummySource, editor, file);
-                            }
-                          } catch (e) {
-                            clearTimeout(fetchTimeout);
-                            console.error("Ошибка при загрузке видео:", e);
-                          }
-                        } else {
-                          const imgFetchController = new AbortController();
-                          const imgFetchTimeout = setTimeout(() => imgFetchController.abort(), 30000);
-                          try {
-                            const imgRes = await fetch(imageUrl, { signal: imgFetchController.signal });
-                            clearTimeout(imgFetchTimeout);
-                            if (!imgRes.ok) throw new Error(`Fetch failed: ${imgRes.status}`);
-                            const originalBlob = await imgRes.blob();
-
-                            let imageBlob = originalBlob;
-                            try {
-                              const formData = new FormData();
-                              formData.append("image", new File([originalBlob], `media.${fileExtension}`, { type: fileType }));
-                              formData.append("url", imageUrl);
-                              const imgCropController = new AbortController();
-                              const imgCropTimeout = setTimeout(() => imgCropController.abort(), 30000);
-                              const cropRes = await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.cropFlask)||8765}/crop-image-fix`, {
-                                method: "POST",
-                                body: formData,
-                                signal: imgCropController.signal,
-                              });
-                              clearTimeout(imgCropTimeout);
-                              if (cropRes.ok) {
-                                imageBlob = await cropRes.blob();
-                              }
-                            } catch (cropErr) {
-                              console.error("Ошибка crop-image-fix, используется оригинал:", cropErr);
-                            }
-
-                            const ext = fileExtension || fileType.split("/")[1];
-                            const file = new File([imageBlob], `media.${ext}`, { type: fileType });
-                            if (editor) {
-                              editor.focus();
-                              const dummySource = document.createElement("div");
-                              simulateDragAndDrop(dummySource, editor, file);
-                            }
-                          } catch (e) {
-                            clearTimeout(imgFetchTimeout);
-                            console.error("Ошибка при загрузке изображения:", e);
-                          }
-                        }
-                      } catch (error) {
-                        console.error("Ошибка при обработке медиа:", error);
-                      }
-                    }
-                    await handleImageUpload(mediaLink);
-                  } finally {
-                    mediaFixInProgress = false;
+                    }, 100);
                   }
-                }
-                else {
-                  innerDiv.textContent = "[OFH] No saved media link available";
-                  scheduleNext(5000);
-                  return
-                }
-                innerDiv.textContent = "[OFH] Fixing media";
-                await waitForMediaElement(20000);
-                await delay(5000);
-              }
-              else if (!innerDiv.textContent.includes("[OFH]")) {
 
-                if (singleTabMode && !singleTabDone) {
-                  scheduleNext(2000);
-                } else {
-                  scheduleNext(30000);
+                  async function handleImageUpload(imageUrl) {
+                    try {
+                      const urlParts = imageUrl.split("/");
+                      const fileName = urlParts[urlParts.length - 1].split("?")[0];
+                      const fileExtension = fileName.split(".").pop().toLowerCase() || "png";
+                      let fileType = "image/png";
+                      if (fileExtension === "gif") fileType = "image/gif";
+                      else if (fileExtension === "mp4") fileType = "video/mp4";
+                      else if (fileExtension === "jpg" || fileExtension === "jpeg") fileType = "image/jpeg";
+                      else if (fileExtension === "webp") fileType = "image/webp";
+
+                      const editor = document.querySelector(
+                        ".tiptap.ProseMirror.b-text-editor.js-text-editor.m-native-custom-scrollbar.m-scrollbar-y.m-scroll-behavior-auto.m-overscroll-behavior-auto"
+                      );
+
+                      if (fileExtension === "mp4") {
+                        const fetchController = new AbortController();
+                        const fetchTimeout = setTimeout(() => fetchController.abort(), 90000);
+                        try {
+                          const fetchRes = await fetch(imageUrl, { signal: fetchController.signal });
+                          clearTimeout(fetchTimeout);
+                          if (!fetchRes.ok) throw new Error(`Fetch failed: ${fetchRes.status}`);
+                          const originalBlob = await fetchRes.blob();
+
+                          let videoBlob = originalBlob;
+                          try {
+                            const formData = new FormData();
+                            formData.append("video", originalBlob, "media.mp4");
+                            formData.append("url", imageUrl);
+                            const cropController = new AbortController();
+                            const cropTimeout = setTimeout(() => cropController.abort(), 60000);
+                            const cropRes = await fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.cropFlask) || 8765}/crop-video-fix`, {
+                              method: "POST",
+                              body: formData,
+                              signal: cropController.signal,
+                            });
+                            clearTimeout(cropTimeout);
+                            if (cropRes.ok) {
+                              videoBlob = await cropRes.blob();
+                            }
+                          } catch (cropErr) {
+                            console.error("Ошибка crop-video-fix, используется оригинал:", cropErr);
+                          }
+
+                          const file = new File([videoBlob], "media.mp4", { type: "video/mp4" });
+                          if (editor) {
+                            editor.focus();
+                            const dummySource = document.createElement("div");
+                            simulateDragAndDrop(dummySource, editor, file);
+                          }
+                        } catch (e) {
+                          clearTimeout(fetchTimeout);
+                          console.error("Ошибка при загрузке видео:", e);
+                        }
+                      } else {
+                        const imgFetchController = new AbortController();
+                        const imgFetchTimeout = setTimeout(() => imgFetchController.abort(), 30000);
+                        try {
+                          const imgRes = await fetch(imageUrl, { signal: imgFetchController.signal });
+                          clearTimeout(imgFetchTimeout);
+                          if (!imgRes.ok) throw new Error(`Fetch failed: ${imgRes.status}`);
+                          const originalBlob = await imgRes.blob();
+
+                          let imageBlob = originalBlob;
+                          try {
+                            const formData = new FormData();
+                            formData.append("image", new File([originalBlob], `media.${fileExtension}`, { type: fileType }));
+                            formData.append("url", imageUrl);
+                            const imgCropController = new AbortController();
+                            const imgCropTimeout = setTimeout(() => imgCropController.abort(), 30000);
+                            const cropRes = await fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.cropFlask) || 8765}/crop-image-fix`, {
+                              method: "POST",
+                              body: formData,
+                              signal: imgCropController.signal,
+                            });
+                            clearTimeout(imgCropTimeout);
+                            if (cropRes.ok) {
+                              imageBlob = await cropRes.blob();
+                            }
+                          } catch (cropErr) {
+                            console.error("Ошибка crop-image-fix, используется оригинал:", cropErr);
+                          }
+
+                          const ext = fileExtension || fileType.split("/")[1];
+                          const file = new File([imageBlob], `media.${ext}`, { type: fileType });
+                          if (editor) {
+                            editor.focus();
+                            const dummySource = document.createElement("div");
+                            simulateDragAndDrop(dummySource, editor, file);
+                          }
+                        } catch (e) {
+                          clearTimeout(imgFetchTimeout);
+                          console.error("Ошибка при загрузке изображения:", e);
+                        }
+                      }
+                    } catch (error) {
+                      console.error("Ошибка при обработке медиа:", error);
+                    }
+                  }
+                  await handleImageUpload(mediaLink);
+                } finally {
+                  mediaFixInProgress = false;
                 }
-                return
               }
               else {
-                await delay(10000);
+                innerDiv.textContent = "[OFH] No saved media link available";
+                scheduleNext(5000);
+                return
               }
+              innerDiv.textContent = "[OFH] Fixing media";
+              await waitForMediaElement(20000);
+              await delay(5000);
+            }
+            else if (!innerDiv.textContent.includes("[OFH]")) {
+
+              if (singleTabMode && !singleTabDone) {
+                scheduleNext(2000);
+              } else {
+                scheduleNext(30000);
+              }
+              return
+            }
+            else {
+              await delay(10000);
             }
           }
-          else {
-            fixMediaAttempts = 0;
-            mediaFixGaveUp = false;
-          }
+        }
+        else {
+          fixMediaAttempts = 0;
+          mediaFixGaveUp = false;
+        }
 
-          try {
-            const currentMediaLink = await getMediaLinkBeforeSubmit();
-            if (currentMediaLink) {
-              savedMediaLink = currentMediaLink;
+        try {
+          const currentMediaLink = await getMediaLinkBeforeSubmit();
+          if (currentMediaLink) {
+            savedMediaLink = currentMediaLink;
+          }
+        } catch (e) {
+          console.error("Error saving media link:", e);
+        }
+
+        chrome.runtime.sendMessage(
+          { action: "checkTab", tabId: tab.id },
+          async function (response) {
+            if (singleTabMode && singleTabDone) return;
+            if (response && response.shouldClick) {
+              await pressBind();
             }
-          } catch (e) {
-            console.error("Error saving media link:", e);
-          }
+          },
+        );
 
-          chrome.runtime.sendMessage(
-            { action: "checkTab", tabId: tab.id },
-            async function (response) {
-              if (singleTabMode && singleTabDone) return;
-              if (response && response.shouldClick) {
-                await pressBind();
-              }
-            },
+        setTimeout(function () {
+          let anchorElement = document.querySelector(
+            'a[data-name="PostsCreate"][href="/posts/create"]',
           );
 
-          setTimeout(function () {
-            let anchorElement = document.querySelector(
-              'a[data-name="PostsCreate"][href="/posts/create"]',
-            );
+          if (singleTabMode) {
+            if (singleTabDone) return;
+            scheduleNext(Math.max(0, retryDelayMs - 1000));
+            return;
+          }
 
-            if (singleTabMode) {
-              if (singleTabDone) return;
+          tabId = tabId.toString();
+
+          chrome.storage.local.get(tabId, function (data) {
+            if (
+              (anchorElement &&
+                !anchorElement.classList.contains("m-disabled")) ||
+              data[tabId] ||
+              window.location.href.includes("/my/queue")
+            ) {
+              chrome.runtime.sendMessage({ action: "closeCurrentTab" });
+              chrome.storage.local.set({ [tabId]: false });
+            } else {
               scheduleNext(Math.max(0, retryDelayMs - 1000));
-              return;
             }
-
-            tabId = tabId.toString();
-
-            chrome.storage.local.get(tabId, function (data) {
-              if (
-                (anchorElement &&
-                  !anchorElement.classList.contains("m-disabled")) ||
-                data[tabId] ||
-                window.location.href.includes("/my/queue")
-              ) {
-                chrome.runtime.sendMessage({ action: "closeCurrentTab" });
-                chrome.storage.local.set({ [tabId]: false });
-              } else {
-                scheduleNext(Math.max(0, retryDelayMs - 1000));
-              }
-            });
-          }, 1000);
-        }
+          });
+        }, 1000);
+      }
     };
 
     try {
@@ -9035,7 +9082,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
                   const username = usernameDiv.innerText;
                   if (username) {
                     observer.disconnect();
-                    fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/checkInfo`, {
+                    fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/checkInfo`, {
                       method: "POST",
                       headers: {
                         "Content-Type": "application/json",
@@ -9318,7 +9365,7 @@ async function clickAndMove(currentTabId, remainingClicks) {
 
       try {
 
-        const tabsResponse = await fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.http)||3000}/waitForTabsOpened`, {
+        const tabsResponse = await fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/waitForTabsOpened`, {
           method: 'POST'
         });
 
@@ -9410,7 +9457,7 @@ async function resetAllButtonStyles() {
           });
         })
       )).then(() => {
-        fetch(`http://localhost:${(self.__OFH_PORTS&&self.__OFH_PORTS.cropVite)||8444}/send_screenshots`, {
+        fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.cropVite) || 8444}/send_screenshots`, {
           method: 'POST'
         })
           .then(response => {

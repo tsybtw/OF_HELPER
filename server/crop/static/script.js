@@ -795,6 +795,8 @@ function updateQueueModeUI(enabled) {
     browserStatus.style.display = 'block';
     browserSettings.style.display = 'block';
     if (autoQueueSection) autoQueueSection.style.display = 'block';
+    const scheduleRow = document.getElementById('queue-schedule-row');
+    if (scheduleRow) scheduleRow.style.display = 'flex';
 
   } else {
     toggleBtn.classList.remove('active');
@@ -810,6 +812,9 @@ function updateQueueModeUI(enabled) {
     browserStatus.style.display = 'none';
     browserSettings.style.display = 'none';
     if (autoQueueSection) autoQueueSection.style.display = 'none';
+    const scheduleRow = document.getElementById('queue-schedule-row');
+    if (scheduleRow) scheduleRow.style.display = 'none';
+    try { updateQueueScheduleInfo(null); } catch (_) { }
     closeAutoQueuePanel();
 
     const dropdown = document.getElementById('queue-dropdown');
@@ -897,10 +902,194 @@ function closeQueueStartModal() {
   if (modal) {
     modal.classList.add('hidden');
   }
+  pendingScheduleTime = null;
+}
+
+let pendingScheduleTime = null;
+
+function buildQueueTimePicker() {
+  const hoursColumn = document.getElementById('queue-time-hours');
+  const minutesColumn = document.getElementById('queue-time-minutes');
+  if (!hoursColumn || !minutesColumn || hoursColumn.childElementCount) return;
+
+  const addOptions = (column, count, part) => {
+    for (let value = 0; value < count; value++) {
+      const label = String(value).padStart(2, '0');
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.className = 'queue-time-option';
+      option.dataset.part = part;
+      option.dataset.value = label;
+      option.textContent = label;
+      option.onclick = () => pickQueueTimePart(part, label);
+      column.appendChild(option);
+    }
+  };
+
+  addOptions(hoursColumn, 24, 'hours');
+  addOptions(minutesColumn, 60, 'minutes');
+}
+
+function currentQueueTimeParts() {
+  const input = document.getElementById('queue-start-time');
+  const value = input && input.value ? input.value : '';
+  const match = value.match(/^(\d{2}):(\d{2})$/);
+  return match ? { hours: match[1], minutes: match[2] } : { hours: null, minutes: null };
+}
+
+function paintQueueTimePicker() {
+  const { hours, minutes } = currentQueueTimeParts();
+  document.querySelectorAll('.queue-time-option').forEach(option => {
+    const chosen = option.dataset.part === 'hours' ? hours : minutes;
+    option.classList.toggle('selected', chosen !== null && option.dataset.value === chosen);
+  });
+
+  const display = document.getElementById('queue-time-display');
+  if (display) display.textContent = hours !== null ? `${hours}:${minutes}` : '--:--';
+}
+
+function pickQueueTimePart(part, value) {
+  const input = document.getElementById('queue-start-time');
+  if (!input) return;
+
+  const parts = currentQueueTimeParts();
+  const hours = part === 'hours' ? value : (parts.hours || String(new Date().getHours()).padStart(2, '0'));
+  const minutes = part === 'minutes' ? value : (parts.minutes || '00');
+
+  input.value = `${hours}:${minutes}`;
+  paintQueueTimePicker();
+}
+
+function scrollQueueTimeToSelected() {
+  const now = new Date();
+  const fallback = { hours: String(now.getHours()).padStart(2, '0'), minutes: String(now.getMinutes()).padStart(2, '0') };
+
+  document.querySelectorAll('.queue-time-column').forEach(column => {
+    const part = column.id === 'queue-time-hours' ? 'hours' : 'minutes';
+    const target = column.querySelector('.queue-time-option.selected')
+      || column.querySelector(`.queue-time-option[data-value="${fallback[part]}"]`);
+    if (!target) return;
+
+    const shift = target.offsetTop - column.offsetTop;
+    column.scrollTop = Math.max(0, shift - (column.clientHeight - target.clientHeight) / 2);
+  });
+}
+
+function toggleQueueTimePicker(forceClose) {
+  const picker = document.getElementById('queue-time-picker');
+  const display = document.getElementById('queue-time-display');
+  if (!picker) return;
+
+  buildQueueTimePicker();
+
+  const opened = picker.style.display === 'flex';
+  const next = forceClose === true ? false : !opened;
+
+  picker.style.display = next ? 'flex' : 'none';
+  if (display) display.classList.toggle('active', next);
+
+  if (next) {
+    paintQueueTimePicker();
+    scrollQueueTimeToSelected();
+  }
+}
+
+document.addEventListener('click', (event) => {
+  const picker = document.getElementById('queue-time-picker');
+  if (!picker || picker.style.display !== 'flex') return;
+  if (picker.contains(event.target)) return;
+  if (event.target.closest('#queue-time-display')) return;
+  toggleQueueTimePicker(true);
+});
+
+function scheduleQueueStart() {
+  const input = document.getElementById('queue-start-time');
+  const time = input ? input.value : '';
+  if (!time) {
+    showStatus('Choose the start time first', 'error');
+    return;
+  }
+
+  const queueData = currentQueueData;
+  if (queueData && queueData.users && queueData.users.length > 1 && queueData.current_user > 0) {
+    pendingScheduleTime = time;
+    showQueueStartModal(queueData.users[queueData.current_user], queueData.users[0]);
+    return;
+  }
+
+  sendQueueSchedule(time, false);
+}
+
+function sendQueueSchedule(time, switchToFirst) {
+  fetch('/schedule-queue-start', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ time: time, switch_to_first: switchToFirst })
+  })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        showStatus(data.message, 'success');
+        refreshQueueDisplay();
+      } else if (data.invalid_users && Array.isArray(data.invalid_users) && data.invalid_users.length > 0) {
+        showInvalidUsersPrompt(data.invalid_users);
+      } else {
+        showStatus(data.message, 'error');
+      }
+    })
+    .catch(() => showStatus('Failed to schedule the start', 'error'));
+}
+
+function cancelQueueStart() {
+  fetch('/cancel-queue-start', { method: 'POST' })
+    .then(response => response.json())
+    .then(data => {
+      showStatus(data.message, 'success');
+      refreshQueueDisplay();
+    })
+    .catch(() => { });
+}
+
+function updateQueueScheduleInfo(schedule) {
+  const info = document.getElementById('queue-schedule-info');
+  if (!info) return;
+
+  if (!schedule || !schedule.time) {
+    info.classList.remove('show');
+    info.style.display = 'none';
+    info.innerHTML = '';
+    info.removeAttribute('data-at');
+    return;
+  }
+
+  const text = `Starts at ${schedule.time}`;
+  if (info.getAttribute('data-at') !== String(schedule.at)) {
+    info.innerHTML = '';
+    const label = document.createElement('span');
+    label.textContent = text;
+    const cancel = document.createElement('button');
+    cancel.className = 'queue-schedule-cancel';
+    cancel.textContent = 'Cancel';
+    cancel.onclick = cancelQueueStart;
+    info.appendChild(label);
+    info.appendChild(cancel);
+    info.setAttribute('data-at', String(schedule.at));
+  } else {
+    const label = info.querySelector('span');
+    if (label) label.textContent = text;
+  }
+  info.style.display = 'flex';
+  info.classList.add('show');
 }
 
 function startQueueFromFirst() {
+  const scheduledTime = pendingScheduleTime;
   closeQueueStartModal();
+
+  if (scheduledTime) {
+    sendQueueSchedule(scheduledTime, true);
+    return;
+  }
 
   fetch('/start-queue', {
     method: 'POST',
@@ -923,7 +1112,13 @@ function startQueueFromFirst() {
 }
 
 function startQueueFromCurrent() {
+  const scheduledTime = pendingScheduleTime;
   closeQueueStartModal();
+
+  if (scheduledTime) {
+    sendQueueSchedule(scheduledTime, false);
+    return;
+  }
 
   fetch('/start-queue', {
     method: 'POST',
@@ -1249,6 +1444,14 @@ function closeQueueCompletionModal() {
   }
 }
 
+function confirmClearQueue() {
+  showConfirmDialog(
+    'Clear queue?',
+    'All users except the current one will be removed from the queue.',
+    clearQueueExceptCurrent
+  );
+}
+
 function clearQueueExceptCurrent() {
   closeQueueCompletionModal();
 
@@ -1551,6 +1754,8 @@ function updateQueueStatus(queueData = null, browserData = null) {
   const startBtn = document.querySelector('.queue-start-btn');
   const stopBtn = document.querySelector('.queue-stop-btn');
 
+  try { updateQueueScheduleInfo(data.scheduled_start); } catch (_) { }
+
   if (browserSettingsDiv) {
     const currentInput = browserSettingsDiv.querySelector('#tab-threshold-input');
     const currentThreshold = data.queue_settings?.tab_threshold || 25;
@@ -1592,7 +1797,8 @@ function updateQueueStatus(queueData = null, browserData = null) {
                         </div>
 
                         <div id="switch-tabs-status-inline" class="switch-tabs-inline"></div>
-                        <div class="setting-row">
+                        <div class="setting-row clear-buttons">
+                            <button class="clear-queue-btn" onclick="confirmClearQueue()">Clear queue</button>
                             <button class="clear-browsers-btn" onclick="clearAllBrowsers()">Clear all browsers</button>
                         </div>
                     `;
@@ -2982,14 +3188,6 @@ function recropImage(mediaId, imagePath) {
   const dimensionsInfo = document.createElement('div');
   dimensionsInfo.className = 'info-text dimensions-info';
 
-  const rotationInfo = document.createElement('div');
-  rotationInfo.textContent = `Current rotation: ${rotationDegrees}°`;
-  rotationInfo.className = 'info-text';
-
-  const instructions = document.createElement('div');
-  instructions.textContent = 'Drag to move. Use corners to resize.';
-  instructions.className = 'info-text';
-
   const applyButton = document.createElement('button');
   applyButton.textContent = 'Apply';
   applyButton.className = 'button apply-button';
@@ -3001,7 +3199,7 @@ function recropImage(mediaId, imagePath) {
   };
 
   const cancelButton = document.createElement('button');
-  cancelButton.textContent = 'Stop';
+  cancelButton.textContent = 'Cancel';
   cancelButton.className = 'button cancel-button';
   cancelButton.onmouseover = function () {
     this.classList.add('button-hover');
@@ -3014,8 +3212,6 @@ function recropImage(mediaId, imagePath) {
   controlsContainer.appendChild(cancelButton);
   cropContainer.appendChild(imgContainer);
   infoContainer.appendChild(dimensionsInfo);
-  infoContainer.appendChild(rotationInfo);
-  infoContainer.appendChild(instructions);
   document.body.appendChild(cropContainer);
   document.body.appendChild(infoContainer)
   document.body.appendChild(controlsContainer)
@@ -3342,7 +3538,7 @@ function recropImage(mediaId, imagePath) {
       actualWidth = Math.round(rectWidth * scaleX);
       actualHeight = Math.round(rectHeight * scaleY);
     }
-    dimensionsInfo.textContent = `${originalWidth}×${originalHeight}px → ${actualWidth}×${actualHeight}px`;
+    dimensionsInfo.textContent = `${originalWidth}×${originalHeight} → ${actualWidth}×${actualHeight}`;
   }
 
   const handleResize = function () {
