@@ -21,6 +21,11 @@ async function loadInstancePorts() {
     };
     if (previousHttp && previousHttp !== self.__OFH_PORTS.http) {
       try { chrome.runtime.sendMessage({ type: 'ws-reconnect' }); } catch (_) { }
+      tabsWithPorts.clear();
+      try {
+        const tabs = await chrome.tabs.query({ url: 'https://onlyfans.com/*' });
+        for (const tab of tabs) sendPortsToTab(tab.id);
+      } catch (_) { }
     }
   } catch (_) { }
 }
@@ -29,12 +34,53 @@ function applyPagePorts(ports) {
   window.__OFH_PORTS = ports;
 }
 
-function sendPortsToTab(tabId) {
-  return chrome.scripting.executeScript({
+const tabsWithPorts = new Map();
+
+function portsKey(tabId, world) {
+  return tabId + ':' + (world || 'ISOLATED');
+}
+
+function forgetTabPorts(tabId) {
+  for (const key of [...tabsWithPorts.keys()]) {
+    if (key.startsWith(tabId + ':')) tabsWithPorts.delete(key);
+  }
+}
+
+function sendPortsToTab(tabId, world) {
+  const key = portsKey(tabId, world);
+  const options = {
     target: { tabId },
     func: applyPagePorts,
     args: [self.__OFH_PORTS]
-  }).catch(() => { });
+  };
+  if (world) options.world = world;
+
+  const delivery = chrome.scripting.executeScript(options).catch(() => {
+    tabsWithPorts.delete(key);
+  });
+
+  tabsWithPorts.set(key, delivery);
+  return delivery;
+}
+
+function runInTab(options, callback) {
+  const tabId = options && options.target && options.target.tabId;
+  const world = options && options.world;
+  const key = portsKey(tabId, world);
+  const run = () => chrome.scripting.executeScript(options);
+  const started = tabId == null
+    ? run()
+    : (tabsWithPorts.get(key) || sendPortsToTab(tabId, world)).then(run);
+
+  if (typeof callback !== 'function') return started;
+
+  return started.then(
+    (result) => { callback(result); return result; },
+    (error) => {
+      console.log('Script execution error:', error);
+      callback(undefined);
+    }
+  );
 }
 
 loadInstancePorts();
@@ -43,7 +89,7 @@ const DELAY_GREEN_BUTTON = 500;
 const MULTI_TAB_RETRY_DELAY_DEFAULT = 3000;
 
 function updateArrowButtonOnTab(tabId, state, locked, lockedByMe) {
-  chrome.scripting.executeScript({
+  runInTab({
     target: { tabId },
     func: (state, locked, lockedByMe) => {
       const fillElement = document.getElementById("fill-animation");
@@ -104,7 +150,7 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
 
 async function executeScriptIfValid(activeTab, details) {
   if (activeTab && activeTab.url && !activeTab.url.startsWith("chrome://")) {
-    await chrome.scripting.executeScript(details);
+    await runInTab(details);
   }
 }
 
@@ -190,7 +236,7 @@ async function keepTabAlive(tabId) {
   } catch (_) { }
 
   try {
-    await chrome.scripting.executeScript({
+    await runInTab({
       target: { tabId },
       func: holdKeepaliveLock,
       args: [tabId],
@@ -386,13 +432,13 @@ async function updatePostingKeepalive(tabs) {
     for (const tabId of [...keepaliveTabs]) {
       if (frontSet.has(tabId)) continue;
       keepaliveTabs.delete(tabId);
-      chrome.scripting.executeScript({ target: { tabId }, func: stopPostingKeepalive }).catch(() => { });
+      runInTab({ target: { tabId }, func: stopPostingKeepalive }).catch(() => { });
     }
 
     for (const tabId of front) {
       if (keepaliveTabs.has(tabId)) continue;
       keepaliveTabs.add(tabId);
-      chrome.scripting.executeScript({ target: { tabId }, func: startPostingKeepalive })
+      runInTab({ target: { tabId }, func: startPostingKeepalive })
         .catch(() => { keepaliveTabs.delete(tabId); });
     }
   } catch (_) { }
@@ -420,6 +466,11 @@ setInterval(() => {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   keepaliveTabs.delete(tabId);
+  forgetTabPorts(tabId);
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.status === 'loading' || changeInfo.url) forgetTabPorts(tabId);
 });
 
 function updateTabCounterOnActiveTab(isReset) {
@@ -434,7 +485,7 @@ function updateTabCounterOnActiveTab(isReset) {
         return;
       }
 
-      chrome.scripting.executeScript({
+      runInTab({
         target: { tabId: activeTab.id },
         func: (isVisible) => {
           const ids = [
@@ -479,7 +530,7 @@ function updateTabCounterOnActiveTab(isReset) {
         }
       }
 
-      chrome.scripting.executeScript({
+      runInTab({
         target: { tabId: activeTab.id },
         func: (count, closedCount, time, color) => {
           const update = () => {
@@ -1443,7 +1494,7 @@ const STORY_SKIPPED_TAB_KEY = '__OFH_STORY_SKIPPED';
 
 async function markSkippedStoryTab(tabId) {
   try {
-    await chrome.scripting.executeScript({
+    await runInTab({
       target: { tabId },
       func: (key) => {
         try { sessionStorage.setItem(key, '1'); } catch (_) { }
@@ -1456,7 +1507,7 @@ async function markSkippedStoryTab(tabId) {
 async function isSkippedStoryTab(tab) {
   if (!tab || !tab.url || tab.url.startsWith("chrome://")) return false;
   try {
-    const injection = await chrome.scripting.executeScript({
+    const injection = await runInTab({
       target: { tabId: tab.id },
       func: (key) => {
         try { return sessionStorage.getItem(key) === '1'; } catch (_) { return false; }
@@ -1496,7 +1547,7 @@ async function closeTabWhenStoryPosted(tabId, timeoutMs = 180000) {
 
     let stillPresent;
     try {
-      const injection = await chrome.scripting.executeScript({
+      const injection = await runInTab({
         target: { tabId },
         func: (sel) => document.querySelector(sel) !== null,
         args: [STORY_POST_BUTTON_SELECTOR]
@@ -1516,7 +1567,7 @@ async function closeTabWhenStoryPosted(tabId, timeoutMs = 180000) {
 
 async function insertMediaByTagIfMissing(tabId) {
   try {
-    const check = await chrome.scripting.executeScript({
+    const check = await runInTab({
       target: { tabId },
       func: () => !!document.querySelector(
         '.media-file.m-default-bg.m-media-el, .media-file.m-default-bg.m-video-el, .media-file.m-lightbox-el'
@@ -1524,7 +1575,7 @@ async function insertMediaByTagIfMissing(tabId) {
     });
     if (check && check[0] && check[0].result) return false;
 
-    await chrome.scripting.executeScript({
+    await runInTab({
       target: { tabId },
       func: fetchAndPasteBind
     });
@@ -1563,7 +1614,7 @@ async function prepareTabForPostingRestart(tabId) {
 
 async function restartPostingOnTab(tab, browserType) {
   try {
-    const prepared = await chrome.scripting.executeScript({
+    const prepared = await runInTab({
       target: { tabId: tab.id },
       func: prepareTabForPostingRestart,
       args: [tab.id],
@@ -1575,7 +1626,7 @@ async function restartPostingOnTab(tab, browserType) {
     const retryDelayMs = cfg.multiTabRetryDelay !== undefined
       ? cfg.multiTabRetryDelay : MULTI_TAB_RETRY_DELAY_DEFAULT;
 
-    await chrome.scripting.executeScript({
+    await runInTab({
       target: { tabId: tab.id },
       func: pressBindFix,
       args: [tab, browserType, false, 0, retryDelayMs, true],
@@ -2792,7 +2843,7 @@ function markPostDone() {
 
 function stopSingleTabCycle(tabId) {
   if (tabId == null) return Promise.resolve();
-  return chrome.scripting.executeScript({
+  return runInTab({
     target: { tabId },
     func: () => {
       try { if (window.__ofhStopSingleCycle) window.__ofhStopSingleCycle(); } catch (_) { }
@@ -2837,7 +2888,7 @@ async function clearTabForNextPost(tabId) {
   await stopSingleTabCycle(tabId);
 
   try {
-    await chrome.scripting.executeScript({ target: { tabId }, func: clearPosts });
+    await runInTab({ target: { tabId }, func: clearPosts });
   } catch (e) {
     console.error('Не удалось очистить вкладку после блэклиста:', e);
   }
@@ -3315,7 +3366,7 @@ async function runGlobalStats() {
     };
 
     const results = await Promise.all(tabs.map(({ tab, type }) => new Promise(resolve => {
-      chrome.scripting.executeScript({
+      runInTab({
         target: { tabId: tab.id },
         func: extractStats,
         args: [type, settings]
@@ -3467,7 +3518,7 @@ async function processCommand(lastEntry) {
           chrome.windows.getCurrent({ populate: true }, (currentWindow) => {
             const activeTab = currentWindow && currentWindow.tabs && currentWindow.tabs.find(t => t.active);
             if (!activeTab) return;
-            chrome.scripting.executeScript({
+            runInTab({
               target: { tabId: activeTab.id },
               func: (settings) => {
                 const menu = document.getElementById('stats-settings-menu');
@@ -3490,7 +3541,7 @@ async function processCommand(lastEntry) {
       chrome.windows.getCurrent({ populate: true }, (currentWindow) => {
         const activeTab = currentWindow && currentWindow.tabs && currentWindow.tabs.find(t => t.active);
         if (!activeTab) return;
-        chrome.scripting.executeScript({
+        runInTab({
           target: { tabId: activeTab.id },
           func: (settings) => {
             const menu = document.getElementById('stories-settings-menu');
@@ -3518,7 +3569,7 @@ async function processCommand(lastEntry) {
       chrome.windows.getCurrent({ populate: true }, (currentWindow) => {
         const activeTab = currentWindow && currentWindow.tabs && currentWindow.tabs.find(t => t.active);
         if (!activeTab) return;
-        chrome.scripting.executeScript({
+        runInTab({
           target: { tabId: activeTab.id },
           func: (activated) => {
 
@@ -3662,7 +3713,7 @@ async function processCommand(lastEntry) {
         try {
           const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
           if (tabs.length > 0) {
-            const res = await chrome.scripting.executeScript({
+            const res = await runInTab({
               target: { tabId: tabs[0].id },
               func: () => {
                 const el = document.querySelector(".g-user-username");
@@ -3949,7 +4000,7 @@ async function processCommand(lastEntry) {
                   hookFabricCanvas();
                 };
 
-                chrome.scripting.executeScript({
+                runInTab({
                   target: { tabId: tab.id },
                   func: processImageAndUpload,
                   args: [tag, colorQueue[i] || null, blacklistContent, savedSettings, photoHash]
@@ -3961,7 +4012,7 @@ async function processCommand(lastEntry) {
                   }
 
                   if (savedSettings) {
-                    chrome.scripting.executeScript({
+                    runInTab({
                       target: { tabId: tab.id },
                       world: 'MAIN',
                       func: (settings) => {
@@ -4008,7 +4059,7 @@ async function processCommand(lastEntry) {
                       },
                       args: [savedSettings]
                     }, () => {
-                      chrome.scripting.executeScript({
+                      runInTab({
                         target: { tabId: tab.id },
                         world: 'MAIN',
                         func: hookFabricFunc,
@@ -4016,7 +4067,7 @@ async function processCommand(lastEntry) {
                       }, () => resolve());
                     });
                   } else {
-                    chrome.scripting.executeScript({
+                    runInTab({
                       target: { tabId: tab.id },
                       world: 'MAIN',
                       func: hookFabricFunc,
@@ -4065,7 +4116,7 @@ async function processCommand(lastEntry) {
           let storyPosted = false;
           try {
             if (currentTab && currentTab.url && !currentTab.url.startsWith("chrome://")) {
-              const injection = await chrome.scripting.executeScript({
+              const injection = await runInTab({
                 target: { tabId: currentTab.id },
                 func: postStories
               });
@@ -4196,7 +4247,7 @@ async function processCommand(lastEntry) {
         if (!currentWindow || !currentWindow.tabs) return;
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         if (activeTab) {
-          chrome.scripting.executeScript({
+          runInTab({
             target: { tabId: activeTab.id },
             world: 'MAIN',
             func: (tagToReset) => {
@@ -4230,7 +4281,7 @@ async function processCommand(lastEntry) {
             args: [targetTag]
           });
 
-          chrome.scripting.executeScript({
+          runInTab({
             target: { tabId: activeTab.id },
             func: () => {
               try {
@@ -4319,7 +4370,7 @@ async function processCommand(lastEntry) {
 
         const injectPassiveInterceptors = (tabId, slug) => {
           try {
-            chrome.scripting.executeScript({
+            runInTab({
               target: { tabId },
               world: 'MAIN',
               func: (slug) => {
@@ -4743,7 +4794,7 @@ async function processCommand(lastEntry) {
         if (!currentWindow || !currentWindow.tabs) return;
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
 
-        await chrome.scripting.executeScript({
+        await runInTab({
           target: { tabId: activeTab.id },
           func: (tabId) => { window.__OFH_CURRENT_TAB_ID__ = tabId; },
           args: [activeTab.id]
@@ -4816,7 +4867,7 @@ async function processCommand(lastEntry) {
             if (hasNavigatedAway && tab && tab.status === 'complete' &&
               tab.url && tab.url.includes('/posts/create')) {
 
-              chrome.scripting.executeScript({
+              runInTab({
                 target: { tabId: activeTab.id },
                 func: () => {
                   const selector1 = "#content > div.l-wrapper > div.l-wrapper__holder-content.m-inherit-zindex > div > div > div > div.g-page__header.m-real-sticky.js-sticky-header.m-nowrap > div > button.m-btn-clear-draft.g-btn.m-border.m-rounded.m-sm-width.m-reset-width";
@@ -4859,7 +4910,7 @@ async function processCommand(lastEntry) {
         const activeTab = currentWindow.tabs.find((tab) => tab.active);
         let state = { onPostsCreate: false, textEmpty: false, hasMedia: true, hasSchedule: true };
         try {
-          const execResults = await chrome.scripting.executeScript({
+          const execResults = await runInTab({
             target: { tabId: activeTab.id },
             func: () => {
               const onPostsCreate = window.location.href.includes('/posts/create');
@@ -4949,7 +5000,7 @@ async function processCommand(lastEntry) {
         if (activeTab) {
           allTabs.forEach(async (tab) => {
             if (tab.index >= activeTab.index) {
-              chrome.scripting.executeScript({
+              runInTab({
                 target: { tabId: tab.id },
                 func: toggleColors,
                 args: [true]
@@ -5003,7 +5054,7 @@ async function processCommand(lastEntry) {
                         );
 
                         for (const tab of tabsToClose) {
-                          await chrome.scripting.executeScript({
+                          await runInTab({
                             target: { tabId: tab.id },
                             func: () => {
                               const button =
@@ -5040,7 +5091,7 @@ async function processCommand(lastEntry) {
                         });
                       } else if (result.autoRestartEnabled && !lastEntry.skipAutoRestart) {
                         setTimeout(() => {
-                          chrome.scripting.executeScript({
+                          runInTab({
                             target: { tabId: activeTab.id },
                             func: () => {
                               const autoButton = document.getElementById("autopost-button");
@@ -5058,7 +5109,7 @@ async function processCommand(lastEntry) {
                       if (fakeCheckedResult.fakeChecked === true) {
                         allTabs.forEach(async (tab) => {
                           if (tab.index >= activeTab.index) {
-                            chrome.scripting.executeScript({
+                            runInTab({
                               target: { tabId: tab.id },
                               func: toggleColors,
                               args: [false]
@@ -5119,7 +5170,7 @@ async function processCommand(lastEntry) {
             chrome.tabs.onUpdated.removeListener(listener);
 
             const targetTabId = tabId || activeTab.id;
-            chrome.scripting.executeScript({
+            runInTab({
               target: { tabId: targetTabId },
               func: () => {
                 const selector1 = "#content > div.l-wrapper > div.l-wrapper__holder-content.m-inherit-zindex > div > div > div > div.g-page__header.m-real-sticky.js-sticky-header.m-nowrap > div > button.m-btn-clear-draft.g-btn.m-border.m-rounded.m-sm-width.m-reset-width";
@@ -5285,7 +5336,7 @@ async function processCommand(lastEntry) {
 async function setBind(tab, DELAY_GREEN_BUTTON) {
 
   if (tab.url.startsWith("https://onlyfans.com")) {
-    await chrome.scripting.executeScript({
+    await runInTab({
       target: { tabId: tab.id },
       func: function (DELAY_GREEN_BUTTON, ports) {
 
@@ -6493,7 +6544,6 @@ async function setBind(tab, DELAY_GREEN_BUTTON) {
             paint(this.dataset.enabled === "1");
           });
 
-          // Настройка общая для всех вкладок, поэтому слушаем её изменения
           chrome.storage.onChanged.addListener((changes, area) => {
             if (area !== "local" || !changes.blacklistAutoClose) return;
             paint(changes.blacklistAutoClose.newValue === true);
@@ -8084,7 +8134,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             addTabScopedUpdateListener(newTab && newTab.id, function listener(tabId, info) {
               if (info.status === "complete" && tabId === newTab.id) {
                 removeTabScopedUpdateListener(newTab && newTab.id, listener);
-                chrome.scripting.executeScript({
+                runInTab({
                   target: { tabId: newTab.id },
                   func: () => {
                     const selector1 = "#content > div.l-wrapper > div.l-wrapper__holder-content.m-inherit-zindex > div > div > div > div.g-page__header.m-real-sticky.js-sticky-header.m-nowrap > div > button.m-btn-clear-draft.g-btn.m-border.m-rounded.m-sm-width.m-reset-width";
@@ -8214,7 +8264,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return;
       }
 
-      chrome.scripting.executeScript({
+      runInTab({
         target: { tabId: request.tabId },
         func: (url) => {
           try {
@@ -8905,7 +8955,7 @@ function createNotification(tabId, message) {
         return;
       }
       var activeTabId = tabs[0].id;
-      chrome.scripting.executeScript({
+      runInTab({
         target: { tabId: activeTabId },
         func: function (message, tabId) {
           var notification = document.createElement("div");
@@ -9072,7 +9122,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
         var currentTime = new Date();
         var timeDifference = currentTime - lastRequestTime;
         if (!lastRequestTime || timeDifference >= 12 * 60 * 60 * 1000) {
-          chrome.scripting.executeScript({
+          runInTab({
             target: { tabId: tab.id },
             args: [currentTime.toString()],
             func: (currentTime) => {
@@ -9219,7 +9269,7 @@ function clickOnNewTab(tabId, callback) {
       return;
     }
 
-    chrome.scripting.executeScript({
+    runInTab({
       target: { tabId: tabId },
       func: () => {
         requestAnimationFrame(() => {
@@ -9277,7 +9327,7 @@ async function disableButtonsOnTabs(tabs, style) {
           return;
         }
 
-        chrome.scripting.executeScript({
+        runInTab({
           target: { tabId: tab.id },
           func: (style) => {
             const button = document.getElementById("autopost-button");
@@ -9414,7 +9464,7 @@ async function resetAllButtonStyles() {
               return;
             }
 
-            chrome.scripting.executeScript({
+            runInTab({
               target: { tabId: tab.id },
               func: () => {
                 const button = document.getElementById("autopost-button");
@@ -9521,7 +9571,7 @@ function getNumberOfTabsToClick(currentTabId, callback) {
 
 async function collectOnlyfansData(tabId) {
   try {
-    const [inj] = await chrome.scripting.executeScript({
+    const [inj] = await runInTab({
       target: { tabId },
       func: () => {
         try {
@@ -9702,7 +9752,7 @@ async function collectOnlyfansData(tabId) {
       }
     });
 
-    await chrome.scripting.executeScript({
+    await runInTab({
       target: { tabId },
       func: (payload) => {
         try {
@@ -9771,7 +9821,7 @@ async function collectFromSelectedBrowsers() {
 }
 
 function injectConsentObserver(tabId) {
-  chrome.scripting.executeScript({
+  runInTab({
     target: { tabId: tabId },
     func: () => {
       if (window.__ofAutoConsentObserver) return;
@@ -9818,7 +9868,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
     chrome.tabs.query({ url: "*://*.onlyfans.com/*" }, (tabs) => {
       for (const tab of tabs) {
         if (tab.id) {
-          chrome.scripting.executeScript({
+          runInTab({
             target: { tabId: tab.id },
             world: 'MAIN',
             func: (val) => { window.__OFH_SYNC_ENABLED = val; },
