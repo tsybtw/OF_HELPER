@@ -351,17 +351,53 @@ function saveAssistantsLogOptions() {
   }).catch(() => { });
 }
 
-function loadAutoQueueScanHours() {
-  var input = document.getElementById('aq-scan-hours');
-  if (!input) return;
+function loadAutoQueueSettings() {
   fetch('/auto-queue-settings')
     .then(response => response.json())
     .then(data => {
-      if (data && data.scan_hours && document.activeElement !== input) {
+      if (!data) return;
+      var input = document.getElementById('aq-scan-hours');
+      if (input && data.scan_hours && document.activeElement !== input) {
         input.value = data.scan_hours;
       }
+      _aqPaintToggle('aq-auto-load-toggle', data.auto_load);
+      _aqPaintToggle('aq-auto-post-toggle', data.auto_post);
     })
     .catch(() => { });
+}
+
+function _aqPaintToggle(id, enabled) {
+  var toggle = document.getElementById(id);
+  if (toggle) toggle.classList.toggle('active', !!enabled);
+}
+
+function _aqSaveToggle(key, id) {
+  var toggle = document.getElementById(id);
+  if (!toggle) return;
+  var enabled = !toggle.classList.contains('active');
+  _aqPaintToggle(id, enabled);
+  var body = {};
+  body[key] = enabled;
+  fetch('/auto-queue-settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+    .then(response => response.json())
+    .then(data => {
+      if (!data) return;
+      _aqPaintToggle('aq-auto-load-toggle', data.auto_load);
+      _aqPaintToggle('aq-auto-post-toggle', data.auto_post);
+    })
+    .catch(() => { _aqPaintToggle(id, !enabled); });
+}
+
+function toggleAutoQueueAutoLoad() {
+  _aqSaveToggle('auto_load', 'aq-auto-load-toggle');
+}
+
+function toggleAutoQueueAutoPost() {
+  _aqSaveToggle('auto_post', 'aq-auto-post-toggle');
 }
 
 function saveAutoQueueScanHours() {
@@ -379,7 +415,7 @@ function saveAutoQueueScanHours() {
     .catch(() => { });
 }
 
-document.addEventListener('DOMContentLoaded', loadAutoQueueScanHours);
+document.addEventListener('DOMContentLoaded', loadAutoQueueSettings);
 
 function openAssistantsLog() {
   fetch('/open-assistants-log', { method: 'POST' })
@@ -634,7 +670,6 @@ function toggleQueueDropdown() {
       var panel = document.getElementById('auto-queue-panel');
       if (panel) panel.style.display = 'none';
       clearInterval(aqScanInterval);
-      clearInterval(aqSendInterval);
     }
   }
 
@@ -1286,6 +1321,109 @@ async function switchToUser(userIndex, force = false) {
       allUserButtons.forEach(btn => btn.disabled = false);
     }, 2000);
   }
+}
+
+const selectedQueueUsers = new Set();
+
+const QUEUE_KEEP_ONE_HINT = 'At least one user must stay in the queue';
+
+function toggleQueueUserSelection(userNumber, checkbox) {
+  const total = document.querySelectorAll('#user-buttons .user-select-check').length;
+  if (checkbox && checkbox.checked) {
+    if (total > 0 && selectedQueueUsers.size + 1 >= total) {
+      checkbox.checked = false;
+      showStatus(QUEUE_KEEP_ONE_HINT, 'error');
+      return;
+    }
+    selectedQueueUsers.add(userNumber);
+  } else {
+    selectedQueueUsers.delete(userNumber);
+  }
+  updateQueueBulkBar();
+}
+
+function syncQueueSelection(users) {
+  const alive = (users || []).map(u => u.user_number);
+  const aliveSet = new Set(alive);
+  Array.from(selectedQueueUsers).forEach(function (num) {
+    if (!aliveSet.has(num)) selectedQueueUsers.delete(num);
+  });
+  while (alive.length > 0 && selectedQueueUsers.size >= alive.length) {
+    selectedQueueUsers.delete(Math.min.apply(null, Array.from(selectedQueueUsers)));
+  }
+  document.querySelectorAll('#user-buttons .user-select-check').forEach(function (box) {
+    const num = parseInt(box.getAttribute('data-user-number'), 10);
+    box.checked = selectedQueueUsers.has(num);
+  });
+  updateQueueBulkBar();
+}
+
+function clearQueueSelection() {
+  selectedQueueUsers.clear();
+  document.querySelectorAll('#user-buttons .user-select-check').forEach(function (box) {
+    box.checked = false;
+  });
+  updateQueueBulkBar();
+}
+
+function updateQueueBulkBar() {
+  lockQueueSelectChecks();
+  const bar = document.getElementById('queue-bulk-bar');
+  if (!bar) return;
+  const count = selectedQueueUsers.size;
+  bar.style.display = count > 0 ? 'flex' : 'none';
+  const label = document.getElementById('queue-bulk-count');
+  if (label) label.textContent = count + ' selected';
+}
+
+function lockQueueSelectChecks() {
+  const boxes = document.querySelectorAll('#user-buttons .user-select-check');
+  const locked = boxes.length > 0 && selectedQueueUsers.size >= boxes.length - 1;
+  boxes.forEach(function (box) {
+    const blocked = locked && !box.checked;
+    box.disabled = blocked;
+    box.title = blocked ? QUEUE_KEEP_ONE_HINT : 'Select for removal';
+  });
+}
+
+function removeSelectedQueueUsers() {
+  const numbers = Array.from(selectedQueueUsers).sort((a, b) => a - b);
+  if (numbers.length === 0) return;
+  const total = document.querySelectorAll('#user-buttons .user-select-check').length;
+  if (total > 0 && numbers.length >= total) {
+    showStatus(QUEUE_KEEP_ONE_HINT, 'error');
+    return;
+  }
+  if (!confirm('Remove ' + numbers.length + ' user(s) from queue?')) return;
+
+  fetch('/remove-queue-users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_numbers: numbers })
+  })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        showStatus(data.message, 'success');
+      } else {
+        showStatus(data.error || 'Error removing users', 'error');
+      }
+      clearQueueSelection();
+      loadInitialQueueData();
+      var aqPanel = document.getElementById('auto-queue-panel');
+      if (aqPanel && aqPanel.style.display !== 'none') {
+        fetch('/auto-queue-scan-status')
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            renderAQList(d.candidates || []);
+            updateAQStartWrap(d.candidates || []);
+          }).catch(function () { });
+      }
+    })
+    .catch(error => {
+      console.error('Error removing users:', error);
+      showStatus('Error removing users', 'error');
+    });
 }
 
 function removeQueueUser(userIndex) {
@@ -2219,8 +2357,12 @@ function updateQueueStatus(queueData = null, browserData = null) {
         activeHintDisplay = ` <span class="active-hint-display">[${user.active_hint}]</span>`;
       }
 
+      const userNumber = user.user_number || (index + 1);
+      const selectedAttr = selectedQueueUsers.has(userNumber) ? ' checked' : '';
+
       newUserButtonsHTML += `
                     <div class="user-container queue-user-item" data-user-index="${index}">
+                        <input type="checkbox" class="user-select-check" data-user-number="${userNumber}"${selectedAttr} title="Select for removal" onchange="toggleQueueUserSelection(${userNumber}, this)">
                         <button class="user-btn${activeClass}${completedClass}${processingClass}" onclick="switchToUser(${index})" data-user-index="${index}">
                             ${user.user_number || (index + 1)}
                         </button>
@@ -2233,6 +2375,7 @@ function updateQueueStatus(queueData = null, browserData = null) {
     userButtonsDiv.innerHTML = newUserButtonsHTML;
     userButtonsDiv.setAttribute('data-state-hash', stateHash);
     try { updateDragAndDropListeners(); } catch (_) { }
+    try { syncQueueSelection(data.users); } catch (_) { }
 
     try {
       if (document.getElementById('queue-dropdown')?.classList.contains('show')) {
@@ -2255,11 +2398,13 @@ function updateQueueStatus(queueData = null, browserData = null) {
       }
     } catch (_) { }
   } else if (userButtonsDiv && data.queue_mode_enabled && (!data.users || data.users.length === 0)) {
+    try { syncQueueSelection([]); } catch (_) { }
     const noUsersContent = '<div style="color: #ccc; text-align: center; padding: 10px; font-style: italic;">No users in queue</div>';
     if (userButtonsDiv.innerHTML !== noUsersContent) {
       userButtonsDiv.innerHTML = noUsersContent;
     }
   } else if (userButtonsDiv && !data.queue_mode_enabled) {
+    try { syncQueueSelection([]); } catch (_) { }
     userButtonsDiv.style.display = 'none';
     if (userButtonsDiv.innerHTML !== '') {
       userButtonsDiv.innerHTML = '';
@@ -4201,11 +4346,7 @@ document.addEventListener('DOMContentLoaded', () => {
   startQueueDataPolling();
   setupAutoSave();
 
-  // Resume auto-queue send polling if it was running before page reload
-  if (localStorage.getItem('aqSendPending') === 'true') {
-    _aqSetStopLoadingBtn();
-    _aqStartSendPolling();
-  }
+  _aqStartSendWatcher();
 
   setTimeout(() => {
     initializeDragAndDrop();
@@ -4740,6 +4881,8 @@ function startCustomDrag(e) {
   if (e.button !== 0) return;
   const targetDeleteBtn = e.target.closest('.user-delete-btn');
   if (targetDeleteBtn) return;
+  const targetSelectCheck = e.target.closest('.user-select-check');
+  if (targetSelectCheck) return;
   const targetUserBtn = e.target.closest('.user-btn');
   if (targetUserBtn) return;
 
@@ -5017,6 +5160,7 @@ function loadAppState() {
 
 var aqScanInterval = null;
 var aqSendInterval = null;
+var _aqSendWasRunning = false;
 
 function _updateScanBtnText(candidates) {
   var btn = document.getElementById('aq-scan-btn');
@@ -5066,7 +5210,6 @@ function closeAutoQueuePanel() {
   if (panel) panel.style.display = 'none';
   localStorage.setItem('autoQueuePanelOpen', 'false');
   clearInterval(aqScanInterval);
-  clearInterval(aqSendInterval);
 }
 
 function cancelAutoQueueScan() {
@@ -5395,7 +5538,7 @@ function updateAQStartWrap(candidates) {
     count.textContent = pending.length + ' to load' +
       (loaded > 0 ? ' \u00b7 ' + loaded + ' already loaded' : '');
   }
-  if (confirmBtn) {
+  if (confirmBtn && !_aqSendWasRunning) {
     var needsManual = pending.filter(function (c) { return c.needs_manual_selection; }).length;
     var blocked = pending.length === 0 || needsManual > 0;
     confirmBtn.disabled = blocked;
@@ -5627,37 +5770,28 @@ function selectAQTarget(msgId) {
 // ---- END AQ DIALOG MODAL ----
 
 function confirmAutoQueue() {
-  var confirmBtn = document.getElementById('aq-confirm-btn');
-  if (confirmBtn) {
-    confirmBtn.disabled = false;
-    confirmBtn.style.opacity = '1';
-    confirmBtn.textContent = 'Stop Loading';
-    confirmBtn.style.background = '#f44336';
-    confirmBtn.onclick = stopAutoQueue;
-  }
-  localStorage.setItem('aqSendPending', 'true');
+  _aqSendWasRunning = true;
+  _aqSetStopLoadingBtn();
   fetch('/auto-queue-confirm', { method: 'POST' })
     .then(function () {
-      _aqStartSendPolling();
+      _aqStartSendWatcher();
     })
     .catch(function () {
-      localStorage.removeItem('aqSendPending');
+      _aqSendWasRunning = false;
       _aqResetConfirmBtn();
     });
 }
 
-function _aqStartSendPolling() {
-  clearInterval(aqSendInterval);
-  aqSendInterval = setInterval(pollAQSendStatus, 2000);
+function _aqStartSendWatcher() {
+  if (!aqSendInterval) {
+    aqSendInterval = setInterval(pollAQSendStatus, 2000);
+  }
+  pollAQSendStatus();
 }
 
 function stopAutoQueue() {
-  localStorage.removeItem('aqSendPending');
   fetch('/auto-queue-send-cancel', { method: 'POST' })
-    .then(function () {
-      clearInterval(aqSendInterval);
-      _aqResetConfirmBtn();
-    })
+    .then(function () { pollAQSendStatus(); })
     .catch(function () { });
 }
 
@@ -5686,36 +5820,33 @@ function pollAQSendStatus() {
     .then(function (r) { return r.json(); })
     .then(function (data) {
       if (data.running) {
+        _aqSendWasRunning = true;
+        _aqSetStopLoadingBtn();
         var count = document.getElementById('aq-count');
         if (data.total > 0 && count) {
           count.textContent = 'Loading: ' + (data.current + 1) + ' / ' + data.total;
         }
+        return;
       }
-      if (!data.running && data.total > 0) {
-        // Send is fully complete
-        clearInterval(aqSendInterval);
-        localStorage.removeItem('aqSendPending');
+      if (_aqSendWasRunning) {
+        _aqSendWasRunning = false;
         _aqResetConfirmBtn();
         fetch('/auto-queue-scan-status')
           .then(function (r) { return r.json(); })
           .then(function (d) {
             renderAQList(d.candidates || []);
             updateAQStartWrap(d.candidates || []);
-            // Count ALL loaded candidates (including previous sessions)
-            var totalLoaded = (d.candidates || []).filter(function (c) { return c.loaded; }).length;
-            if (totalLoaded > 0) {
-              showAQDoneModal(data.queue_size_before || 0, totalLoaded);
-            }
           }).catch(function () { });
+      }
+      if (data.clear_old_pending) {
+        showAQDoneModal(data.clear_old_loaded || 0);
       }
     })
     .catch(function () { });
 }
 
-function showAQDoneModal(queueSizeBefore, loadedCount) {
-  // Remove existing modal if any
-  var existing = document.getElementById('aq-done-modal');
-  if (existing) existing.remove();
+function showAQDoneModal(loadedCount) {
+  if (document.getElementById('aq-done-modal')) return;
 
   var overlay = document.createElement('div');
   overlay.id = 'aq-done-modal';
@@ -5731,14 +5862,22 @@ function showAQDoneModal(queueSizeBefore, loadedCount) {
     '</div>' +
     '<div class="queue-modal-buttons">' +
     '<button class="queue-modal-btn queue-modal-btn-primary" onclick="aqClearOldUsers()">Clear old users</button>' +
-    '<button class="queue-modal-btn queue-modal-btn-secondary" onclick="document.getElementById(\'aq-done-modal\').remove()">Keep all</button>' +
+    '<button class="queue-modal-btn queue-modal-btn-secondary" onclick="aqKeepOldUsers()">Keep all</button>' +
     '</div>' +
     '</div>';
 
   document.body.appendChild(overlay);
 }
 
+function aqKeepOldUsers() {
+  var modal = document.getElementById('aq-done-modal');
+  if (modal) modal.remove();
+  fetch('/auto-queue-clear-old-dismiss', { method: 'POST' }).catch(function () { });
+}
+
 function aqClearOldUsers() {
+  var openModal = document.getElementById('aq-done-modal');
+  if (openModal) openModal.remove();
   fetch('/auto-queue-clear-old', { method: 'POST' })
     .then(function (r) { return r.json(); })
     .then(function () {

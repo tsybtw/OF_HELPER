@@ -3838,3 +3838,61 @@ body.drag-active-cursor {
   letter-spacing: 0.5px;
   transition: all 0.3s ease;
 }
+.user-select-check {
+  cursor: pointer;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  margin: 0 2px;
+  accent-color: #fbdf56;
+}
+
+.user-select-check:disabled {
+  cursor: not-allowed;
+  opacity: 0.3;
+}
+
+.queue-bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  margin-bottom: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+
+#queue-bulk-count {
+  flex: 1;
+  color: #ccc;
+  font-family: 'Varela Round', sans-serif;
+  font-size: 13px;
+  font-weight: bold;
+}
+
+.queue-bulk-btn {
+  background: rgba(255, 255, 255, 0.12);
+  color: white;
+  border: 2px solid black;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: 'Varela Round', sans-serif;
+  font-weight: bold;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: all 0.3s ease;
+}
+
+.queue-bulk-clear:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.queue-bulk-delete {
+  background: #f44336;
+}
+
+.queue-bulk-delete:hover {
+  background: #da190b;
+}
