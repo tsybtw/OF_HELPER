@@ -296,9 +296,12 @@ chrome.storage.local.get(['lastTabCount', 'timerVisibility'], (res) => {
 });
 
 let persistTimer = null;
+let lastPersistedTabCount = -1;
 function persistTabCount(count) {
+  if (count === lastPersistedTabCount) return;
   clearTimeout(persistTimer);
   persistTimer = setTimeout(() => {
+    lastPersistedTabCount = count;
     chrome.storage.local.set({ lastTabCount: count });
   }, 1000);
 }
@@ -467,13 +470,25 @@ setInterval(() => {
 chrome.tabs.onRemoved.addListener((tabId) => {
   keepaliveTabs.delete(tabId);
   forgetTabPorts(tabId);
+  lastTabCounterState.delete(tabId);
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (changeInfo.status === 'loading' || changeInfo.url) forgetTabPorts(tabId);
+  if (changeInfo.status === 'loading' || changeInfo.url) {
+    forgetTabPorts(tabId);
+    lastTabCounterState.delete(tabId);
+  }
 });
 
+const lastTabCounterState = new Map();
+
 function updateTabCounterOnActiveTab(isReset) {
+  if (isReset) {
+    lastClosedTime = new Date();
+    closedTabsCount = 0;
+    chrome.storage.local.set({ timerVisibility });
+  }
+
   chrome.tabs.query({ url: "https://onlyfans.com/*" }, function (ofTabs) {
     const onlyFansTabsCount = Array.isArray(ofTabs) ? ofTabs.length : 0;
 
@@ -485,9 +500,45 @@ function updateTabCounterOnActiveTab(isReset) {
         return;
       }
 
+      let timeSinceLastClosed = "00:00";
+      let color = "rgb(45, 155, 55)";
+
+      if (lastClosedTime) {
+        const now = new Date();
+        const diffMs = now - lastClosedTime;
+        const diffSecs = Math.floor(diffMs / 1000);
+
+        if (diffSecs < 15) {
+          color = "rgb(45, 155, 55)";
+        } else if (diffSecs < 30) {
+          color = "yellow";
+        } else {
+          color = "rgb(221, 109, 85)";
+          checkTabs();
+        }
+
+        if (onlyFansTabsCount <= 1 && diffSecs >= 60) {
+          const minutes = String(Math.floor(diffSecs / 60)).padStart(2, "0");
+          timeSinceLastClosed = `${minutes}:00`;
+        } else {
+          const minutes = String(Math.floor(diffSecs / 60)).padStart(2, "0");
+          const seconds = String(diffSecs % 60).padStart(2, "0");
+          timeSinceLastClosed = `${minutes}:${seconds}`;
+        }
+      }
+
+      const textValue = `${onlyFansTabsCount} / ${closedTabsCount} / ${timeSinceLastClosed}`;
+      const stateKey = `${timerVisibility}|${color}|${textValue}`;
+
+      if (!isReset && lastTabCounterState.get(activeTab.id) === stateKey) {
+        persistTabCount(onlyFansTabsCount);
+        return;
+      }
+      lastTabCounterState.set(activeTab.id, stateKey);
+
       runInTab({
         target: { tabId: activeTab.id },
-        func: (isVisible) => {
+        func: (isVisible, textVal, colorVal) => {
           const ids = [
             "tabCounter", "cont1", "cont2", "cont3",
             "switch-button", "fakeMakeButton", "blacklistCloseButton", "version", "clear-button", "reload-button", "stories-container", "bottom-overlay", "joy", "text-size-slider", "tag-rotation-dial", "tag-reset-button"
@@ -499,40 +550,7 @@ function updateTabCounterOnActiveTab(isReset) {
             el.style.opacity = isVisible ? '1' : '0';
             el.style.pointerEvents = isVisible ? 'auto' : 'none';
           });
-        },
-        args: [timerVisibility]
-      }).catch(console.error);
 
-      let timeSinceLastClosed = "00:00";
-      let color = "rgb(45, 155, 55)";
-
-      if (isReset) {
-        lastClosedTime = new Date();
-        closedTabsCount = 0;
-        chrome.storage.local.set({ timerVisibility });
-      }
-
-      if (lastClosedTime) {
-        const now = new Date();
-        const diffMs = now - lastClosedTime;
-        const diffSecs = Math.floor(diffMs / 1000);
-        const minutes = String(Math.floor(diffSecs / 60)).padStart(2, "0");
-        const seconds = String(diffSecs % 60).padStart(2, "0");
-        timeSinceLastClosed = `${minutes}:${seconds}`;
-
-        if (diffSecs < 15) {
-          color = "rgb(45, 155, 55)";
-        } else if (diffSecs < 30) {
-          color = "yellow";
-        } else {
-          color = "rgb(221, 109, 85)";
-          checkTabs();
-        }
-      }
-
-      runInTab({
-        target: { tabId: activeTab.id },
-        func: (count, closedCount, time, color) => {
           const update = () => {
             let counter = document.getElementById("tabCounter");
             if (!counter) {
@@ -549,23 +567,21 @@ function updateTabCounterOnActiveTab(isReset) {
               });
               document.body.appendChild(counter);
             }
-            counter.style.color = color;
-            counter.textContent = `${count} / ${closedCount} / ${time}`;
+            counter.style.color = colorVal;
+            counter.textContent = textVal;
           };
 
           if (document.readyState === "loading") {
             if (!window.__OFH_TAB_COUNTER_LISTENER) {
               window.__OFH_TAB_COUNTER_LISTENER = true;
-              document.addEventListener("DOMContentLoaded", () => {
-                update();
-              }, { once: true });
+              document.addEventListener("DOMContentLoaded", update, { once: true });
             }
           } else {
             update();
           }
         },
-        args: [onlyFansTabsCount, closedTabsCount, timeSinceLastClosed, color]
-      }).catch(console.error);
+        args: [timerVisibility, textValue, color]
+      }).catch(() => { });
 
       persistTabCount(onlyFansTabsCount);
     });
@@ -606,7 +622,7 @@ function updateTabCounterOnActiveTab(isReset) {
             }
 
             chrome.tabs.query({ url: "https://onlyfans.com/*" }, (tbs) => {
-              persistTabCount(Array.isArray(tbs) ? tbs.length : onlyFansTabsCount);
+              persistTabCount(Array.isArray(tbs) ? tbs.length : 0);
             });
           }
         );
@@ -3833,6 +3849,7 @@ async function processCommand(lastEntry) {
                 const oc = new OffscreenCanvas(9, 8);
                 const ctx = oc.getContext('2d');
                 ctx.drawImage(bitmap, 0, 0, 9, 8);
+                bitmap.close();
                 const { data } = ctx.getImageData(0, 0, 9, 8);
                 let bits = '';
                 for (let y = 0; y < 8; y++) {
