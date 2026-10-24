@@ -4,10 +4,15 @@ const POST_PAUSE_MS = 6000;
 
 self.__OFH_PORTS = { http: 3000, cropFlask: 8765, cropVite: 8444 };
 
+function drainResponse(response) {
+  if (response && !response.bodyUsed) response.arrayBuffer().catch(() => { });
+  return response;
+}
+
 async function loadInstancePorts() {
   try {
     const res = await fetch(chrome.runtime.getURL('instance.json') + '?t=' + Date.now(), { cache: 'no-store' });
-    if (!res.ok) return;
+    if (!res.ok) { drainResponse(res); return; }
     const data = await res.json();
     const port = (value, fallback) => {
       const parsed = Number(value);
@@ -351,11 +356,11 @@ async function performPhaseSwitch(phase) {
 
 async function reportSwitchResult(success, phase) {
   try {
-    await fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.cropFlask) || 8765}/switch-tabs-result`, {
+    drainResponse(await fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.cropFlask) || 8765}/switch-tabs-result`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ browser: String(currentBrowserNumber), phase, success })
-    });
+    }));
   } catch (e) { }
 }
 
@@ -643,6 +648,7 @@ async function sendReadyRequest(browserNumber, tabCount) {
         tab_count: tabCount
       })
     });
+    drainResponse(response);
 
     if (!response.ok) {
       console.error('Failed to send ready request');
@@ -1659,7 +1665,7 @@ function reportStoryRound(hasMore) {
         browserType: `browser${currentBrowserNumber}`,
         hasMore: !!hasMore
       })
-    }).catch(() => { });
+    }).then(drainResponse).catch(() => { });
   } catch (_) { }
 }
 
@@ -2845,7 +2851,7 @@ let singleTabLastPostAt = null;
 async function syncPostingSettings() {
   try {
     const res = await fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/posting-settings`);
-    if (!res.ok) return;
+    if (!res.ok) { drainResponse(res); return; }
     const data = await res.json();
     if (data && typeof data === 'object') chrome.storage.local.set(data);
   } catch (_) { }
@@ -3088,7 +3094,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ screenshotDelay: res.singleTabScreenshotDelay !== undefined ? res.singleTabScreenshotDelay : 5000 })
-        }).catch(() => { });
+        }).then(drainResponse).catch(() => { });
       });
     });
     return true;
@@ -3715,6 +3721,8 @@ async function processCommand(lastEntry) {
         const blResponse = await fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.http) || 3000}/get-blacklist`);
         if (blResponse.ok) {
           blacklistContent = await blResponse.text();
+        } else {
+          drainResponse(blResponse);
         }
       } catch (e) {
         console.error("Failed to fetch blacklist for stories:", e);
@@ -3780,12 +3788,12 @@ async function processCommand(lastEntry) {
           const extensions = [".png", ".jpg", ".jpeg", ".heic"];
           for (const ext of extensions) {
             try {
-              const response = await fetch(chrome.runtime.getURL(`server/crop/images/${fileSearchTag}${ext}`));
+              const response = drainResponse(await fetch(chrome.runtime.getURL(`server/crop/images/${fileSearchTag}${ext}`)));
               if (response.ok) return null;
             } catch (e) { }
           }
           try {
-            const response = await fetch(chrome.runtime.getURL(`server/crop/images/${fileSearchTag}`));
+            const response = drainResponse(await fetch(chrome.runtime.getURL(`server/crop/images/${fileSearchTag}`)));
             if (response.ok) return null;
           } catch (e) { }
 
@@ -3843,6 +3851,7 @@ async function processCommand(lastEntry) {
             const exts = [".png", ".jpg", ".jpeg", ".heic", ""];
             for (const ext of exts) {
               const imgRes = await fetch(chrome.runtime.getURL(`server/crop/images/${fileSearchTag}${ext}`));
+              if (!imgRes.ok) drainResponse(imgRes);
               if (imgRes.ok) {
                 const blob = await imgRes.blob();
                 const bitmap = await createImageBitmap(blob);
@@ -4724,7 +4733,7 @@ async function processCommand(lastEntry) {
               `server/crop/images/${pattern}.${ext}`,
             );
             try {
-              const response = await fetch(url, { method: "HEAD" });
+              const response = drainResponse(await fetch(url, { method: "HEAD" }));
               if (response.ok) {
                 return url;
               }
@@ -7992,11 +8001,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request && request.type === 'OFH_SEND_BROWSER_DATA_BG' && request.payload) {
     (async () => {
       try {
-        await fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.cropFlask) || 8765}/browser-data`, {
+        drainResponse(await fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.cropFlask) || 8765}/browser-data`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(request.payload)
-        });
+        }));
       } catch (_) { }
     })();
     return true;
@@ -8038,11 +8047,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       try {
         const browserId = request.target ? request.target : ("browser" + currentBrowserNumber);
 
-        await fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.cropVite) || 8444}/add-media-by-tag`, {
+        drainResponse(await fetch(`http://localhost:${(self.__OFH_PORTS && self.__OFH_PORTS.cropVite) || 8444}/add-media-by-tag`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ browser: browserId })
-        });
+        }));
       } catch (e) {
         console.error('add-media-by-tag request error:', e);
       }
@@ -8240,7 +8249,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({ browserType: request.browserType })
-        });
+        }).then(drainResponse).catch(() => { });
       }
     });
   }
@@ -9437,6 +9446,7 @@ async function clickAndMove(currentTabId, remainingClicks) {
         });
 
         if (!tabsResponse.ok) {
+          drainResponse(tabsResponse);
           throw new Error(`Tabs request failed with status: ${tabsResponse.status}`);
         }
 
@@ -9528,6 +9538,7 @@ async function resetAllButtonStyles() {
           method: 'POST'
         })
           .then(response => {
+            drainResponse(response);
             if (!response.ok) {
               console.log('Send screenshots request failed with status:', response.status);
             } else {
