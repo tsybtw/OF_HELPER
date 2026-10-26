@@ -1,7 +1,5 @@
 #include <AutoItConstants.au3>
 
-Local $isEnglishLayout = _IsEnglishKeyboardLayout()
-
 Local $delayPath = @ScriptDir & "\delay_win.toml"
 Local $lightshotDelay = 300
 
@@ -11,7 +9,6 @@ If $dFile <> -1 Then
         Local $line = FileReadLine($dFile)
         If @error = -1 Then ExitLoop
         
-        ; Ищем строку lightshot_delay
         If StringInStr($line, "lightshot_delay") Then
             Local $parts = StringSplit($line, "=", 2)
             If UBound($parts) > 1 Then
@@ -44,50 +41,13 @@ WEnd
 FileClose($file)
 
 If $i > 0 Then
-    If $isEnglishLayout Then
-        _SendDirectCombination($combos[0])
-    Else
-        _SendKeyCombination($combos[0])
-    EndIf
-    Sleep($lightshotDelay)
+    _SendKeyCombination($combos[0])
+    If $i > 1 Then Sleep($lightshotDelay)
 EndIf
 
 If $i > 1 Then
-    If $isEnglishLayout Then
-        _SendDirectCombination($combos[1])
-    Else
-        _SendKeyCombination($combos[1])
-    EndIf
+    _SendKeyCombination($combos[1])
 EndIf
-
-Func _IsEnglishKeyboardLayout()
-    Local $hWnd = WinGetHandle("[ACTIVE]")
-    Local $currentLayout = DllCall("user32.dll", "int", "GetKeyboardLayout", "int", DllCall("user32.dll", "int", "GetWindowThreadProcessId", "hwnd", $hWnd, "ptr", 0)[0])
-    Local $langID = BitAND($currentLayout[0], 0xFFFF)
-    Return ($langID = 0x0409 Or $langID = 0x0809)
-EndFunc
-
-Func _SendDirectCombination($combo)
-    Local $keys = StringSplit($combo, "+", 2)
-    Local $autoItKeys = ""
-    
-    For $j = 0 To UBound($keys) - 1
-        Switch StringLower($keys[$j])
-            Case "ctrl", "crtl"
-                $autoItKeys &= "^"
-            Case "alt"
-                $autoItKeys &= "!"
-            Case "shift"
-                $autoItKeys &= "+"
-            Case "win"
-                $autoItKeys &= "#"
-            Case Else
-                $autoItKeys &= $keys[$j]
-        EndSwitch
-    Next
-    
-    Send($autoItKeys)
-EndFunc
 
 Func _SendKeyCombination($combo)
     Local $keys = StringSplit($combo, "+", 2)
@@ -95,15 +55,16 @@ Func _SendKeyCombination($combo)
     Local $key = ""
     
     For $j = 0 To UBound($keys) - 1
+        $keys[$j] = StringStripWS($keys[$j], 3)
         Switch StringLower($keys[$j])
             Case "ctrl", "crtl" 
-                $modifiers = BitOR($modifiers, 2) ; CTRL = 2
+                $modifiers = BitOR($modifiers, 2)
             Case "alt"
-                $modifiers = BitOR($modifiers, 1) ; ALT = 1
+                $modifiers = BitOR($modifiers, 1)
             Case "shift"
-                $modifiers = BitOR($modifiers, 4) ; SHIFT = 4
+                $modifiers = BitOR($modifiers, 4)
             Case "win"
-                $modifiers = BitOR($modifiers, 8) ; WIN = 8
+                $modifiers = BitOR($modifiers, 8)
             Case Else
                 $key = $keys[$j]
         EndSwitch
@@ -185,16 +146,16 @@ Func _GetVirtualKey($key)
 EndFunc
 
 Func _SendEx($vk, $modifiers = 0)
-    If BitAND($modifiers, 2) Then ; CTRL
+    If BitAND($modifiers, 2) Then
         DllCall("user32.dll", "int", "keybd_event", "int", 0x11, "int", 0, "int", 0, "ptr", 0)
     EndIf
-    If BitAND($modifiers, 1) Then ; ALT
+    If BitAND($modifiers, 1) Then
         DllCall("user32.dll", "int", "keybd_event", "int", 0x12, "int", 0, "int", 0, "ptr", 0)
     EndIf
-    If BitAND($modifiers, 4) Then ; SHIFT
+    If BitAND($modifiers, 4) Then
         DllCall("user32.dll", "int", "keybd_event", "int", 0x10, "int", 0, "int", 0, "ptr", 0)
     EndIf
-    If BitAND($modifiers, 8) Then ; WIN
+    If BitAND($modifiers, 8) Then
         DllCall("user32.dll", "int", "keybd_event", "int", 0x5B, "int", 0, "int", 0, "ptr", 0)
     EndIf
    
@@ -202,16 +163,16 @@ Func _SendEx($vk, $modifiers = 0)
     Sleep(20)
     DllCall("user32.dll", "int", "keybd_event", "int", $vk, "int", 0, "int", 2, "ptr", 0)
     
-    If BitAND($modifiers, 8) Then ; WIN
+    If BitAND($modifiers, 8) Then
         DllCall("user32.dll", "int", "keybd_event", "int", 0x5B, "int", 0, "int", 2, "ptr", 0)
     EndIf
-    If BitAND($modifiers, 4) Then ; SHIFT
+    If BitAND($modifiers, 4) Then
         DllCall("user32.dll", "int", "keybd_event", "int", 0x10, "int", 0, "int", 2, "ptr", 0)
     EndIf
-    If BitAND($modifiers, 1) Then ; ALT
+    If BitAND($modifiers, 1) Then
         DllCall("user32.dll", "int", "keybd_event", "int", 0x12, "int", 0, "int", 2, "ptr", 0)
     EndIf
-    If BitAND($modifiers, 2) Then ; CTRL
+    If BitAND($modifiers, 2) Then
         DllCall("user32.dll", "int", "keybd_event", "int", 0x11, "int", 0, "int", 2, "ptr", 0)
     EndIf
 EndFunc
