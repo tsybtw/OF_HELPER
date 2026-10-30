@@ -3876,6 +3876,60 @@ function replaceMedia(mediaId, mediaPath) {
     });
 }
 
+function switchAlbumMedia(button) {
+  if (button.dataset.busy === '1') return;
+  button.dataset.busy = '1';
+  button.classList.add('loading');
+  showStatus('Loading album media...');
+
+  const mainContainer = button.closest('.main-container');
+
+  fetch('/switch_album_media', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      client_id: button.dataset.client,
+      chat_id: button.dataset.chat,
+      text_id: button.dataset.text,
+      ids: button.dataset.ids,
+      index: button.dataset.index,
+      media_path: button.dataset.path,
+      message_index: button.dataset.messageIndex,
+      skip: button.dataset.skip
+    })
+  })
+    .then(response => response.json())
+    .then(async data => {
+      if (!data.success || !data.html || !mainContainer) {
+        showStatus('Error!');
+        return;
+      }
+      const oldNumber = mainContainer.querySelector('.image-number');
+      const copyBtn = mainContainer.nextElementSibling;
+
+      const template = document.createElement('template');
+      template.innerHTML = data.html;
+      const newContainer = template.content.querySelector('.main-container');
+      const newNumber = newContainer && newContainer.querySelector('.image-number');
+      if (oldNumber && newNumber) newNumber.textContent = oldNumber.textContent;
+
+      mainContainer.parentNode.insertBefore(template.content, mainContainer);
+      if (copyBtn && copyBtn.classList.contains('copy-button')) copyBtn.remove();
+      mainContainer.remove();
+
+      showStatus('Success!');
+      try { await saveBetweenQueueUsers(); } catch (_) { }
+    })
+    .catch(error => {
+      console.error('Album switch error:', error);
+      showStatus('Server error...');
+    })
+    .finally(() => {
+      button.dataset.busy = '';
+      button.classList.remove('loading');
+    });
+}
+
 function processAndReplaceImage(dataUrl, mediaElement, mediaPath) {
   const tempImg = new Image();
   tempImg.onload = function () {

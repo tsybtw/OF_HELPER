@@ -1350,6 +1350,19 @@ input[type="checkbox"] {
   position: relative;
 }
 
+.album-button {
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  letter-spacing: -0.5px;
+}
+
+.album-button.loading {
+  opacity: 0.5;
+  cursor: wait;
+}
+
 .control-button svg {
   width: 16px;
   height: 16px;
