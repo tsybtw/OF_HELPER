@@ -62,6 +62,18 @@ async function openTagPage(tag, event) {
   } catch (_) { }
 }
 
+async function openAllTagPages() {
+  const tags = getAllTags().split(' ').map(t => t.trim().replace(/^@/, '')).filter(Boolean);
+  if (tags.length === 0) return;
+  try {
+    await fetch('/open-tags', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tags })
+    });
+  } catch (_) { }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const tagButtons = document.querySelectorAll('.copy-button.tag-button');
 
@@ -120,9 +132,39 @@ document.addEventListener('DOMContentLoaded', () => {
   const openButtons = document.querySelectorAll('.copy-button.open-button');
   openButtons.forEach(button => {
     button.removeAttribute('onclick');
+    let openedAll = false;
+
+    button.addEventListener('pointerdown', e => {
+      if (e.pointerType !== 'mouse' || e.button !== 0) return;
+      openedAll = false;
+      button.classList.add('holding');
+    });
+
+    button.addEventListener('pointerleave', () => {
+      button.classList.remove('holding');
+    });
+
+    button.addEventListener('pointercancel', () => {
+      button.classList.remove('holding', 'completed');
+    });
+
+    button.addEventListener('animationend', e => {
+      if (e.animationName !== 'clockFill') return;
+      openedAll = true;
+      button.classList.remove('holding');
+      button.classList.add('completed');
+      openAllTagPages();
+      setTimeout(() => button.classList.remove('completed'), 2000);
+    });
+
     button.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
+      button.classList.remove('holding');
+      if (openedAll) {
+        openedAll = false;
+        return;
+      }
       const textButton = button.previousElementSibling && button.previousElementSibling.previousElementSibling;
       if (textButton && textButton.classList && textButton.classList.contains('text-button')) {
         const content = textButton.textContent || '';

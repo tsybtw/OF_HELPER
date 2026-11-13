@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "OF HELPER",
-  "version": "250",
+  "version": "251",
   "description": "By @yen_ofsfs",
   "permissions": [
     "activeTab",

@@ -4390,9 +4390,13 @@ async function processCommand(lastEntry) {
     if (lastEntry && lastEntry.id === "30" && browserType !== "") {
       if (shouldSkipDuplicate(lastEntry, browserType)) return;
       try {
-        const raw = (lastEntry.tag || '').toString();
-        const slug = raw.replace(/^@/, '').trim();
-        if (!slug) return;
+        const bulk = Array.isArray(lastEntry.tags) && lastEntry.tags.length > 0;
+        const rawList = bulk ? lastEntry.tags : [lastEntry.tag];
+        const seenSlugs = new Set();
+        const slugs = rawList
+          .map(t => (t || '').toString().replace(/^@/, '').trim())
+          .filter(s => s && !seenSlugs.has(s.toLowerCase()) && seenSlugs.add(s.toLowerCase()));
+        if (slugs.length === 0) return;
 
         const injectPassiveInterceptors = (tabId, slug) => {
           try {
@@ -4536,13 +4540,13 @@ async function processCommand(lastEntry) {
           } catch (_) { }
         };
 
-        chrome.tabs.query({ url: "https://onlyfans.com/*" }, (tabs) => {
+        const openSlug = (slug) => chrome.tabs.query({ url: "https://onlyfans.com/*" }, (tabs) => {
           const existing = tabs.find(t => t.url && /https:\/\/onlyfans\.com\/[^\/?#]+/i.test(t.url) && t.url.replace(/\/?[#?].*$/, '').toLowerCase().endsWith(`/${slug.toLowerCase()}`));
           const targetTabIdRef = { value: existing ? existing.id : null };
 
           const onUpd = (tabId, changeInfo) => {
             if (!changeInfo || (changeInfo.status !== 'loading' && changeInfo.status !== 'complete')) return;
-            if (targetTabIdRef.value !== null && tabId !== targetTabIdRef.value) return;
+            if (targetTabIdRef.value === null || tabId !== targetTabIdRef.value) return;
             injectPassiveInterceptors(tabId, slug);
             if (changeInfo.status === 'complete') {
               removeTabScopedUpdateListener(targetTabIdRef.value, onUpd);
@@ -4550,11 +4554,15 @@ async function processCommand(lastEntry) {
           };
 
           if (existing) {
-            chrome.tabs.update(existing.id, { active: true }, () => {
+            if (bulk) {
               injectPassiveInterceptors(existing.id, slug);
-            });
+            } else {
+              chrome.tabs.update(existing.id, { active: true }, () => {
+                injectPassiveInterceptors(existing.id, slug);
+              });
+            }
           } else {
-            chrome.tabs.create({ url: `https://onlyfans.com/${encodeURIComponent(slug)}` }, (newTab) => {
+            chrome.tabs.create({ url: `https://onlyfans.com/${encodeURIComponent(slug)}`, active: !bulk }, (newTab) => {
               if (newTab) targetTabIdRef.value = newTab.id;
               if (newTab) trackTabScopedUpdateListener(newTab.id, onUpd);
               injectPassiveInterceptors(newTab.id, slug);
@@ -4566,6 +4574,8 @@ async function processCommand(lastEntry) {
             if (targetTabIdRef.value !== null) trackTabScopedUpdateListener(targetTabIdRef.value, onUpd);
           } catch (_) { }
         });
+
+        slugs.forEach(openSlug);
       } catch (_) { }
       return;
     }
@@ -9267,6 +9277,7 @@ function shouldSkipDuplicate(entry, browserType) {
     if (entry.id === '27') valueKey = `${Math.round(entry.x)}_${Math.round(entry.y)}`;
     else if (entry.id === '29') valueKey = String(entry.scalePercent);
     else if (entry.id === '31') valueKey = String(entry.angleDeg);
+    else if (entry.id === '30') valueKey = Array.isArray(entry.tags) ? entry.tags.join(',') : String(entry.tag || '');
     const cmdKey = JSON.stringify({ id: entry.id, text: entry.textInput || null, browserType, v: valueKey });
     const lastTs = recentCommands.get(cmdKey);
 

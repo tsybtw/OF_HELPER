@@ -313,6 +313,29 @@ video {
   background-color: #ead147;
 }
 
+.copy-button.open-button::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  background-color: #9fd897;
+  pointer-events: none;
+  clip-path: polygon(50% 50%, 50% 50%, 50% 50%);
+}
+
+.copy-button.open-button.holding::before {
+  animation: clockFill 1s linear forwards;
+}
+
+.copy-button.open-button.completed {
+  background-color: #9fd897;
+}
+
+.copy-button.open-button.completed::before {
+  opacity: 0;
+}
+
 .text-button:hover {
   background-color: #ead147;
 }
