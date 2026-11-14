@@ -212,6 +212,16 @@ async function rotateMedia(mediaId, direction, filePath, mediaType) {
 
     if (!mediaElement) return;
 
+    if (mediaType === 'image' && mediaElement.dataset.mediaUrl) {
+      rotationStates[mediaId] = 0;
+      mediaElement.style.transform = '';
+      mediaElement.style.maxWidth = '';
+      mediaElement.style.maxHeight = '';
+      mediaElement.src = `${mediaElement.dataset.mediaUrl}?v=${Date.now()}`;
+      try { await saveBetweenQueueUsers(); } catch (_) { }
+      return;
+    }
+
     mediaElement.style.transform = `rotate(${rotationStates[mediaId]}deg)`;
 
     if (rotationStates[mediaId] % 180 === 0) {
@@ -3827,7 +3837,7 @@ function recropImage(mediaId, imagePath) {
       tempImg.onload = function () {
         img.src = croppedImageData;
 
-        saveImageToServer(croppedImageData, imagePath, rotationDegrees);
+        saveImageToServer(croppedImageData, imagePath, rotationDegrees, mediaId);
 
         document.body.removeChild(cropContainer);
         document.body.removeChild(infoContainer);
@@ -3840,7 +3850,7 @@ function recropImage(mediaId, imagePath) {
   });
 }
 
-function saveImageToServer(imageData, imagePath, rotation = 0) {
+function saveImageToServer(imageData, imagePath, rotation = 0, mediaId = null) {
   fetch('/save_cropped_image', {
     method: 'POST',
     headers: {
@@ -3854,6 +3864,11 @@ function saveImageToServer(imageData, imagePath, rotation = 0) {
   })
     .then(response => response.json())
     .then(async data => {
+      const savedImage = mediaId ? document.getElementById(mediaId) : null;
+      if (data.success && data.media_url && savedImage && savedImage.dataset.mediaUrl) {
+        savedImage.dataset.mediaUrl = data.media_url;
+        savedImage.src = `${data.media_url}?v=${Date.now()}`;
+      }
       const statusElement = document.getElementById('delete-status');
       if (statusElement) {
         if (data.success) {
@@ -4061,7 +4076,7 @@ function replaceElementWithImage(mediaElement, dataUrl, mediaPath) {
   const copyBtn = mainContainer.nextElementSibling;
 
   if (copyBtn && copyBtn.classList.contains('copy-button')) {
-    copyBtn.setAttribute('onclick', `copyImageToClipboard('data:image/png;base64,${dataUrl.split(',')[1]}', event)`);
+    copyBtn.setAttribute('onclick', `copyImageToClipboard(document.getElementById('${mediaId}').src, event)`);
     copyBtn.textContent = 'copy image';
   }
 
@@ -4077,6 +4092,10 @@ function replaceElementWithImage(mediaElement, dataUrl, mediaPath) {
   })
     .then(response => response.json())
     .then(async data => {
+      if (data.success && data.media_url) {
+        newImage.dataset.mediaUrl = data.media_url;
+        newImage.src = `${data.media_url}?v=${Date.now()}`;
+      }
       showStatus(data.success ? "Success!" : "Error!");
       try { await saveBetweenQueueUsers(); } catch (_) { }
     })
@@ -4264,63 +4283,6 @@ function checkQueueCompletion(currentQueueData) {
   lastQueueRunning = currentQueueData.queue_running;
 }
 
-function collectDOMState() {
-  const state = {
-    checkboxes: [],
-    removedElements: [],
-    transforms: [],
-    replacedImages: [],
-    activeButtons: [],
-    hintsOrder: []
-  };
-
-  document.querySelectorAll('input[type="checkbox"]').forEach((checkbox, index) => {
-    const selector = checkbox.id ? `#${checkbox.id}` : `input[type="checkbox"]:nth-of-type(${index + 1})`;
-    state.checkboxes.push({
-      selector: selector,
-      checked: checkbox.checked
-    });
-  });
-
-  document.querySelectorAll('[style*="transform"]').forEach(element => {
-    const selector = element.id ? `#${element.id}` : element.className ? `.${element.className.split(' ')[0]}` : element.tagName.toLowerCase();
-    state.transforms.push({
-      selector: selector,
-      transform: element.style.transform,
-      maxWidth: element.style.maxWidth,
-      maxHeight: element.style.maxHeight
-    });
-  });
-
-  document.querySelectorAll('.message-button.active').forEach(button => {
-    const selector = button.dataset.number ? `[data-number="${button.dataset.number}"]` :
-      button.id ? `#${button.id}` : `.message-button.active`;
-    state.activeButtons.push(selector);
-  });
-
-  const hintsContainer = document.querySelector('.hints-wrapper') || document.getElementById('hints-container');
-  if (hintsContainer) {
-    const hints = hintsContainer.querySelectorAll('.hint-item');
-    hints.forEach(hint => {
-      const label = hint.querySelector('.hint-label');
-      if (label) {
-        state.hintsOrder.push(label.textContent);
-      }
-    });
-  }
-
-  document.querySelectorAll('img[src*="data:image"]').forEach(img => {
-    if (img.id) {
-      state.replacedImages.push({
-        selector: `#${img.id}`,
-        src: img.src
-      });
-    }
-  });
-
-  return state;
-}
-
 function saveBetweenQueueUsers() {
   if (!currentQueueData?.queue_mode_enabled) {
     return Promise.resolve();
@@ -4333,7 +4295,6 @@ function saveBetweenQueueUsers() {
   return new Promise((resolve, reject) => {
     try {
       const currentHtml = document.documentElement.outerHTML;
-      const domState = collectDOMState();
 
       if (!currentHtml || currentHtml.length < 100 ||
         (!currentHtml.includes('<!DOCTYPE html>') && !currentHtml.includes('<html>'))) {
@@ -4352,7 +4313,6 @@ function saveBetweenQueueUsers() {
         },
         body: JSON.stringify({
           html_content: currentHtml,
-          dom_state: domState,
           save_type: 'full_state'
         }),
         signal: controller.signal
