@@ -767,6 +767,7 @@ input[type="checkbox"] {
 #restore-active-user-btn,
 #hint-swap-settings-btn,
 #assistants-log-btn,
+#send-mode-btn,
 #sticker-bind-btn {
   position: fixed;
   background: none;
@@ -785,7 +786,8 @@ input[type="checkbox"] {
 #add-hint-btn,
 #add-general-hint-btn,
 #hint-swap-settings-btn,
-#assistants-log-btn {
+#assistants-log-btn,
+#send-mode-btn {
   width: 36px;
   height: 36px;
   padding: 0;
@@ -895,6 +897,91 @@ input[type="checkbox"] {
 
 #assistants-log-dropdown .hint-swap-dropdown-header {
   color: #b39afb;
+}
+
+#send-mode-btn {
+  left: 660px;
+  top: 10px;
+  border: 2px dashed #7cf5d4;
+  color: #7cf5d4;
+}
+
+#send-mode-btn.has-mode {
+  background-color: rgba(124, 245, 212, 0.15);
+}
+
+#send-mode-btn:hover {
+  background-color: #7cf5d4;
+  color: black;
+}
+
+#send-mode-dropdown {
+  position: fixed;
+  left: 660px;
+  top: 45px;
+  background: #000000;
+  border: 3px solid #7cf5d4;
+  padding: 15px;
+  min-width: 220px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
+  color: white;
+  display: none;
+  z-index: 1001;
+}
+
+#send-mode-dropdown.show {
+  display: block;
+}
+
+#send-mode-dropdown .hint-swap-dropdown-header {
+  color: #7cf5d4;
+}
+
+.send-mode-divider {
+  height: 1px;
+  margin: 4px 0 12px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.send-mode-size-row {
+  margin-top: 2px;
+}
+
+.send-mode-size-row.disabled {
+  opacity: 0.4;
+}
+
+.send-mode-size-input {
+  width: 76px;
+  padding: 5px 8px;
+  border: 1px solid rgba(124, 245, 212, 0.5);
+  background: rgba(255, 255, 255, 0.05);
+  color: white;
+  border-radius: 5px;
+  font-family: 'Varela Round', sans-serif;
+  font-size: 13px;
+  font-weight: bold;
+  box-sizing: border-box;
+}
+
+.send-mode-size-input {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.send-mode-size-input::-webkit-outer-spin-button,
+.send-mode-size-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.send-mode-size-input:focus {
+  outline: none;
+  border-color: #7cf5d4;
+}
+
+.send-mode-size-input:disabled {
+  cursor: not-allowed;
 }
 
 .assistants-log-actions {
